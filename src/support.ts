@@ -3,9 +3,6 @@ import type { Env } from "./env";
 
 export async function supportAnswer(env: Env & { AI?: Ai }, question: string): Promise<string> {
   if (!env.AI) return "AI support not available on this tier.";
-  const ctx = await env.DB.prepare(
-    "SELECT action, detail, created_at FROM audit ORDER BY created_at DESC LIMIT 10"
-  ).all();
   const r = await env.AI.run("@cf/meta/llama-3.1-8b-instruct" as any, {
     messages: [
       { role: "system", content: "You are the wp-cloud support bot. WordPress hosting on Cloudflare: browser-Playground authoring, static publish to R2, lanes 1-3, USDC billing. Be concise." },

@@ -15,6 +15,7 @@ interface TenantState {
   alwaysOn: boolean;
   cluster: boolean;       // enterprise: N web + 1 db
   webCount: number;
+  curated: boolean;       // lane 2: whitelisted plugins, DISALLOW_FILE_MODS
 }
 
 const IDLE_MS = 5 * 60_000;
@@ -31,7 +32,7 @@ export class TenantDO {
 
   private async state(): Promise<TenantState> {
     return (await this.st.storage.get<TenantState>("s")) ?? {
-      siteId: "", status: "cold", lastTouched: 0, alwaysOn: false, cluster: false, webCount: 1,
+      siteId: "", status: "cold", lastTouched: 0, alwaysOn: false, cluster: false, webCount: 1, curated: false,
     };
   }
   private async set(s: Partial<TenantState>) {
@@ -39,10 +40,12 @@ export class TenantDO {
   }
 
   async fetch(req: Request): Promise<Response> {
-    if (new URL(req.url).pathname === "/control") {
+    const path = new URL(req.url).pathname;
+    if (path === "/control") {
       const { action, body } = await req.json() as { action: string; body?: any };
       return Response.json(await this.control(action, body));
     }
+    if (path === "/db-proxy") return this.wsToTcp(req);
     const s = await this.state();
     if (s.status === "cold" || s.status === "sleeping") return this.wake(req);
     await this.touch();
@@ -96,28 +99,42 @@ export class TenantDO {
   async control(action: string, body?: any): Promise<any> {
     switch (action) {
       case "configure":
-        await this.set({ siteId: body.siteId, alwaysOn: !!body.alwaysOn, cluster: !!body.cluster, webCount: body.webCount ?? 1 });
+        await this.set({ siteId: body.siteId, alwaysOn: !!body.alwaysOn, cluster: !!body.cluster, webCount: body.webCount ?? 1, curated: !!body.curated });
         return { ok: true };
       case "sync-out":
         await this.agent("/sync-out");
         return { ok: true };
       case "wp-cli":
         return { out: await (await fetch(`${AGENT}/exec`, { method: "POST", body: JSON.stringify({ cmd: body.cmd }) })).text() };
-      // P5 enterprise: proxy raw MySQL TCP to the db container
-      case "db-tcp":
-        return this.dbProxy(body);
       case "status":
         return this.state();
     }
     return { error: "unknown action" };
   }
 
-  // P5: MySQL traffic web→db over same-DC TCP socket
-  private async dbProxy(_body: { port?: number }): Promise<Response> {
-    const sock = connect({ hostname: "127.0.0.1", port: 3306 }); // db sidecar
-    const { readable, writable } = new TransformStream();
-    sock.readable.pipeTo(writable).catch(() => {});
-    // caller streams protocol bytes; real impl wires req body → sock.writable
-    return new Response(readable, { status: 200 });
+  // P5: WebSocket↔TCP proxy — web containers carry MySQL protocol frames
+  // over a DO WebSocket; we bridge to the db sidecar's 3306 (same-DC TCP).
+  private async wsToTcp(req: Request): Promise<Response> {
+    if (req.headers.get("upgrade") !== "websocket") return new Response("ws required", { status: 426 });
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    server.accept();
+    const sock = connect({ hostname: "127.0.0.1", port: 3306 });
+    const writer = sock.writable.getWriter();
+    server.addEventListener("message", (e) => {
+      const data = typeof e.data === "string" ? new TextEncoder().encode(e.data) : new Uint8Array(e.data);
+      writer.write(data).catch(() => server.close(1011));
+    });
+    server.addEventListener("close", () => { writer.close().catch(() => {}); sock.close().catch(() => {}); });
+    (async () => {
+      const reader = sock.readable.getReader();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        server.send(value);
+      }
+      server.close(1000);
+    })().catch(() => server.close(1011));
+    return new Response(null, { status: 101, webSocket: client });
   }
 }

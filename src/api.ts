@@ -34,14 +34,17 @@ api.post("/api/sites", async (req, env: Env) => {
   const did = await auth(req, env);
   if (did instanceof Response) return did;
   const user = await env.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first<{ plan: string }>();
-  if (!(await underSiteQuota(env, did, planFor(user)))) return json({ error: "site_quota" }, 402);
+  const plan = planFor(user);
+  if (!(await underSiteQuota(env, did, plan))) return json({ error: "site_quota" }, 402);
+  const { lane = 1 } = await req.json().catch(() => ({})) as { lane?: number };
+  if (lane > plan.lane_max) return json({ error: "lane_requires_plan", needed: lane }, 402);
   const siteId = id();
   const host = `preview-${siteId}.${env.SITE_HOST_SUFFIX}`;
   const lease = Math.floor(Date.now() / 1000) + 7 * 86400; // 7d preview lease
   await env.DB.prepare(
-    "INSERT INTO sites(id, owner_did, preview_host, lease_expires_at, created_at) VALUES(?,?,?,?,unixepoch())"
-  ).bind(siteId, did, host, lease).run();
-  return json({ id: siteId, preview_host: host, lease_expires_at: lease });
+    "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, created_at) VALUES(?,?,?,?,?,unixepoch())"
+  ).bind(siteId, did, lane, host, lease).run();
+  return json({ id: siteId, preview_host: host, lease_expires_at: lease, lane });
 });
 
 api.get("/api/sites/:id", async (req, env: Env) => {
@@ -133,6 +136,34 @@ api.post("/api/comments", async (req, env: Env) => {
   await env.DB.prepare("INSERT INTO comments(site_id, post_path, author, body, created_at) VALUES(?,?,?,?,unixepoch())")
     .bind(site_id, post_path, author.slice(0, 80), body).run();
   return json({ ok: true, status: "pending" });
+});
+
+// owner moderation
+api.post("/api/comments/:id/approve", async (req, env: Env) => {
+  const did = await auth(req, env);
+  if (did instanceof Response) return did;
+  const r = await env.DB.prepare(
+    "UPDATE comments SET status='approved' WHERE id=? AND site_id IN (SELECT id FROM sites WHERE owner_did=?)"
+  ).bind(req.params!.id, did).run();
+  return r.meta.changes ? json({ ok: true }) : json({ error: "not found" }, 404);
+});
+
+api.post("/api/comments/:id/reject", async (req, env: Env) => {
+  const did = await auth(req, env);
+  if (did instanceof Response) return did;
+  const r = await env.DB.prepare(
+    "UPDATE comments SET status='rejected' WHERE id=? AND site_id IN (SELECT id FROM sites WHERE owner_did=?)"
+  ).bind(req.params!.id, did).run();
+  return r.meta.changes ? json({ ok: true }) : json({ error: "not found" }, 404);
+});
+
+api.get("/api/comments/pending", async (req, env: Env) => {
+  const did = await auth(req, env);
+  if (did instanceof Response) return did;
+  const rows = await env.DB.prepare(
+    "SELECT c.id, c.site_id, c.post_path, c.author, c.body, c.created_at FROM comments c JOIN sites s ON s.id=c.site_id WHERE s.owner_did=? AND c.status='pending' ORDER BY c.created_at"
+  ).bind(did).all();
+  return json(rows.results);
 });
 
 api.get("/api/comments", async (req, env: Env) => {

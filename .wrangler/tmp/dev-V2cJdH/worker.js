@@ -14,14 +14,14 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 
-// .wrangler/tmp/bundle-pZyh7L/strip-cf-connecting-ip-header.js
+// .wrangler/tmp/bundle-H9ngfW/strip-cf-connecting-ip-header.js
 function stripCfConnectingIPHeader(input, init) {
   const request = new Request(input, init);
   request.headers.delete("CF-Connecting-IP");
   return request;
 }
 var init_strip_cf_connecting_ip_header = __esm({
-  ".wrangler/tmp/bundle-pZyh7L/strip-cf-connecting-ip-header.js"() {
+  ".wrangler/tmp/bundle-H9ngfW/strip-cf-connecting-ip-header.js"() {
     "use strict";
     __name(stripCfConnectingIPHeader, "stripCfConnectingIPHeader");
     globalThis.fetch = new Proxy(globalThis.fetch, {
@@ -4783,14 +4783,14 @@ var init_isAddressEqual = __esm({
   }
 });
 
-// .wrangler/tmp/bundle-pZyh7L/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-H9ngfW/middleware-loader.entry.ts
 init_strip_cf_connecting_ip_header();
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
 
-// .wrangler/tmp/bundle-pZyh7L/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-H9ngfW/middleware-insertion-facade.js
 init_strip_cf_connecting_ip_header();
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
@@ -5531,15 +5531,19 @@ api.post("/api/sites", async (req, env2) => {
   if (did instanceof Response)
     return did;
   const user = await env2.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first();
-  if (!await underSiteQuota(env2, did, planFor(user)))
+  const plan = planFor(user);
+  if (!await underSiteQuota(env2, did, plan))
     return json2({ error: "site_quota" }, 402);
+  const { lane = 1 } = await req.json().catch(() => ({}));
+  if (lane > plan.lane_max)
+    return json2({ error: "lane_requires_plan", needed: lane }, 402);
   const siteId = id();
   const host = `preview-${siteId}.${env2.SITE_HOST_SUFFIX}`;
   const lease = Math.floor(Date.now() / 1e3) + 7 * 86400;
   await env2.DB.prepare(
-    "INSERT INTO sites(id, owner_did, preview_host, lease_expires_at, created_at) VALUES(?,?,?,?,unixepoch())"
-  ).bind(siteId, did, host, lease).run();
-  return json2({ id: siteId, preview_host: host, lease_expires_at: lease });
+    "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, created_at) VALUES(?,?,?,?,?,unixepoch())"
+  ).bind(siteId, did, lane, host, lease).run();
+  return json2({ id: siteId, preview_host: host, lease_expires_at: lease, lane });
 });
 api.get("/api/sites/:id", async (req, env2) => {
   const did = await auth2(req, env2);
@@ -5629,6 +5633,33 @@ api.post("/api/comments", async (req, env2) => {
     return json2({ error: "bad comment" }, 400);
   await env2.DB.prepare("INSERT INTO comments(site_id, post_path, author, body, created_at) VALUES(?,?,?,?,unixepoch())").bind(site_id, post_path, author.slice(0, 80), body).run();
   return json2({ ok: true, status: "pending" });
+});
+api.post("/api/comments/:id/approve", async (req, env2) => {
+  const did = await auth2(req, env2);
+  if (did instanceof Response)
+    return did;
+  const r2 = await env2.DB.prepare(
+    "UPDATE comments SET status='approved' WHERE id=? AND site_id IN (SELECT id FROM sites WHERE owner_did=?)"
+  ).bind(req.params.id, did).run();
+  return r2.meta.changes ? json2({ ok: true }) : json2({ error: "not found" }, 404);
+});
+api.post("/api/comments/:id/reject", async (req, env2) => {
+  const did = await auth2(req, env2);
+  if (did instanceof Response)
+    return did;
+  const r2 = await env2.DB.prepare(
+    "UPDATE comments SET status='rejected' WHERE id=? AND site_id IN (SELECT id FROM sites WHERE owner_did=?)"
+  ).bind(req.params.id, did).run();
+  return r2.meta.changes ? json2({ ok: true }) : json2({ error: "not found" }, 404);
+});
+api.get("/api/comments/pending", async (req, env2) => {
+  const did = await auth2(req, env2);
+  if (did instanceof Response)
+    return did;
+  const rows = await env2.DB.prepare(
+    "SELECT c.id, c.site_id, c.post_path, c.author, c.body, c.created_at FROM comments c JOIN sites s ON s.id=c.site_id WHERE s.owner_did=? AND c.status='pending' ORDER BY c.created_at"
+  ).bind(did).all();
+  return json2(rows.results);
 });
 api.get("/api/comments", async (req, env2) => {
   const u2 = new URL(req.url);
@@ -5780,23 +5811,50 @@ function contentType(path) {
 }
 __name(contentType, "contentType");
 
+// src/lane2.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+async function serveLane2(req, env2, site) {
+  if (!env2.TENANT)
+    return new Response("lane2 requires the paid container tier", { status: 503 });
+  const stub = env2.TENANT.get(env2.TENANT.idFromName(site.id));
+  const r2 = new Request(req, { headers: new Headers(req.headers) });
+  r2.headers.set("x-wpc-curated", "1");
+  return stub.fetch(r2);
+}
+__name(serveLane2, "serveLane2");
+
 // src/serving.ts
 async function serveSite(req, env2, ctx) {
   const url = new URL(req.url);
-  const host = url.hostname;
-  const m = host.match(/^preview-([a-z0-9]+)\./i);
-  const siteId = m?.[1];
-  if (!siteId)
-    return new Response("not a site host", { status: 404 });
-  const site = await env2.DB.prepare(
-    "SELECT id, status, manifest_sha, lease_expires_at FROM sites WHERE id = ?"
-  ).bind(siteId).first();
+  const site = await resolveSite(env2, url.hostname);
   if (!site)
     return new Response("site not found", { status: 404 });
   if (site.status !== "active")
     return topUpPage();
   if (site.lease_expires_at && site.lease_expires_at < Date.now() / 1e3)
     return reclaimPage();
+  if (site.lane === 2)
+    return serveLane2(req, env2, site);
+  if (site.lane === 3 && env2.TENANT) {
+    const stub = env2.TENANT.get(env2.TENANT.idFromName(site.id));
+    return stub.fetch(req);
+  }
+  return serveArtifact(req, env2, ctx, site, url);
+}
+__name(serveSite, "serveSite");
+async function resolveSite(env2, host) {
+  const m = host.match(/^preview-([a-z0-9]+)\./i);
+  if (m) {
+    return env2.DB.prepare("SELECT id, lane, status, manifest_sha, lease_expires_at FROM sites WHERE id=?").bind(m[1]).first();
+  }
+  return env2.DB.prepare("SELECT id, lane, status, manifest_sha, lease_expires_at FROM sites WHERE custom_domain=?").bind(host.toLowerCase()).first();
+}
+__name(resolveSite, "resolveSite");
+async function serveArtifact(req, env2, ctx, site, url) {
   if (!site.manifest_sha)
     return new Response("site not published yet", { status: 404 });
   let path = decodeURIComponent(url.pathname);
@@ -5821,7 +5879,7 @@ async function serveSite(req, env2, ctx) {
   ctx.waitUntil(cache.put(cacheKey, res.clone()));
   return res;
 }
-__name(serveSite, "serveSite");
+__name(serveArtifact, "serveArtifact");
 function artifactResponse(obj, path) {
   const h2 = new Headers({ "content-type": contentType(path), "cache-control": "public, max-age=3600, stale-while-revalidate=86400" });
   if (obj.httpEtag)
@@ -5867,9 +5925,6 @@ init_performance2();
 async function supportAnswer(env2, question) {
   if (!env2.AI)
     return "AI support not available on this tier.";
-  const ctx = await env2.DB.prepare(
-    "SELECT action, detail, created_at FROM audit ORDER BY created_at DESC LIMIT 10"
-  ).all();
   const r2 = await env2.AI.run("@cf/meta/llama-3.1-8b-instruct", {
     messages: [
       { role: "system", content: "You are the wp-cloud support bot. WordPress hosting on Cloudflare: browser-Playground authoring, static publish to R2, lanes 1-3, USDC billing. Be concise." },
@@ -6111,17 +6166,21 @@ var TenantDO = class {
       lastTouched: 0,
       alwaysOn: false,
       cluster: false,
-      webCount: 1
+      webCount: 1,
+      curated: false
     };
   }
   async set(s) {
     await this.st.storage.put("s", { ...await this.state(), ...s });
   }
   async fetch(req) {
-    if (new URL(req.url).pathname === "/control") {
+    const path = new URL(req.url).pathname;
+    if (path === "/control") {
       const { action, body } = await req.json();
       return Response.json(await this.control(action, body));
     }
+    if (path === "/db-proxy")
+      return this.wsToTcp(req);
     const s = await this.state();
     if (s.status === "cold" || s.status === "sleeping")
       return this.wake(req);
@@ -6169,27 +6228,49 @@ var TenantDO = class {
   async control(action, body) {
     switch (action) {
       case "configure":
-        await this.set({ siteId: body.siteId, alwaysOn: !!body.alwaysOn, cluster: !!body.cluster, webCount: body.webCount ?? 1 });
+        await this.set({ siteId: body.siteId, alwaysOn: !!body.alwaysOn, cluster: !!body.cluster, webCount: body.webCount ?? 1, curated: !!body.curated });
         return { ok: true };
       case "sync-out":
         await this.agent("/sync-out");
         return { ok: true };
       case "wp-cli":
         return { out: await (await fetch(`${AGENT}/exec`, { method: "POST", body: JSON.stringify({ cmd: body.cmd }) })).text() };
-      case "db-tcp":
-        return this.dbProxy(body);
       case "status":
         return this.state();
     }
     return { error: "unknown action" };
   }
-  // P5: MySQL traffic web→db over same-DC TCP socket
-  async dbProxy(_body) {
+  // P5: WebSocket↔TCP proxy — web containers carry MySQL protocol frames
+  // over a DO WebSocket; we bridge to the db sidecar's 3306 (same-DC TCP).
+  async wsToTcp(req) {
+    if (req.headers.get("upgrade") !== "websocket")
+      return new Response("ws required", { status: 426 });
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    server.accept();
     const sock = connect({ hostname: "127.0.0.1", port: 3306 });
-    const { readable, writable } = new TransformStream();
-    sock.readable.pipeTo(writable).catch(() => {
+    const writer = sock.writable.getWriter();
+    server.addEventListener("message", (e) => {
+      const data = typeof e.data === "string" ? new TextEncoder().encode(e.data) : new Uint8Array(e.data);
+      writer.write(data).catch(() => server.close(1011));
     });
-    return new Response(readable, { status: 200 });
+    server.addEventListener("close", () => {
+      writer.close().catch(() => {
+      });
+      sock.close().catch(() => {
+      });
+    });
+    (async () => {
+      const reader = sock.readable.getReader();
+      for (; ; ) {
+        const { value, done } = await reader.read();
+        if (done)
+          break;
+        server.send(value);
+      }
+      server.close(1e3);
+    })().catch(() => server.close(1011));
+    return new Response(null, { status: 101, webSocket: client });
   }
 };
 __name(TenantDO, "TenantDO");
@@ -6288,7 +6369,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-pZyh7L/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-H9ngfW/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -6325,7 +6406,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-pZyh7L/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-H9ngfW/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

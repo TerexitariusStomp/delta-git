@@ -35,6 +35,7 @@ define('S3_UPLOADS_REGION', 'auto');
 define('S3_UPLOADS_KEY', getenv('R2_KEY_ID') ?: '');
 define('S3_UPLOADS_SECRET', getenv('R2_KEY_SECRET') ?: '');
 define('S3_UPLOADS_ENDPOINT', 'https://' . (getenv('R2_ACCOUNT_ID') ?: '') . '.r2.cloudflarestorage.com');
+if (getenv('CURATED')) define('DISALLOW_FILE_MODS', true); // Lane 2: no arbitrary code
 PHP
   wp db create --allow-root || true
   wp core install --url="${SITE_URL:-http://localhost}" --title="${SITE_TITLE:-wp-cloud site}" \
@@ -43,10 +44,23 @@ PHP
   wp plugin activate sqlite-database-integration s3-uploads fluent-smtp --allow-root || true
 fi
 
-# 3. scheduled tasks: sync-out every hour + WP-Cron every 5 min (not traffic-dependent)
-(crond -f -l 2 &
- echo "*/5 * * * * cd $SITE_DIR && wp cron event run --due-now --allow-root >/dev/null 2>&1" > /etc/crontabs/root
- echo "0 * * * * /usr/local/bin/sync-out.sh >> /var/log/sync.log 2>&1" >> /etc/crontabs/root) || true
+# Lane 2 curation: deactivate anything outside the whitelist
+if [ "${CURATED:-}" = "1" ]; then
+  cd "$SITE_DIR"
+  wp plugin list --field=name --allow-root 2>/dev/null | while read -r p; do
+    case "|${CURATED_PLUGINS:-sqlite-database-integration s3-uploads fluent-smtp sqlite-object-cache contact-form-7 wpforms-lite wordpress-seo akismet simply-static}|" in
+      *"$p"*) : ;;
+      *) wp plugin deactivate "$p" --allow-root 2>/dev/null || true ;;
+    esac
+  done
+fi
+
+# 3. scheduled tasks: WP-Cron every 5 min + hourly sync-out (not traffic-dependent)
+cat > /etc/crontabs/root <<EOF
+*/5 * * * * cd $SITE_DIR && wp cron event run --due-now --allow-root >/dev/null 2>&1
+0 * * * * /usr/local/bin/sync-out.sh >> /var/log/sync.log 2>&1
+EOF
+crond -b -l 2
 
 # 4. agent API + dev shell + adminer
 webhook -hooks /etc/webhook/hooks.json -port 8080 -verbose &

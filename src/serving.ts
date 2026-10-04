@@ -1,24 +1,38 @@
 import type { Env } from "./env";
 import { contentType } from "./mime";
+import { serveLane2 } from "./lane2";
 
-// Host-based serving: preview-{id}.{suffix} or customer domain → site →
-// manifest → R2 artifact. Edge-cached via Cache API keyed on manifest sha.
+interface SiteRow { id: string; lane: number; status: string; manifest_sha: string | null; lease_expires_at: number | null }
+
+// Host-based serving: preview-{id}.{suffix} or customer custom domain →
+// site → lane dispatch (1=R2 artifacts, 2=wasm, 3=container DO).
 export async function serveSite(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
-  const host = url.hostname;
-  const m = host.match(/^preview-([a-z0-9]+)\./i);
-  const siteId = m?.[1];
-  if (!siteId) return new Response("not a site host", { status: 404 });
-
-  const site = await env.DB.prepare(
-    "SELECT id, status, manifest_sha, lease_expires_at FROM sites WHERE id = ?"
-  ).bind(siteId).first<{ id: string; status: string; manifest_sha: string | null; lease_expires_at: number | null }>();
-
+  const site = await resolveSite(env, url.hostname);
   if (!site) return new Response("site not found", { status: 404 });
   if (site.status !== "active") return topUpPage();
   if (site.lease_expires_at && site.lease_expires_at < Date.now() / 1000) return reclaimPage();
-  if (!site.manifest_sha) return new Response("site not published yet", { status: 404 });
 
+  if (site.lane === 2) return serveLane2(req, env, site);
+  if (site.lane === 3 && env.TENANT) {
+    const stub = env.TENANT.get(env.TENANT.idFromName(site.id));
+    return stub.fetch(req);
+  }
+  return serveArtifact(req, env, ctx, site, url);
+}
+
+async function resolveSite(env: Env, host: string): Promise<SiteRow | null> {
+  const m = host.match(/^preview-([a-z0-9]+)\./i);
+  if (m) {
+    return env.DB.prepare("SELECT id, lane, status, manifest_sha, lease_expires_at FROM sites WHERE id=?")
+      .bind(m[1]).first<SiteRow>();
+  }
+  return env.DB.prepare("SELECT id, lane, status, manifest_sha, lease_expires_at FROM sites WHERE custom_domain=?")
+    .bind(host.toLowerCase()).first<SiteRow>();
+}
+
+async function serveArtifact(req: Request, env: Env, ctx: ExecutionContext, site: SiteRow, url: URL): Promise<Response> {
+  if (!site.manifest_sha) return new Response("site not published yet", { status: 404 });
   let path = decodeURIComponent(url.pathname);
   if (path === "/" || path.endsWith("/")) path += "index.html";
   const key = `sites/${site.id}/artifacts/${site.manifest_sha}${path}`;
@@ -30,7 +44,6 @@ export async function serveSite(req: Request, env: Env, ctx: ExecutionContext): 
 
   const obj = await env.ARTIFACTS.get(key);
   if (!obj) {
-    // SPA-ish fallback only for extensionless paths
     if (!path.includes(".")) {
       const idx = await env.ARTIFACTS.get(`sites/${site.id}/artifacts/${site.manifest_sha}/index.html`);
       if (idx) return artifactResponse(idx, "index.html");

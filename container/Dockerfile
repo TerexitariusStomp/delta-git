@@ -4,7 +4,7 @@
 FROM dunglas/frankenphp:1-alpine AS php
 FROM alpine:3.20
 
-RUN apk add --no-cache bash curl sqlite ca-certificates mariadb-client
+RUN apk add --no-cache bash curl sqlite unzip ca-certificates mariadb-client
 
 # FrankenPHP binary (includes Caddy web server + PHP)
 COPY --from=php /usr/local/bin/frankenphp /usr/local/bin/frankenphp
@@ -15,26 +15,30 @@ COPY --from=php /usr/local/etc/php /usr/local/etc/php
 RUN curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
  && chmod +x /usr/local/bin/wp
 
-# rclone (uploads→R2 + backups) and ttyd (browser shell)
+# rclone (uploads→R2 + backups), ttyd (browser shell), webhook (agent API) — raw binaries
 RUN curl -fsSL https://rclone.org/install.sh | bash \
  && curl -fsSL -o /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
- && chmod +x /usr/local/bin/ttyd
-
-# adnanh/webhook — in-container agent API (control plane → site ops)
-RUN curl -fsSL -o /usr/local/bin/webhook https://github.com/adnanh/webhook/releases/download/2.8.2/webhook-linux-amd64.tar.gz \
- && tar -xzf /usr/local/bin/webhook -C /usr/local/bin --strip-components=1 && chmod +x /usr/local/bin/webhook
+ && curl -fsSL -o /usr/local/bin/webhook https://github.com/adnanh/webhook/releases/download/2.8.2/webhook-linux-amd64 \
+ && chmod +x /usr/local/bin/ttyd /usr/local/bin/webhook
 
 # Adminer (single-file DB admin)
 RUN curl -fsSL -o /srv/adminer.php https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1.php
 
-# WordPress + SQLite integration + plugins
+# WordPress + plugins
 RUN mkdir -p /srv/site && cd /srv/site \
  && curl -fsSL https://wordpress.org/latest.tar.gz | tar -xz --strip-components=1 \
- && curl -fsSL -o /tmp/sqlite.zip https://downloads.wordpress.org/plugin/sqlite-database-integration.latest-stable.zip \
- && cd /srv/site/wp-content/plugins && unzip -q /tmp/sqlite.zip \
- && curl -fsSL -o /tmp/s3u.zip https://downloads.wordpress.org/plugin/s3-uploads.latest-stable.zip && unzip -q /tmp/s3u.zip \
- && curl -fsSL -o /tmp/fsmtp.zip https://downloads.wordpress.org/plugin/fluent-smtp.latest-stable.zip && unzip -q /tmp/fsmtp.zip \
- && curl -fsSL -o /srv/site/wp-content/object-cache.php https://raw.githubusercontent.com/humanmade/S3-Uploads/master/inc/class-s3-uploads.php 2>/dev/null || true
+ && cd wp-content/plugins \
+ && for p in sqlite-database-integration s3-uploads fluent-smtp sqlite-object-cache; do \
+      curl -fsSL -o /tmp/$p.zip https://downloads.wordpress.org/plugin/$p.latest-stable.zip && unzip -q /tmp/$p.zip; \
+    done \
+ && mkdir -p /srv/site/wp-content/mu-plugins \
+ && cp sqlite-database-integration/db.copy /srv/site/wp-content/db.php \
+ && sed -e "s|{SQLITE_IMPLEMENTATION_FOLDER_PATH}|/srv/site/wp-content/plugins/sqlite-database-integration|" \
+        -e "s|{SQLITE_PLUGIN}|sqlite-database-integration/load.php|" \
+        /srv/site/wp-content/plugins/sqlite-database-integration/db.copy > /srv/site/wp-content/db.php
+
+# platform mu-plugin (webhook bridge + magic-login)
+COPY wpcloud-mu.php /srv/site/wp-content/mu-plugins/wpcloud-mu.php
 
 COPY Caddyfile /etc/frankenphp/Caddyfile
 COPY entrypoint.sh /entrypoint.sh
