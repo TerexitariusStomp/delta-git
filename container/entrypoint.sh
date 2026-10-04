@@ -20,7 +20,11 @@ EOF
 mkdir -p "$STATE_DIR"
 if rclone lsf "$R2_REMOTE" --max-depth 1 2>/dev/null | grep -q .; then
   echo "[entrypoint] restoring state from $R2_REMOTE"
-  rclone copy "$R2_REMOTE" "$STATE_DIR" --transfers 8 --checkers 8
+  rclone copy "$R2_REMOTE" "$STATE_DIR" --exclude ".versions/**" --exclude "wp-content/**" --transfers 8 --checkers 8
+  rclone copy "$R2_REMOTE/wp-content" "$SITE_DIR/wp-content" --transfers 8 --checkers 8 || true
+  if [ -f "$STATE_DIR/mysql-dump.sql" ] && mariadb-admin -h 127.0.0.1 ping >/dev/null 2>&1; then
+    mariadb -h 127.0.0.1 < "$STATE_DIR/mysql-dump.sql" || true
+  fi
 fi
 
 # 2. WP bootstrap if fresh

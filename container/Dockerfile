@@ -4,7 +4,7 @@
 FROM dunglas/frankenphp:1-alpine AS php
 FROM alpine:3.20
 
-RUN apk add --no-cache bash curl sqlite unzip ca-certificates mariadb-client
+RUN apk add --no-cache bash curl sqlite unzip ca-certificates mariadb-client imagemagick
 
 # FrankenPHP binary (includes Caddy web server + PHP)
 COPY --from=php /usr/local/bin/frankenphp /usr/local/bin/frankenphp
