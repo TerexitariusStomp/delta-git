@@ -27,11 +27,19 @@ if rclone lsf "$R2_REMOTE" --max-depth 1 2>/dev/null | grep -q .; then
   fi
 fi
 
-# 2. WP bootstrap if fresh
+# 2. WP bootstrap if fresh — DB engine from compat variant
+#    sqlite → local file; mariadb|mysql8 → sidecar on pod-local :3306
 if [ ! -f "$SITE_DIR/wp-config.php" ]; then
   cd "$SITE_DIR"
-  wp core config --dbname=site --dbuser=wp --dbhost=file://$STATE_DIR/db.sqlite --dbprefix=wp_ \
-      --extra-php <<'PHP' --allow-root
+  DB_ENGINE="${DB_ENGINE:-sqlite}"
+  if [ "$DB_ENGINE" = "sqlite" ]; then
+    DB_HOST="file://$STATE_DIR/db.sqlite"
+  else
+    DB_HOST="127.0.0.1:3306"
+    rm -f "$SITE_DIR/wp-content/db.php"  # SQL sidecar → drop the sqlite drop-in
+  fi
+  wp core config --dbname=site --dbuser=wp --dbhost="$DB_HOST" --dbprefix=wp_ \
+      ${DB_PASS:+--dbpass="$DB_PASS"} --extra-php <<'PHP' --allow-root
 define('WP_ENVIRONMENT_TYPE', 'production');
 define('DISALLOW_FILE_EDIT', true);
 define('S3_UPLOADS_BUCKET', getenv('S3_BUCKET') ?: '');
@@ -40,12 +48,18 @@ define('S3_UPLOADS_KEY', getenv('R2_KEY_ID') ?: '');
 define('S3_UPLOADS_SECRET', getenv('R2_KEY_SECRET') ?: '');
 define('S3_UPLOADS_ENDPOINT', 'https://' . (getenv('R2_ACCOUNT_ID') ?: '') . '.r2.cloudflarestorage.com');
 if (getenv('CURATED')) define('DISALLOW_FILE_MODS', true); // Lane 2: no arbitrary code
+if (getenv('REDIS_HOST')) define('WP_REDIS_HOST', getenv('REDIS_HOST'));
+if (getenv('ELASTIC_HOST')) define('EP_HOST', 'http://' . getenv('ELASTIC_HOST') . ':9200');
 PHP
   wp db create --allow-root || true
   wp core install --url="${SITE_URL:-http://localhost}" --title="${SITE_TITLE:-wp-cloud site}" \
       --admin_user="${WP_ADMIN_USER:-admin}" --admin_password="${WP_ADMIN_PASS:-$(openssl rand -hex 8)}" \
       --admin_email="${WP_ADMIN_EMAIL:-admin@wp-cloud}" --allow-root
   wp plugin activate sqlite-database-integration s3-uploads fluent-smtp --allow-root || true
+  # multisite variant — subsite domains route to this same container
+  if [ "${MULTISITE:-}" = "1" ]; then
+    wp core multisite-install --subdomains --title="${SITE_TITLE:-wp-cloud}" --allow-root || true
+  fi
 fi
 
 # Lane 2 curation: deactivate anything outside the whitelist
@@ -66,9 +80,19 @@ cat > /etc/crontabs/root <<EOF
 EOF
 crond -b -l 2
 
-# 4. agent API + dev shell + adminer
+# 4. agent API + dev shell + daemon supervision + initial compat scan
 webhook -hooks /etc/webhook/hooks.json -port 8080 -verbose &
 ttyd -p 7681 -W bash &
+# plugin daemons registered via daemon-svc.sh — runit keeps them alive and
+# restarts them after wake (service dirs persist in /state)
+runsvdir /state/daemons &
+# report plugin set to the classifier in the background (non-fatal if offline)
+/usr/local/bin/compat-scan.sh &
 
-# 5. serve — FrankenPHP worker mode keeps WP hot in memory
-exec frankenphp run --config /etc/frankenphp/Caddyfile
+# 5. serve — SAPI from variant: FrankenPHP worker mode (default, hot) or Apache
+# (real .htaccess for security plugins)
+if [ "${SITE_SAPI:-frankenphp}" = "apache" ]; then
+  exec httpd -D FOREGROUND
+else
+  exec frankenphp run --config /etc/frankenphp/Caddyfile
+fi

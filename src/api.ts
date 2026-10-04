@@ -4,6 +4,7 @@ import { whoami, verifySignature, issueToken, didFromAddress } from "./auth";
 import { presignPut } from "./presign";
 import { planFor } from "./plans";
 import { underSiteQuota, storageUsed } from "./admin";
+import { classifyPlugin, mergeVerdicts, planForVariant, tierAtLeast, type Verdict } from "./compat";
 
 const DYNAMIC_PLUGINS = ["woocommerce", "wpforms", "gravityforms", "memberpress", "learndash", "lifterlms", "easy-digital-downloads"];
 
@@ -36,15 +37,20 @@ api.post("/api/sites", async (req, env: Env) => {
   const user = await env.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first<{ plan: string }>();
   const plan = planFor(user);
   if (!(await underSiteQuota(env, did, plan))) return json({ error: "site_quota" }, 402);
-  const { lane = 1 } = await req.json().catch(() => ({})) as { lane?: number };
+  const { lane = 1, variant } = await req.json().catch(() => ({})) as { lane?: number; variant?: { sapi?: string; php_version?: string; db_engine?: string; multisite?: boolean } };
   if (lane > plan.lane_max) return json({ error: "lane_requires_plan", needed: lane }, 402);
   const siteId = id();
   const host = `preview-${siteId}.${env.SITE_HOST_SUFFIX}`;
   const lease = Math.floor(Date.now() / 1000) + 7 * 86400; // 7d preview lease
+  const merged = mergeVerdicts([]);
+  const v = { ...merged, ...pickVariant(variant), sidecars: merged.sidecars };
+  const needed = planForVariant(v);
+  if (lane >= 3 && !tierAtLeast(user?.plan ?? "creator", needed))
+    return json({ error: "variant_requires_plan", needed }, 402);
   await env.DB.prepare(
-    "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, created_at) VALUES(?,?,?,?,?,unixepoch())"
-  ).bind(siteId, did, lane, host, lease).run();
-  return json({ id: siteId, preview_host: host, lease_expires_at: lease, lane });
+    "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, sapi, php_version, db_engine, multisite, agent_token, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,unixepoch())"
+  ).bind(siteId, did, lane, host, lease, v.sapi, v.php_version, v.db_engine, v.multisite, crypto.randomUUID()).run();
+  return json({ id: siteId, preview_host: host, lease_expires_at: lease, lane, variant: { sapi: v.sapi, php_version: v.php_version, db_engine: v.db_engine, multisite: !!v.multisite } });
 });
 
 api.get("/api/sites/:id", async (req, env: Env) => {
@@ -79,7 +85,98 @@ api.post("/api/sites/:id/publish", async (req, env: Env) => {
   if (!site) return json({ error: "not found" }, 404);
   const body = await req.json() as { sha: string; files: { path: string; size: number }[]; plugins?: string[] };
 
-  // Woo/dynamic detection gate — a store can never land on Lane 1
+  // ---- Plugin compatibility: classify → variant reconfigure → public verdict DB ----
+
+// Scan a plugin set: {plugins: [{slug, source?}]} → per-plugin verdicts + merged site variant.
+// Called by the admin shell at provisioning and by the in-container agent on plugin activation.
+api.post("/api/sites/:id/compat-scan", async (req, env: Env) => {
+  const did = await auth(req, env);
+  if (did instanceof Response) return did;
+  const site = await ownedSite(env, req.params!.id, did);
+  if (!site) return json({ error: "not found" }, 404);
+  const { plugins = [] } = await req.json() as { plugins: { slug: string; source?: string }[] };
+  if (plugins.length > 500) return json({ error: "too many plugins" }, 400);
+
+  const verdicts: Record<string, Verdict> = {};
+  const stmts: D1PreparedStatement[] = [];
+  for (const p of plugins) {
+    const slug = p.slug.toLowerCase();
+    let v = (await env.DB.prepare("SELECT verdict FROM plugin_compat WHERE slug=? AND scanner_version=1").bind(slug).first<{ verdict: string }>())
+      ?.verdict as string | undefined;
+    const verdict: Verdict = v ? JSON.parse(v) : classifyPlugin(slug, p.source ?? "");
+    verdicts[slug] = verdict;
+    if (!v) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO plugin_compat(slug, verdict, scanned_at, scanner_version) VALUES(?,?,unixepoch(),1)").bind(slug, JSON.stringify(verdict)));
+  }
+  const merged = mergeVerdicts(Object.values(verdicts));
+  const user = await env.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first<{ plan: string }>();
+  const needed = planForVariant(merged);
+  const entitled = tierAtLeast(user?.plan ?? "creator", needed);
+
+  if (entitled) {
+    stmts.push(env.DB.prepare(
+      "UPDATE sites SET sapi=?, php_version=?, db_engine=?, multisite=?, daemons=?, tcp_ingress=? WHERE id=?"
+    ).bind(merged.sapi, merged.php_version, merged.db_engine, merged.multisite, merged.daemons, merged.tcp_ingress, site.id));
+    // record needed sidecars (db engine counts as a sidecar too)
+    const sidecars = [...merged.sidecars];
+    if (merged.db_engine !== "sqlite") sidecars.push(merged.db_engine);
+    for (const t of sidecars)
+      stmts.push(env.DB.prepare("INSERT OR IGNORE INTO site_sidecars(site_id, type, port) VALUES(?,?,?)")
+        .bind(site.id, t, { mariadb: 3306, mysql8: 3306, redis: 6379, elastic: 9200, memcached: 11211 }[t] ?? 0));
+    if (merged.cron) stmts.push(env.DB.prepare("UPDATE sites SET cron_wake_at=unixepoch()+300 WHERE id=?").bind(site.id));
+    // reconfigure the live container if it's a Lane-2/3 site
+    if (env.TENANT && site.lane >= 2) {
+      const stub = env.TENANT.get(env.TENANT.idFromName(site.id));
+      await stub.fetch(new Request("https://do/control", { method: "POST", body: JSON.stringify({ action: "reconfigure", body: merged }) }));
+    }
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+  return json({ verdicts, merged, needed_plan: needed, entitled, applied: entitled });
+});
+
+// Machine-to-machine: in-container agent reports its plugin set.
+// Auth = per-site agent_token (X-Site-Token), generated at site create.
+api.post("/api/internal/compat-report", async (req, env: Env) => {
+  const token = req.headers.get("x-site-token") ?? "";
+  const site = await env.DB.prepare("SELECT id, owner_did, lane FROM sites WHERE agent_token=?").bind(token)
+    .first<{ id: string; owner_did: string; lane: number }>();
+  if (!site) return json({ error: "unauthorized" }, 401);
+  const { plugins = [], next_cron_due } = await req.json() as { plugins: { slug: string; source?: string }[]; next_cron_due?: number };
+
+  const verdicts: Verdict[] = [];
+  const stmts: D1PreparedStatement[] = [];
+  for (const p of plugins.slice(0, 500)) {
+    const slug = p.slug.toLowerCase();
+    const cached = await env.DB.prepare("SELECT verdict FROM plugin_compat WHERE slug=?").bind(slug).first<{ verdict: string }>();
+    const verdict: Verdict = cached ? JSON.parse(cached.verdict) : classifyPlugin(slug, p.source ?? "");
+    verdicts.push(verdict);
+    if (!cached) stmts.push(env.DB.prepare("INSERT OR REPLACE INTO plugin_compat(slug, verdict, scanned_at, scanner_version) VALUES(?,?,unixepoch(),1)").bind(slug, JSON.stringify(verdict)));
+  }
+  const merged = mergeVerdicts(verdicts);
+  const user = await env.DB.prepare("SELECT plan FROM users WHERE did=?").bind(site.owner_did).first<{ plan: string }>();
+  const needed = planForVariant(merged);
+  const entitled = tierAtLeast(user?.plan ?? "creator", needed);
+
+  if (entitled) {
+    stmts.push(env.DB.prepare(
+      "UPDATE sites SET sapi=?, php_version=?, db_engine=?, multisite=?, daemons=?, tcp_ingress=?, cron_wake_at=COALESCE(?, cron_wake_at) WHERE id=?"
+    ).bind(merged.sapi, merged.php_version, merged.db_engine, merged.multisite, merged.daemons, merged.tcp_ingress, next_cron_due ?? null, site.id));
+    if (env.TENANT && site.lane >= 2) {
+      const stub = env.TENANT.get(env.TENANT.idFromName(site.id));
+      await stub.fetch(new Request("https://do/control", { method: "POST", body: JSON.stringify({ action: "reconfigure", body: merged }) }));
+    }
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+  return json({ merged, needed_plan: needed, entitled });
+});
+
+// Public verdict database — makes the compatibility claim measurable
+api.get("/api/compat/:slug", async (req, env: Env) => {
+  const row = await env.DB.prepare("SELECT verdict, scanned_at FROM plugin_compat WHERE slug=?").bind(req.params!.slug.toLowerCase()).first<{ verdict: string; scanned_at: number }>();
+  if (!row) return json({ error: "unknown plugin" }, 404);
+  return json({ slug: req.params!.slug, ...JSON.parse(row.verdict), scanned_at: row.scanned_at });
+});
+
+// Woo/dynamic detection gate — a store can never land on Lane 1
   const bad = (body.plugins ?? []).filter((p) => DYNAMIC_PLUGINS.includes(p.toLowerCase()));
   if (site.lane === 1 && bad.length)
     return json({ error: "dynamic_plugins", plugins: bad, required_lane: 3 }, 422);
@@ -173,6 +270,15 @@ api.get("/api/comments", async (req, env: Env) => {
   ).bind(u.searchParams.get("site") ?? "", u.searchParams.get("path") ?? "").all();
   return json(rows.results);
 });
+
+function pickVariant(v?: { sapi?: string; php_version?: string; db_engine?: string; multisite?: boolean }) {
+  return {
+    sapi: v?.sapi === "apache" ? "apache" : "frankenphp",
+    php_version: ["7.4", "8.1", "8.2", "8.3", "8.4"].includes(v?.php_version ?? "") ? v!.php_version! : "8.4",
+    db_engine: ["mariadb", "mysql8"].includes(v?.db_engine ?? "") ? v!.db_engine! : "sqlite",
+    multisite: v?.multisite ? 1 : 0,
+  };
+}
 
 async function ownedSite(env: Env, id: string, did: string) {
   return env.DB.prepare("SELECT * FROM sites WHERE id=? AND owner_did=?").bind(id, did)

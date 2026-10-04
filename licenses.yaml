@@ -13,11 +13,18 @@ site_image:
   - { name: updraftplus,          license: "GPL-2.0+",    url: https://wordpress.org/plugins/updraftplus, optional: true }
 runtime:
   - { name: frankenphp,           license: MIT,           url: https://frankenphp.dev }
+  - { name: apache-httpd,         license: "Apache-2.0",  url: https://httpd.apache.org, note: "Apache SAPI variant — real .htaccess" }
   - { name: php,                  license: "PHP-3.01",    url: https://php.net }
   - { name: sqlite,               license: "blessing/public-domain", url: https://sqlite.org }
   - { name: alpine,               license: "MIT (musl) + mixed-free", url: https://alpinelinux.org }
+  - { name: runit,                license: "BSD-3-Clause", url: http://smarden.org/runit, note: "plugin daemon supervisor" }
   - { name: php-wasm,             license: "Apache-2.0",  url: https://github.com/seanmorris/php-wasm }
-  - { name: mariadb,              license: "GPL-2.0",     url: https://mariadb.org, conditional: "business tier" }
+sidecars:
+  - { name: mariadb,              license: "GPL-2.0",     url: https://mariadb.org, conditional: "pro+ tier" }
+  - { name: mysql,                license: "GPL-2.0",     url: https://www.mysql.com, conditional: "business+ tier — MySQL-8-specific plugins" }
+  - { name: redis,                license: "RSALv2/SSPLv1", url: https://redis.io, conditional: "pro+ object cache — source-available, self-hosted use permitted" }
+  - { name: memcached,            license: "BSD-3-Clause", url: https://memcached.org, conditional: "pro+ object cache" }
+  - { name: elasticsearch,        license: "Elastic-2.0/SSPLv1/AGPL-3.0", url: https://elastic.co, conditional: "enterprise only — ElasticPress" }
 control_dev:
   - { name: adnanh-webhook,       license: MIT,           url: https://github.com/adnanh/webhook }
   - { name: ttyd,                 license: MIT,           url: https://github.com/tsl0922/ttyd }

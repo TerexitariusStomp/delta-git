@@ -47,6 +47,7 @@ $("newSite").onclick = async () => {
   $("siteCard").innerHTML = `id <code>${site.id}</code><br>preview <code>${site.preview_host}</code>`;
   $("publish").disabled = false;
   $("versions").disabled = false;
+  $("compat").disabled = false;
   bootWp();
 };
 
@@ -144,6 +145,24 @@ $("versions").onclick = async () => {
     const v = versions.find((v) => v.sha.startsWith(target));
     if (v) { await call(`/api/sites/${site.id}/rollback`, { method: "POST", body: JSON.stringify({ sha: v.sha }) }); log("rolled back"); }
   }
+};
+
+// ---------- Compatibility scan ----------
+$("compat").onclick = async () => {
+  if (!site) return;
+  status("classifying plugins…");
+  const dirs = await client?.listFiles("/wordpress/wp-content/plugins").catch(() => []) ?? [];
+  const plugins = dirs.filter((d) => d.isDir).map((d) => ({ slug: d.name }));
+  const res = await call(`/api/sites/${site.id}/compat-scan`, { method: "POST", body: JSON.stringify({ plugins }) });
+  const lines = Object.entries(res.verdicts).map(([slug, v]) => {
+    const flags = [v.sapi, v.db, v.php_version !== "8.4" ? v.php_version : null, v.daemons ? "daemon" : null,
+      v.tcp_ingress ? "needs-Spectrum" : null, v.multisite ? "multisite" : null, ...(v.sidecars ?? [])].filter(Boolean);
+    return `  ${slug}: ${flags.length ? flags.join(", ") : "static-safe"}`;
+  });
+  log(`compat: variant=${res.merged.sapi}/${res.merged.php_version}/${res.merged.db_engine}` +
+      `${res.merged.multisite ? " multisite" : ""}${res.merged.daemons ? ` ${res.merged.daemons} daemon(s)` : ""}` +
+      ` → needs ${res.needed_plan} (${res.entitled ? "applied" : "upgrade required"})\n` + lines.join("\n"));
+  status(res.entitled ? "compatible" : "upgrade required");
 };
 
 // ---------- Top up ----------

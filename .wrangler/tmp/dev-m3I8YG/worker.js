@@ -14,14 +14,14 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 
-// .wrangler/tmp/bundle-H9ngfW/strip-cf-connecting-ip-header.js
+// .wrangler/tmp/bundle-V6RSWV/strip-cf-connecting-ip-header.js
 function stripCfConnectingIPHeader(input, init) {
   const request = new Request(input, init);
   request.headers.delete("CF-Connecting-IP");
   return request;
 }
 var init_strip_cf_connecting_ip_header = __esm({
-  ".wrangler/tmp/bundle-H9ngfW/strip-cf-connecting-ip-header.js"() {
+  ".wrangler/tmp/bundle-V6RSWV/strip-cf-connecting-ip-header.js"() {
     "use strict";
     __name(stripCfConnectingIPHeader, "stripCfConnectingIPHeader");
     globalThis.fetch = new Proxy(globalThis.fetch, {
@@ -4783,14 +4783,14 @@ var init_isAddressEqual = __esm({
   }
 });
 
-// .wrangler/tmp/bundle-H9ngfW/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-V6RSWV/middleware-loader.entry.ts
 init_strip_cf_connecting_ip_header();
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
 
-// .wrangler/tmp/bundle-H9ngfW/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-V6RSWV/middleware-insertion-facade.js
 init_strip_cf_connecting_ip_header();
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
@@ -5400,6 +5400,197 @@ init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
+
+// src/compat.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+var SIGS = [
+  {
+    re: /mysqli_|mysql_query\(|utf8mb4_0900|->get_charset|SERVER_VERSION.*8\./i,
+    apply: (v, r2) => {
+      v.db = "mysql8";
+      v.reason = r2;
+    },
+    reason: "MySQL-8-specific API/collation"
+  },
+  {
+    re: /CREATE\s+FULLTEXT|SPATIAL\s+INDEX|MATCH\s*\(\s*\w+\s*\)\s*AGAINST|GEOMETRY/i,
+    apply: (v, r2) => {
+      if (!v.db) {
+        v.db = "mariadb";
+        v.reason = r2;
+      }
+    },
+    reason: "SQL-server features (fulltext/spatial)"
+  },
+  {
+    re: /\.htaccess|mod_rewrite|SERVER_SOFTWARE.*apache|apache_request_headers/i,
+    apply: (v, r2) => {
+      v.sapi = "apache";
+      v.reason = r2;
+    },
+    reason: "writes .htaccess or assumes Apache"
+  },
+  {
+    re: /stream_socket_server|socket_listen|socket_bind|fsockopen\s*\([^,]*,\s*0\b/i,
+    apply: (v, r2) => {
+      v.tcp_ingress = true;
+      v.reason = r2;
+    },
+    reason: "listens on a raw TCP port"
+  },
+  {
+    re: /Ratchet|React\\Socket|Workerman|Amp\\|pcntl_fork|while\s*\(\s*true\s*\)|while\s*\(\s*1\s*\)/i,
+    apply: (v, r2) => {
+      v.daemons = true;
+      v.reason = r2;
+    },
+    reason: "long-running daemon/event-loop"
+  },
+  {
+    re: /WP_ALLOW_MULTISITE|is_multisite|SUBDOMAIN_INSTALL|get_sites\(/i,
+    apply: (v, r2) => {
+      v.multisite = true;
+      v.reason = r2;
+    },
+    reason: "multisite-network features"
+  },
+  {
+    re: /Requires\s+PHP:\s*([0-9.]+)/i,
+    apply: (v, r2) => {
+      if (v._phpLt8) {
+        v.php_version = "7.4";
+        v.reason = r2;
+      }
+    },
+    reason: "requires PHP < 8.0"
+  },
+  {
+    re: /new\s+Redis|Predis|wp_using_ext_object_cache.*redis/i,
+    apply: (v, r2) => {
+      (v.sidecars ??= []).push("redis");
+      v.reason = r2;
+    },
+    reason: "Redis object cache"
+  },
+  {
+    re: /ElasticPress|elasticsearch|Elasticsearch\\\\|\\\\Elasticsearch/i,
+    apply: (v, r2) => {
+      (v.sidecars ??= []).push("elastic");
+      v.reason = r2;
+    },
+    reason: "ElasticPress/Elasticsearch"
+  },
+  {
+    re: /memcached|Memcached/i,
+    apply: (v, r2) => {
+      (v.sidecars ??= []).push("memcached");
+      v.reason = r2;
+    },
+    reason: "memcached"
+  },
+  {
+    re: /ActionScheduler|wp_schedule_event|wp_next_scheduled|as_schedule_/i,
+    apply: (v, r2) => {
+      v.cron = true;
+      v.reason = r2;
+    },
+    reason: "scheduled tasks need cron-wake"
+  },
+  {
+    re: /set_time_limit\s*\(\s*0\s*\)|memory_limit.*512M|ZipArchive.*large|ini_set.*max_execution_time.*[3-9]\d\d/i,
+    apply: (v, r2) => {
+      v.heavy = true;
+      v.reason = r2;
+    },
+    reason: "memory/exec-intensive"
+  }
+];
+var KNOWN = {
+  woocommerce: { db: "mariadb", cron: true, sidecars: ["redis"], reason: "Woo: MySQL engine + Action Scheduler + object cache" },
+  wordfence: { sapi: "apache", heavy: true, reason: "firewall writes .htaccess/auto_prepend" },
+  "ithemes-security": { sapi: "apache", reason: "writes .htaccess rules" },
+  "ithemes-security-pro": { sapi: "apache", reason: "writes .htaccess rules" },
+  "all-in-one-wp-migration": { heavy: true, reason: "large import/export" },
+  updraftplus: { heavy: true, cron: true, reason: "backup jobs + schedule" },
+  "wp-mail-smtp": { reason: "outbound SMTP ok" },
+  "redis-cache": { sidecars: ["redis"], reason: "Redis object cache" },
+  "elasticpress": { sidecars: ["elastic"], reason: "needs Elasticsearch" },
+  "pusher-channels": { daemons: true, reason: "realtime" }
+};
+function classifyPlugin(slug, source) {
+  const key = slug.toLowerCase();
+  if (KNOWN[key])
+    return { ...KNOWN[key] };
+  const phpReq = source.match(/Requires\s+PHP:\s*([0-9.]+)/i);
+  const v = { _phpLt8: !!phpReq && parseFloat(phpReq[1]) < 8 };
+  for (const s of SIGS)
+    if (s.re.test(source))
+      s.apply(v, s.reason);
+  delete v._phpLt8;
+  return v;
+}
+__name(classifyPlugin, "classifyPlugin");
+function mergeVerdicts(verdicts) {
+  const out = {
+    sapi: "frankenphp",
+    php_version: "8.4",
+    db_engine: "sqlite",
+    multisite: 0,
+    daemons: 0,
+    tcp_ingress: 0,
+    cron: false,
+    heavy: false,
+    sidecars: []
+  };
+  for (const v of verdicts) {
+    if (v.sapi === "apache")
+      out.sapi = "apache";
+    if (v.php_version === "7.4")
+      out.php_version = "7.4";
+    if (v.db === "mysql8")
+      out.db_engine = "mysql8";
+    else if (v.db === "mariadb" && out.db_engine === "sqlite")
+      out.db_engine = "mariadb";
+    if (v.multisite)
+      out.multisite = 1;
+    if (v.daemons)
+      out.daemons += 1;
+    if (v.tcp_ingress)
+      out.tcp_ingress = 1;
+    if (v.cron)
+      out.cron = true;
+    if (v.heavy)
+      out.heavy = true;
+    if (v.sidecars) {
+      for (const s of v.sidecars)
+        if (!out.sidecars.includes(s))
+          out.sidecars.push(s);
+    }
+  }
+  return out;
+}
+__name(mergeVerdicts, "mergeVerdicts");
+function planForVariant(v) {
+  if (v.tcp_ingress || v.sidecars.includes("elastic"))
+    return "enterprise";
+  if (v.db_engine === "mysql8" || v.daemons > 0)
+    return "business";
+  if (v.sapi === "apache" || v.php_version === "7.4" || v.sidecars.length)
+    return "pro";
+  return "pro";
+}
+__name(planForVariant, "planForVariant");
+var TIER = { creator: 0, micro: 1, starter: 2, pro: 3, business: 4, always_on: 4, agency: 4, enterprise: 5 };
+function tierAtLeast(plan, needed) {
+  return (TIER[plan] ?? 0) >= (TIER[needed] ?? 0);
+}
+__name(tierAtLeast, "tierAtLeast");
+
+// src/admin.ts
 var admin = t();
 var json = /* @__PURE__ */ __name((d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } }), "json");
 async function auth(req, env2) {
@@ -5495,6 +5686,44 @@ admin.post("/api/sites/:id/domain", async (req, env2) => {
   await audit(env2, did, req.params.id, "domain.attach", fqdn);
   return json({ ok: true, fqdn });
 });
+admin.get("/api/sites/:id/compat", async (req, env2) => {
+  const did = await auth(req, env2);
+  if (did instanceof Response)
+    return did;
+  const site = await env2.DB.prepare(
+    "SELECT id, sapi, php_version, db_engine, multisite, daemons, tcp_ingress, cron_wake_at, lane FROM sites WHERE id=? AND owner_did=?"
+  ).bind(req.params.id, did).first();
+  if (!site)
+    return json({ error: "not found" }, 404);
+  const sidecars = await env2.DB.prepare("SELECT type, port, status FROM site_sidecars WHERE site_id=?").bind(req.params.id).all();
+  return json({ site, sidecars: sidecars.results });
+});
+admin.post("/api/sites/:id/variant", async (req, env2) => {
+  const did = await auth(req, env2);
+  if (did instanceof Response)
+    return did;
+  const site = await env2.DB.prepare("SELECT * FROM sites WHERE id=? AND owner_did=?").bind(req.params.id, did).first();
+  if (!site)
+    return json({ error: "not found" }, 404);
+  const body = await req.json();
+  const merged = mergeVerdicts([{
+    sapi: body.sapi === "apache" ? "apache" : void 0,
+    db: ["mariadb", "mysql8"].includes(body.db_engine ?? "") ? body.db_engine : void 0,
+    php_version: body.php_version,
+    multisite: body.multisite
+  }]);
+  const needed = planForVariant(merged);
+  const user = await env2.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first();
+  if (!tierAtLeast(user?.plan ?? "creator", needed))
+    return json({ error: "variant_requires_plan", needed }, 402);
+  await env2.DB.prepare("UPDATE sites SET sapi=?, php_version=?, db_engine=?, multisite=? WHERE id=?").bind(merged.sapi, merged.php_version === "8.4" && body.php_version ? body.php_version : merged.php_version, merged.db_engine, merged.multisite, site.id).run();
+  if (env2.TENANT && site.lane >= 2) {
+    const stub = env2.TENANT.get(env2.TENANT.idFromName(site.id));
+    await stub.fetch(new Request("https://do/control", { method: "POST", body: JSON.stringify({ action: "reconfigure", body: merged }) }));
+  }
+  await audit(env2, did, site.id, "variant.change", JSON.stringify(merged));
+  return json({ ok: true, variant: merged });
+});
 async function underSiteQuota(env2, did, plan) {
   const n = await env2.DB.prepare("SELECT COUNT(*) c FROM sites WHERE owner_did=? AND status<>'archived'").bind(did).first();
   return (n?.c ?? 0) < plan.sites_max;
@@ -5534,16 +5763,21 @@ api.post("/api/sites", async (req, env2) => {
   const plan = planFor(user);
   if (!await underSiteQuota(env2, did, plan))
     return json2({ error: "site_quota" }, 402);
-  const { lane = 1 } = await req.json().catch(() => ({}));
+  const { lane = 1, variant } = await req.json().catch(() => ({}));
   if (lane > plan.lane_max)
     return json2({ error: "lane_requires_plan", needed: lane }, 402);
   const siteId = id();
   const host = `preview-${siteId}.${env2.SITE_HOST_SUFFIX}`;
   const lease = Math.floor(Date.now() / 1e3) + 7 * 86400;
+  const merged = mergeVerdicts([]);
+  const v = { ...merged, ...pickVariant(variant), sidecars: merged.sidecars };
+  const needed = planForVariant(v);
+  if (lane >= 3 && !tierAtLeast(user?.plan ?? "creator", needed))
+    return json2({ error: "variant_requires_plan", needed }, 402);
   await env2.DB.prepare(
-    "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, created_at) VALUES(?,?,?,?,?,unixepoch())"
-  ).bind(siteId, did, lane, host, lease).run();
-  return json2({ id: siteId, preview_host: host, lease_expires_at: lease, lane });
+    "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, sapi, php_version, db_engine, multisite, agent_token, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,unixepoch())"
+  ).bind(siteId, did, lane, host, lease, v.sapi, v.php_version, v.db_engine, v.multisite, crypto.randomUUID()).run();
+  return json2({ id: siteId, preview_host: host, lease_expires_at: lease, lane, variant: { sapi: v.sapi, php_version: v.php_version, db_engine: v.db_engine, multisite: !!v.multisite } });
 });
 api.get("/api/sites/:id", async (req, env2) => {
   const did = await auth2(req, env2);
@@ -5580,6 +5814,89 @@ api.post("/api/sites/:id/publish", async (req, env2) => {
   if (!site)
     return json2({ error: "not found" }, 404);
   const body = await req.json();
+  api.post("/api/sites/:id/compat-scan", async (req2, env3) => {
+    const did2 = await auth2(req2, env3);
+    if (did2 instanceof Response)
+      return did2;
+    const site2 = await ownedSite(env3, req2.params.id, did2);
+    if (!site2)
+      return json2({ error: "not found" }, 404);
+    const { plugins = [] } = await req2.json();
+    if (plugins.length > 500)
+      return json2({ error: "too many plugins" }, 400);
+    const verdicts = {};
+    const stmts = [];
+    for (const p2 of plugins) {
+      const slug = p2.slug.toLowerCase();
+      let v = (await env3.DB.prepare("SELECT verdict FROM plugin_compat WHERE slug=? AND scanner_version=1").bind(slug).first())?.verdict;
+      const verdict = v ? JSON.parse(v) : classifyPlugin(slug, p2.source ?? "");
+      verdicts[slug] = verdict;
+      if (!v)
+        stmts.push(env3.DB.prepare("INSERT OR REPLACE INTO plugin_compat(slug, verdict, scanned_at, scanner_version) VALUES(?,?,unixepoch(),1)").bind(slug, JSON.stringify(verdict)));
+    }
+    const merged = mergeVerdicts(Object.values(verdicts));
+    const user2 = await env3.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did2).first();
+    const needed = planForVariant(merged);
+    const entitled = tierAtLeast(user2?.plan ?? "creator", needed);
+    if (entitled) {
+      stmts.push(env3.DB.prepare(
+        "UPDATE sites SET sapi=?, php_version=?, db_engine=?, multisite=?, daemons=?, tcp_ingress=? WHERE id=?"
+      ).bind(merged.sapi, merged.php_version, merged.db_engine, merged.multisite, merged.daemons, merged.tcp_ingress, site2.id));
+      const sidecars = [...merged.sidecars];
+      if (merged.db_engine !== "sqlite")
+        sidecars.push(merged.db_engine);
+      for (const t2 of sidecars)
+        stmts.push(env3.DB.prepare("INSERT OR IGNORE INTO site_sidecars(site_id, type, port) VALUES(?,?,?)").bind(site2.id, t2, { mariadb: 3306, mysql8: 3306, redis: 6379, elastic: 9200, memcached: 11211 }[t2] ?? 0));
+      if (merged.cron)
+        stmts.push(env3.DB.prepare("UPDATE sites SET cron_wake_at=unixepoch()+300 WHERE id=?").bind(site2.id));
+      if (env3.TENANT && site2.lane >= 2) {
+        const stub = env3.TENANT.get(env3.TENANT.idFromName(site2.id));
+        await stub.fetch(new Request("https://do/control", { method: "POST", body: JSON.stringify({ action: "reconfigure", body: merged }) }));
+      }
+    }
+    if (stmts.length)
+      await env3.DB.batch(stmts);
+    return json2({ verdicts, merged, needed_plan: needed, entitled, applied: entitled });
+  });
+  api.post("/api/internal/compat-report", async (req2, env3) => {
+    const token = req2.headers.get("x-site-token") ?? "";
+    const site2 = await env3.DB.prepare("SELECT id, owner_did, lane FROM sites WHERE agent_token=?").bind(token).first();
+    if (!site2)
+      return json2({ error: "unauthorized" }, 401);
+    const { plugins = [], next_cron_due } = await req2.json();
+    const verdicts = [];
+    const stmts = [];
+    for (const p2 of plugins.slice(0, 500)) {
+      const slug = p2.slug.toLowerCase();
+      const cached = await env3.DB.prepare("SELECT verdict FROM plugin_compat WHERE slug=?").bind(slug).first();
+      const verdict = cached ? JSON.parse(cached.verdict) : classifyPlugin(slug, p2.source ?? "");
+      verdicts.push(verdict);
+      if (!cached)
+        stmts.push(env3.DB.prepare("INSERT OR REPLACE INTO plugin_compat(slug, verdict, scanned_at, scanner_version) VALUES(?,?,unixepoch(),1)").bind(slug, JSON.stringify(verdict)));
+    }
+    const merged = mergeVerdicts(verdicts);
+    const user2 = await env3.DB.prepare("SELECT plan FROM users WHERE did=?").bind(site2.owner_did).first();
+    const needed = planForVariant(merged);
+    const entitled = tierAtLeast(user2?.plan ?? "creator", needed);
+    if (entitled) {
+      stmts.push(env3.DB.prepare(
+        "UPDATE sites SET sapi=?, php_version=?, db_engine=?, multisite=?, daemons=?, tcp_ingress=?, cron_wake_at=COALESCE(?, cron_wake_at) WHERE id=?"
+      ).bind(merged.sapi, merged.php_version, merged.db_engine, merged.multisite, merged.daemons, merged.tcp_ingress, next_cron_due ?? null, site2.id));
+      if (env3.TENANT && site2.lane >= 2) {
+        const stub = env3.TENANT.get(env3.TENANT.idFromName(site2.id));
+        await stub.fetch(new Request("https://do/control", { method: "POST", body: JSON.stringify({ action: "reconfigure", body: merged }) }));
+      }
+    }
+    if (stmts.length)
+      await env3.DB.batch(stmts);
+    return json2({ merged, needed_plan: needed, entitled });
+  });
+  api.get("/api/compat/:slug", async (req2, env3) => {
+    const row = await env3.DB.prepare("SELECT verdict, scanned_at FROM plugin_compat WHERE slug=?").bind(req2.params.slug.toLowerCase()).first();
+    if (!row)
+      return json2({ error: "unknown plugin" }, 404);
+    return json2({ slug: req2.params.slug, ...JSON.parse(row.verdict), scanned_at: row.scanned_at });
+  });
   const bad = (body.plugins ?? []).filter((p2) => DYNAMIC_PLUGINS.includes(p2.toLowerCase()));
   if (site.lane === 1 && bad.length)
     return json2({ error: "dynamic_plugins", plugins: bad, required_lane: 3 }, 422);
@@ -5668,6 +5985,15 @@ api.get("/api/comments", async (req, env2) => {
   ).bind(u2.searchParams.get("site") ?? "", u2.searchParams.get("path") ?? "").all();
   return json2(rows.results);
 });
+function pickVariant(v) {
+  return {
+    sapi: v?.sapi === "apache" ? "apache" : "frankenphp",
+    php_version: ["7.4", "8.1", "8.2", "8.3", "8.4"].includes(v?.php_version ?? "") ? v.php_version : "8.4",
+    db_engine: ["mariadb", "mysql8"].includes(v?.db_engine ?? "") ? v.db_engine : "sqlite",
+    multisite: v?.multisite ? 1 : 0
+  };
+}
+__name(pickVariant, "pickVariant");
 async function ownedSite(env2, id2, did) {
   return env2.DB.prepare("SELECT * FROM sites WHERE id=? AND owner_did=?").bind(id2, did).first();
 }
@@ -6152,6 +6478,16 @@ init_performance2();
 import { connect } from "cloudflare:sockets";
 var IDLE_MS = 5 * 6e4;
 var AGENT = "http://localhost:8080";
+var DEFAULT_VARIANT = {
+  sapi: "frankenphp",
+  php_version: "8.4",
+  db_engine: "sqlite",
+  multisite: 0,
+  daemons: 0,
+  tcp_ingress: 0,
+  sidecars: [],
+  heavy: false
+};
 var TenantDO = class {
   st;
   env;
@@ -6167,7 +6503,10 @@ var TenantDO = class {
       alwaysOn: false,
       cluster: false,
       webCount: 1,
-      curated: false
+      curated: false,
+      variant: DEFAULT_VARIANT,
+      cronWakeAt: 0,
+      tcpPorts: [3306]
     };
   }
   async set(s) {
@@ -6179,8 +6518,9 @@ var TenantDO = class {
       const { action, body } = await req.json();
       return Response.json(await this.control(action, body));
     }
-    if (path === "/db-proxy")
-      return this.wsToTcp(req);
+    const tcp = path.match(/^\/tcp-proxy\/(\d+)$/);
+    if (tcp)
+      return this.wsToTcp(req, parseInt(tcp[1]));
     const s = await this.state();
     if (s.status === "cold" || s.status === "sleeping")
       return this.wake(req);
@@ -6210,7 +6550,14 @@ var TenantDO = class {
   }
   async alarm() {
     const s = await this.state();
-    if (s.alwaysOn || Date.now() - s.lastTouched < IDLE_MS) {
+    const now = Date.now();
+    if (s.status === "sleeping" && s.cronWakeAt && s.cronWakeAt <= Math.floor(now / 1e3)) {
+      await this.wake(new Request("http://localhost/wp-cron.php?doing_wp_cron=1"));
+      await this.set({ cronWakeAt: Math.floor(now / 1e3) + 300 });
+      await this.st.storage.setAlarm(now + 3e5);
+      return;
+    }
+    if (s.alwaysOn || now - s.lastTouched < IDLE_MS) {
       if (!s.alwaysOn)
         await this.st.storage.setAlarm(s.lastTouched + IDLE_MS);
       return;
@@ -6218,6 +6565,8 @@ var TenantDO = class {
     await this.agent("/sync-out").catch(() => {
     });
     await this.set({ status: "sleeping" });
+    if (s.cronWakeAt)
+      await this.st.storage.setAlarm(s.cronWakeAt * 1e3);
   }
   async agent(path) {
     const r2 = await fetch(AGENT + path, { method: "POST" });
@@ -6228,7 +6577,25 @@ var TenantDO = class {
   async control(action, body) {
     switch (action) {
       case "configure":
-        await this.set({ siteId: body.siteId, alwaysOn: !!body.alwaysOn, cluster: !!body.cluster, webCount: body.webCount ?? 1, curated: !!body.curated });
+        await this.set({
+          siteId: body.siteId,
+          alwaysOn: !!body.alwaysOn,
+          cluster: !!body.cluster,
+          webCount: body.webCount ?? 1,
+          curated: !!body.curated,
+          variant: body.variant ? { ...DEFAULT_VARIANT, ...body.variant } : DEFAULT_VARIANT,
+          cronWakeAt: body.cronWakeAt ?? 0
+        });
+        return { ok: true };
+      case "reconfigure": {
+        const merged = { ...(await this.state()).variant, ...body };
+        await this.set({ variant: merged, cronWakeAt: merged.daemons || body?.cron ? Math.floor(Date.now() / 1e3) + 300 : (await this.state()).cronWakeAt });
+        if (merged.daemons > 0)
+          await this.set({ alwaysOn: true });
+        return { ok: true, variant: merged };
+      }
+      case "cron-report":
+        await this.set({ cronWakeAt: body.next_due ?? 0 });
         return { ok: true };
       case "sync-out":
         await this.agent("/sync-out");
@@ -6240,15 +6607,19 @@ var TenantDO = class {
     }
     return { error: "unknown action" };
   }
-  // P5: WebSocket↔TCP proxy — web containers carry MySQL protocol frames
-  // over a DO WebSocket; we bridge to the db sidecar's 3306 (same-DC TCP).
-  async wsToTcp(req) {
+  // Generalized WebSocket↔TCP proxy — web containers reach any sidecar/daemon
+  // port (mysql:3306, redis:6379, elastic:9200, memcached:11211, or a plugin
+  // daemon port) by carrying protocol frames over a DO WebSocket.
+  async wsToTcp(req, port) {
     if (req.headers.get("upgrade") !== "websocket")
       return new Response("ws required", { status: 426 });
+    const s = await this.state();
+    if (!s.tcpPorts.includes(port) && port !== 3306)
+      return new Response("port not exposed", { status: 403 });
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     server.accept();
-    const sock = connect({ hostname: "127.0.0.1", port: 3306 });
+    const sock = connect({ hostname: "127.0.0.1", port });
     const writer = sock.writable.getWriter();
     server.addEventListener("message", (e) => {
       const data = typeof e.data === "string" ? new TextEncoder().encode(e.data) : new Uint8Array(e.data);
@@ -6369,7 +6740,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-H9ngfW/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-V6RSWV/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -6406,7 +6777,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-H9ngfW/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-V6RSWV/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

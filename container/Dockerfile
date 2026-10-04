@@ -1,10 +1,12 @@
-# Lane-3 site image: FrankenPHP (web server + PHP worker-mode in one binary)
-# + WordPress + SQLite + WP-CLI + webhook agent + rclone + ttyd + Adminer.
-# MariaDB is a separate sidecar container for Woo sites (not baked in).
-FROM dunglas/frankenphp:1-alpine AS php
+# Lane-3 site image (FrankenPHP SAPI): web server + PHP worker-mode in one binary
+# + WordPress + SQLite + WP-CLI + webhook agent + rclone + ttyd + Adminer + runit.
+# Variant matrix: PHP_VERSION picks the FrankenPHP PHP track; Apache SAPI and
+# PHP-7.4 are separate Dockerfiles; DB engines are sidecars, not baked in.
+ARG PHP_VERSION=8.4
+FROM dunglas/frankenphp:1-php${PHP_VERSION}-alpine AS php
 FROM alpine:3.20
 
-RUN apk add --no-cache bash curl sqlite unzip ca-certificates mariadb-client imagemagick
+RUN apk add --no-cache bash curl sqlite unzip ca-certificates mariadb-client imagemagick runit jq
 
 # FrankenPHP binary (includes Caddy web server + PHP)
 COPY --from=php /usr/local/bin/frankenphp /usr/local/bin/frankenphp
@@ -43,8 +45,8 @@ COPY wpcloud-mu.php /srv/site/wp-content/mu-plugins/wpcloud-mu.php
 COPY Caddyfile /etc/frankenphp/Caddyfile
 COPY entrypoint.sh /entrypoint.sh
 COPY hooks.json /etc/webhook/hooks.json
-COPY sync-out.sh restore.sh cron.sh /usr/local/bin/
-RUN chmod +x /entrypoint.sh /usr/local/bin/*.sh
+COPY sync-out.sh restore.sh cron.sh daemon-svc.sh compat-scan.sh /usr/local/bin/
+RUN chmod +x /entrypoint.sh /usr/local/bin/*.sh && mkdir -p /state/daemons
 
 ENV WP_ENV=production
 EXPOSE 80 8080 7681

@@ -2,6 +2,7 @@ import { Router } from "itty-router";
 import type { Env } from "./env";
 import { whoami } from "./auth";
 import { PLANS, planFor } from "./plans";
+import { mergeVerdicts, planForVariant, tierAtLeast, type Verdict } from "./compat";
 
 export const admin = Router();
 const json = (d: unknown, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } });
@@ -98,6 +99,47 @@ admin.post("/api/sites/:id/domain", async (req, env: Env) => {
   if (!r.meta.changes) return json({ error: "not found" }, 404);
   await audit(env, did, req.params!.id, "domain.attach", fqdn);
   return json({ ok: true, fqdn });
+});
+
+// ---- Compatibility: site variant detail + manual override ----
+
+admin.get("/api/sites/:id/compat", async (req, env: Env) => {
+  const did = await auth(req, env);
+  if (did instanceof Response) return did;
+  const site = await env.DB.prepare(
+    "SELECT id, sapi, php_version, db_engine, multisite, daemons, tcp_ingress, cron_wake_at, lane FROM sites WHERE id=? AND owner_did=?"
+  ).bind(req.params!.id, did).first();
+  if (!site) return json({ error: "not found" }, 404);
+  const sidecars = await env.DB.prepare("SELECT type, port, status FROM site_sidecars WHERE site_id=?").bind(req.params!.id).all();
+  return json({ site, sidecars: sidecars.results });
+});
+
+// Manual variant override — admin "PHP version selector" / engine picker.
+// Entitlement-gated: costlier variants need the matching plan tier.
+admin.post("/api/sites/:id/variant", async (req, env: Env) => {
+  const did = await auth(req, env);
+  if (did instanceof Response) return did;
+  const site = await env.DB.prepare("SELECT * FROM sites WHERE id=? AND owner_did=?").bind(req.params!.id, did).first<any>();
+  if (!site) return json({ error: "not found" }, 404);
+  const body = await req.json() as { sapi?: string; php_version?: string; db_engine?: string; multisite?: boolean };
+  const merged = mergeVerdicts([{
+    sapi: body.sapi === "apache" ? "apache" : undefined,
+    db: ["mariadb", "mysql8"].includes(body.db_engine ?? "") ? body.db_engine as "mariadb" | "mysql8" : undefined,
+    php_version: body.php_version,
+    multisite: body.multisite,
+  } as Verdict]);
+  const needed = planForVariant(merged);
+  const user = await env.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first<{ plan: string }>();
+  if (!tierAtLeast(user?.plan ?? "creator", needed))
+    return json({ error: "variant_requires_plan", needed }, 402);
+  await env.DB.prepare("UPDATE sites SET sapi=?, php_version=?, db_engine=?, multisite=? WHERE id=?")
+    .bind(merged.sapi, merged.php_version === "8.4" && body.php_version ? body.php_version : merged.php_version, merged.db_engine, merged.multisite, site.id).run();
+  if (env.TENANT && site.lane >= 2) {
+    const stub = env.TENANT.get(env.TENANT.idFromName(site.id));
+    await stub.fetch(new Request("https://do/control", { method: "POST", body: JSON.stringify({ action: "reconfigure", body: merged }) }));
+  }
+  await audit(env, did, site.id, "variant.change", JSON.stringify(merged));
+  return json({ ok: true, variant: merged });
 });
 
 export async function underSiteQuota(env: Env, did: string, plan: { sites_max: number }): Promise<boolean> {

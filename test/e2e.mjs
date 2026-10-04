@@ -83,6 +83,56 @@ ok(plan.status === 402 && plan.body.error === "insufficient_credit", "plan upgra
 const st = await fetch(BASE + "/status").then((r) => r.json());
 ok(typeof st.active_sites === "number", "status endpoint reports");
 
+// 16. compat classifier: signature detection via /compat-scan
+// fixture plugin sources covering each blocker class
+const FIXTURES = [
+  { slug: "woo-mysql8", source: "<?php // mysqli_real_connect(); utf8mb4_0900_ai_ci" },
+  { slug: "sec-htaccess", source: "<?php // writes .htaccess rules; apache_request_headers()" },
+  { slug: "chat-daemon", source: "<?php use Ratchet\\Server\\IoServer; while (true) { }" },
+  { slug: "ms-network", source: "<?php if (is_multisite() && SUBDOMAIN_INSTALL) get_sites();" },
+  { slug: "legacy-php", source: "<?php /* Requires PHP: 7.2 */" },
+  { slug: "search-es", source: "<?php new \\Elasticsearch\\Client(); ElasticPress" },
+  { slug: "game-panel", source: "<?php $s = stream_socket_server('tcp://0.0.0.0:25565');" },
+  { slug: "boring-seo", source: "<?php // plain meta tags, no special runtime needs" },
+];
+const scan = await api(`/api/sites/${siteId}/compat-scan`, { method: "POST", body: JSON.stringify({ plugins: FIXTURES }) });
+ok(scan.status === 200, "compat-scan accepts plugin set");
+const verd = scan.body.verdicts ?? {};
+ok(verd["woo-mysql8"]?.db === "mysql8", "classifier: mysqli/0900 → mysql8");
+ok(verd["sec-htaccess"]?.sapi === "apache", "classifier: .htaccess → apache SAPI");
+ok(verd["chat-daemon"]?.daemons === true, "classifier: Ratchet loop → daemon");
+ok(verd["ms-network"]?.multisite === true, "classifier: multisite constants");
+ok(verd["legacy-php"]?.php_version === "7.4", "classifier: Requires PHP 7.x → php74");
+ok(verd["search-es"]?.sidecars?.includes("elastic"), "classifier: ElasticPress → elastic sidecar");
+ok(verd["game-panel"]?.tcp_ingress === true, "classifier: socket listen → tcp_ingress");
+ok(!verd["boring-seo"]?.db && !verd["boring-seo"]?.sapi, "classifier: plain plugin → no variant");
+const mg = scan.body.merged ?? {};
+ok(mg.db_engine === "mysql8" && mg.sapi === "apache" && mg.multisite === 1 && mg.tcp_ingress === 1,
+  "merge: strongest requirements win (mysql8+apache+multisite+tcp)");
+ok(scan.body.needed_plan === "enterprise", `merge: tcp_ingress forces enterprise tier (got ${scan.body.needed_plan})`);
+ok(scan.body.entitled === false && scan.body.applied === false, "402 gate: creator plan can't get enterprise variant");
+
+// 17. known-slug fast paths
+const known = await api(`/api/sites/${siteId}/compat-scan`, { method: "POST", body: JSON.stringify({ plugins: [{ slug: "woocommerce" }, { slug: "wordfence" }] }) });
+ok(known.body.verdicts?.woocommerce?.db === "mariadb", "known: woocommerce → mariadb");
+ok(known.body.verdicts?.wordfence?.sapi === "apache", "known: wordfence → apache");
+
+// 18. public verdict DB — classified slugs are now queryable
+const pubWoo = await fetch(`${BASE}/api/compat/woocommerce`).then((r) => r.json());
+ok(pubWoo.db === "mariadb" || pubWoo.error, "public /api/compat/:slug responds");
+const pubWf = await fetch(`${BASE}/api/compat/wordfence`).then((r) => r.json());
+ok(pubWf.sapi === "apache", "verdict DB caches wordfence → apache");
+
+// 19. variant detail + override endpoints
+const detail = await api(`/api/sites/${siteId}/compat`);
+ok(detail.status === 200 && detail.body.site?.sapi === "frankenphp", "site compat detail readable");
+const vovr = await api(`/api/sites/${siteId}/variant`, { method: "POST", body: JSON.stringify({ db_engine: "mysql8" }) });
+ok(vovr.status === 402 && vovr.body.needed === "business", "mysql8 override gated to business tier");
+
+// 20. site create carries variant defaults
+const s2 = await api(`/api/sites/${siteId}`);
+ok(s2.body.site?.db_engine === "sqlite" || s2.body.site?.db_engine === "mysql8", "site row has variant columns");
+
 // 11. cron: USDC watcher (needs USDC_DEPOSIT_ADDRESS — skip gracefully if unset)
 const cron = await fetch(BASE + "/cdn-cgi/handler/scheduled").catch(() => null);
 
