@@ -19,6 +19,12 @@ export type OverviewPageProps = {
   tags: RefLink[];
   readmeMd?: string;
   progress?: Progress;
+  /** Federation-addressable repo DID (did:dg:repo:…). */
+  repoDid?: string;
+  /** Browsable Radicle gateway URL when a rad: mirror target is configured. */
+  radicleUrl?: string;
+  /** Newest open/claimed ideas — the plain-language lane above the README. */
+  ideas?: { id: string; title: string; status: string }[];
 };
 
 export function OverviewPage({
@@ -30,11 +36,68 @@ export function OverviewPage({
   tags,
   readmeMd,
   progress,
+  repoDid,
+  radicleUrl,
+  ideas,
 }: OverviewPageProps) {
   return (
     <>
       <RepoNav owner={owner} repo={repo} refEnc={refEnc} showRefDropdown={false} />
       <ProgressBanner progress={progress} />
+      {(repoDid || radicleUrl || (ideas && ideas.length > 0)) && (
+        <div className="mt-6">
+          <Card>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3>Ideas &amp; Federation</h3>
+              <a
+                href={`/${owner}/${repo}/ideas`}
+                className="text-sm text-accent-500 hover:underline"
+              >
+                View all ideas →
+              </a>
+            </div>
+            {ideas && ideas.length > 0 && (
+              <ul className="mt-2 space-y-1 text-sm">
+                {ideas.map((idea) => (
+                  <li key={idea.id} className="flex items-center gap-2">
+                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                      {idea.status}
+                    </span>
+                    <span>{idea.title}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {(repoDid || radicleUrl) && (
+              <dl className="mt-3 space-y-1 border-t border-zinc-200 pt-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                {repoDid && (
+                  <div className="flex gap-2">
+                    <dt className="shrink-0 font-medium">Repo DID</dt>
+                    <dd className="truncate">
+                      <code>{repoDid}</code>
+                    </dd>
+                  </div>
+                )}
+                {radicleUrl && (
+                  <div className="flex gap-2">
+                    <dt className="shrink-0 font-medium">Radicle</dt>
+                    <dd className="truncate">
+                      <a
+                        href={radicleUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-accent-500 hover:underline"
+                      >
+                        {radicleUrl}
+                      </a>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </Card>
+        </div>
+      )}
       <div className="mt-6 grid gap-6 md:grid-cols-[1fr_2fr] [&>*]:min-w-0">
         {/* Left column: Refs */}
         <div className="space-y-6">

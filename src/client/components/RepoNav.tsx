@@ -1,4 +1,4 @@
-import { Bot, Settings } from "lucide-react";
+import { Bot, Lightbulb, Settings } from "lucide-react";
 import { IslandHost } from "@/client/server/IslandHost";
 import { RefPickerIsland } from "@/client/islands/ref-picker";
 import { PageHeader } from "@/client/components/ui/page-header";
@@ -15,7 +15,7 @@ type RepoNavProps = {
   owner: string;
   repo: string;
   refEnc?: string;
-  currentTab?: "browse" | "commits" | "agents" | "admin";
+  currentTab?: "browse" | "commits" | "agents" | "ideas" | "admin";
   showRefDropdown?: boolean;
 };
 
@@ -70,6 +70,13 @@ export function RepoNav({ owner, repo, refEnc, currentTab, showRefDropdown = tru
               >
                 <Bot className="h-4 w-4" aria-hidden="true" />
                 <span>Agents</span>
+              </a>
+              <a
+                href={`/${owner}/${repo}/ideas`}
+                className={currentTab === "ideas" ? tabActive : tabBase}
+              >
+                <Lightbulb className="h-4 w-4" aria-hidden="true" />
+                <span>Ideas</span>
               </a>
               <a
                 href={`/${owner}/${repo}/admin`}

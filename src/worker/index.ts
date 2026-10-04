@@ -8,6 +8,8 @@ import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
 import { registerUiRoutes } from "./routes/ui";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerAtpAuthRoutes } from "./routes/atpauth";
+import { registerXrpcRoutes } from "./routes/xrpc";
 import { requestServicesMiddleware, type AppBindings, type AppContext } from "./routes/hono";
 import { renderUiDocumentResponse } from "./routes/uiResponse";
 import { loadViewer } from "./auth/session";
@@ -32,9 +34,12 @@ registerGitRoutes(app);
 registerAdminRoutes(app);
 // Register Auth routes BEFORE UI to avoid /:owner shadowing /auth
 registerAuthRoutes(app);
+// atproto DID sign-in (/auth/did/*) + DID-session repo APIs (/api/repos)
+registerAtpAuthRoutes(app);
 // delta-git agent API under /api/* — registered before UI for the same reason
 registerAgentRoutes(app);
 registerApiV3Routes(app);
+registerXrpcRoutes(app);
 registerMcpRoutes(app);
 registerHermesRoutes(app);
 // Static site serving from repo refs
@@ -97,3 +102,4 @@ export default {
 };
 
 export { RepoDurableObject } from "./do/repo/repoDO";
+export { AdjudicatorAgent, RepoAgent, FirehoseAgent } from "./agent/runtime";

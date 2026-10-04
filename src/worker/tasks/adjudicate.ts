@@ -50,24 +50,40 @@ async function blobTextAtPath(
   }
 }
 
-export async function handleAdjudicateMessage(
-  message: Omit<RepoQueueMessageHandle<AdjudicateQueueMessage>, "body">,
-  body: AdjudicateQueueMessage,
-  env: Env
-): Promise<void> {
+export interface AdjudicationOutcome {
+  /** Whether a vote was cast (false when the intent wasn't adjudicating). */
+  voted: boolean;
+  /** Whether the vote resolved the intent. */
+  resolved: boolean;
+  status?: string;
+  unresolved?: number;
+}
+
+/**
+ * Single adjudication pass: reads the intent, merges conflicts via Workers
+ * AI, stores the resolution payload in R2, and casts a quorum vote. Shared
+ * by the queue handler and the AdjudicatorAgent runtime DO.
+ */
+export async function runWorkersAiAdjudication(
+  env: Env,
+  doId: string,
+  intentId: string
+): Promise<AdjudicationOutcome> {
   const log = createLogger(env.LOG_LEVEL, { service: "WorkersAiAdjudicator" });
-  const stub = getRepoStubByDoId(env, body.doId);
-  const intent = await stub.getMergeIntent(body.intentId);
+  const stub = getRepoStubByDoId(env, doId);
+  const intent = await stub.getMergeIntent(intentId);
   if (!intent || intent.status !== "adjudicating") {
-    message.ack();
-    return;
+    return { voted: false, resolved: false, status: intent?.status };
   }
 
   const db = createDb(env.DB);
-  const did = `did:dg:${WORKERS_AI_DID_PUBKEY}`;
-  await registerAgent(db, { pubkeyHex: WORKERS_AI_DID_PUBKEY, label: "workers-ai" }).catch(
-    () => undefined
-  );
+  const registered = await registerAgent(db, {
+    pubkeyHex: WORKERS_AI_DID_PUBKEY,
+    label: "workers-ai",
+    kind: "workers-ai",
+  }).catch(() => undefined);
+  const did =
+    registered && "did" in registered ? registered.did : `did:dg:${WORKERS_AI_DID_PUBKEY}`;
 
   const conflicts: string[] = intent.conflicts ? JSON.parse(intent.conflicts) : [];
   const files: Record<string, { content_b64?: string; delete?: boolean }> = {};
@@ -75,8 +91,8 @@ export async function handleAdjudicateMessage(
 
   for (const path of conflicts.slice(0, 8)) {
     const [ours, theirs] = await Promise.all([
-      blobTextAtPath(env, body.doId, intent.baseOid, path),
-      blobTextAtPath(env, body.doId, intent.deltaOid, path),
+      blobTextAtPath(env, doId, intent.baseOid, path),
+      blobTextAtPath(env, doId, intent.deltaOid, path),
     ]);
     if (ours === undefined || theirs === undefined) {
       files[path] = { delete: ours === undefined };
@@ -109,7 +125,7 @@ export async function handleAdjudicateMessage(
     }
   }
   if (unresolved > 0) {
-    log.info("adjudicate:partial", { intentId: body.intentId, unresolved });
+    log.info("adjudicate:partial", { intentId, unresolved });
   }
 
   const canonical = JSON.stringify({ files });
@@ -120,11 +136,11 @@ export async function handleAdjudicateMessage(
   const digest = [...new Uint8Array(digestBytes)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  const resolutionKey = `${doPrefix(body.doId)}/resolutions/${body.intentId}/${digest}.json`;
+  const resolutionKey = `${doPrefix(doId)}/resolutions/${intentId}/${digest}.json`;
   await env.REPO_BUCKET.put(resolutionKey, canonical);
 
   const outcome = await stub.castMergeVote({
-    intentId: body.intentId,
+    intentId,
     voterDid: did,
     resolutionDigest: digest,
     rationale: `workers-ai ${MODEL} semantic merge`,
@@ -132,9 +148,25 @@ export async function handleAdjudicateMessage(
     quorumK: DEFAULT_QUORUM_K,
   });
   log.info("adjudicate:vote-cast", {
-    intentId: body.intentId,
+    intentId,
     status: outcome.status,
     resolved: outcome.status === "accepted" ? outcome.resolved : false,
   });
-  message.ack();
+  return {
+    voted: true,
+    resolved: outcome.status === "accepted" ? outcome.resolved : false,
+    status: outcome.status,
+    unresolved,
+  };
+}
+
+export async function handleAdjudicateMessage(
+  message: Omit<RepoQueueMessageHandle<AdjudicateQueueMessage>, "body">,
+  body: AdjudicateQueueMessage,
+  env: Env
+): Promise<void> {
+  const stub = env.ADJUDICATOR_DO.get(env.ADJUDICATOR_DO.idFromName("adjudicator"));
+  const result = await stub.runQueueTask(body);
+  if (result.action === "retry") message.retry();
+  else message.ack();
 }

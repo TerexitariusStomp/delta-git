@@ -7,6 +7,7 @@ export const clientEntrypoints = {
   commitsPage: "src/client/entries/commits-page.ts",
   adminPage: "src/client/entries/admin-page.ts",
   accountPage: "src/client/entries/account-page.ts",
+  didSignin: "src/client/entries/did-signin.ts",
 } as const;
 
 export type ClientEntrypoint = (typeof clientEntrypoints)[keyof typeof clientEntrypoints];

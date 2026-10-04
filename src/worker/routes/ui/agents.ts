@@ -115,3 +115,57 @@ export async function handleAgentsPage(c: AppContext<"/:owner/:repo/agents">) {
     });
   }
 }
+
+/**
+ * GET /:owner/:repo/ideas — idea-first UX surface: open ideas, claimed
+ * work, and quorum-verified results rendered for non-coders. Same DO read
+ * path as the agents page.
+ */
+export async function handleIdeasPage(c: AppContext<"/:owner/:repo/ideas">) {
+  const env = c.env;
+  const owner = c.req.param("owner");
+  const repo = c.req.param("repo");
+  const access = await resolveUiRepoAccess(c, owner, repo);
+  if (access.kind === "response") return access.response;
+  const { route, cacheCtx } = access;
+  const stub = getRepoStub(env, route.doName);
+  try {
+    const [ideas, refsData] = await Promise.all([
+      stub.listWorkIntentsByKind("idea"),
+      loadHeadAndRefsCached(env, cacheCtx, route.doName),
+    ]);
+    const votes = await Promise.all(ideas.map((i) => stub.listWorkVotes(i.id)));
+    const head = refsData?.head || undefined;
+    const refEnc = encodeURIComponent(getDefaultBranchFromHead(head));
+
+    return renderUiDocumentResponse(
+      env,
+      "ideas",
+      {
+        title: `Ideas · ${owner}/${repo}`,
+        owner,
+        repo,
+        refEnc,
+        ideas: ideas.map((row, i) => ({
+          id: row.id,
+          title: row.title,
+          body: row.body,
+          sourceUri: row.sourceUri,
+          status: row.status,
+          createdBy: row.createdBy,
+          claimedBy: row.claimedBy,
+          result: row.result,
+          voteCount: votes[i].length,
+          createdAt: row.createdAt,
+        })),
+      },
+      {
+        cacheControl: "no-store",
+        failureBody: "Failed to render view",
+        viewer: access.viewer,
+      }
+    );
+  } catch (e) {
+    return handleError(env, e, `Error · ${owner}/${repo}`, { owner, repo, refEnc: "" });
+  }
+}

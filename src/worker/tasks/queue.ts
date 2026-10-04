@@ -59,6 +59,15 @@ export async function handleRepoTaskQueue(
       case "adjudicate":
         await handleAdjudicateMessage(message, body, env);
         break;
+      case "federate":
+      case "overnight": {
+        // RepoAgent instances are keyed by the repo's DO id.
+        const agent = env.REPO_AGENT_DO.get(env.REPO_AGENT_DO.idFromName(body.doId));
+        const result = await agent.runQueueTask(body);
+        if (result.action === "retry") message.retry();
+        else message.ack();
+        break;
+      }
       default: {
         const _exhaustive: never = body;
         void _exhaustive;

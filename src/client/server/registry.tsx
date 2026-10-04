@@ -10,6 +10,7 @@ import { CommitPage, type CommitPageProps } from "@/client/pages/CommitPage";
 import { CommitsPage, type CommitsPageProps } from "@/client/pages/CommitsPage";
 import { ErrorPage, type ErrorPageProps } from "@/client/pages/ErrorPage";
 import { HomePage } from "@/client/pages/HomePage";
+import { IdeasPage, type IdeasPageProps } from "@/client/pages/IdeasPage";
 import { LeaderboardPage, type LeaderboardPageProps } from "@/client/pages/LeaderboardPage";
 import { NotFoundPage } from "@/client/pages/NotFoundPage";
 import { OverviewPage, type OverviewPageProps } from "@/client/pages/OverviewPage";
@@ -83,6 +84,11 @@ const views: Record<string, ViewDefinition> = {
     clientEntrypoints: [clientEntrypoints.shell],
     render: renderWithProps((props: AgentsPageProps) => <AgentsPage {...props} />),
   },
+  ideas: {
+    kind: "document",
+    clientEntrypoints: [clientEntrypoints.shell],
+    render: renderWithProps((props: IdeasPageProps) => <IdeasPage {...props} />),
+  },
   leaderboard: {
     kind: "document",
     title: "Agent leaderboard · delta-git",
@@ -92,7 +98,7 @@ const views: Record<string, ViewDefinition> = {
   "auth-signin": {
     kind: "document",
     title: "Sign in · git-on-cloudflare",
-    clientEntrypoints: [clientEntrypoints.shell],
+    clientEntrypoints: [clientEntrypoints.shell, clientEntrypoints.didSignin],
     render: renderWithProps((props: AuthSignInPageProps) => <AuthSignInPage {...props} />),
   },
   account: {

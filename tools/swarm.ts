@@ -84,6 +84,16 @@ async function agentFetch(
 
 const api = (p: string) => `/api/${owner}/${name}/dg${p}`;
 
+/** Minimal JSON-RPC call against /mcp — exercises the MCP tool lane. */
+async function mcpCall(method: string, params?: unknown): Promise<any> {
+  const res = await fetch(`${HOST}/mcp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  return res.json();
+}
+
 async function main() {
   console.log(`swarm: registering ${AGENT_COUNT} agents against ${HOST} ${repo}`);
   const agents = await Promise.all(
@@ -162,7 +172,29 @@ async function main() {
     }
   }
 
-  // Phase 4 — receipts.
+  // Phase 4 — MCP lane. tools/list + read tools over JSON-RPC.
+  console.log(`\nphase 4: exercising /mcp (JSON-RPC tools)`);
+  const list = await mcpCall("tools/list");
+  const toolNames = (list?.result?.tools ?? []).map((t: { name: string }) => t.name);
+  console.log(`  tools/list → ${toolNames.join(", ") || "none"}`);
+  const refsRpc = await mcpCall("tools/call", {
+    name: "dgit_refs",
+    arguments: { owner, repo: name },
+  });
+  const refCount = refsRpc?.result?.content?.[0]?.text
+    ? (JSON.parse(refsRpc.result.content[0].text) as unknown[]).length
+    : 0;
+  console.log(`  dgit_refs → ${refCount} refs`);
+  const oplogRpc = await mcpCall("tools/call", {
+    name: "dgit_oplog",
+    arguments: { owner, repo: name },
+  });
+  const mcpLogCount = oplogRpc?.result?.content?.[0]?.text
+    ? (JSON.parse(oplogRpc.result.content[0].text) as unknown[]).length
+    : 0;
+  console.log(`  dgit_oplog → ${mcpLogCount} entries`);
+
+  // Phase 5 — receipts.
   const { body: log } = await agentFetch(agents[0], "GET", api("/oplog"));
   const entries = (log.entries ?? []) as { seq: number; kind: string }[];
   console.log(`\nop-log tail (${entries.length} entries):`);

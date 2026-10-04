@@ -144,6 +144,7 @@ function getErrorStatus(error: unknown): number {
 function createSidebandReceiveResponse(args: {
   env: Env;
   repoId: string;
+  namespaceId?: string | undefined;
   request: Request;
   ctx: ExecutionContext;
   stub: RepoStub;
@@ -177,6 +178,7 @@ function createSidebandReceiveResponse(args: {
         const result = await executeReceivePipeline({
           env: args.env,
           repoId: args.repoId,
+          namespaceId: args.namespaceId,
           request: args.request,
           ctx: args.ctx,
           packStream: args.packStream,
@@ -243,6 +245,7 @@ export async function handleStreamingReceivePackPOST(
   options?: {
     onRepoStateChanged?: RepoStateChangeHandler | undefined;
     actor?: string | undefined;
+    namespaceId?: string | undefined;
   }
 ): Promise<Response> {
   const stub = getRepoStub(env, repoId);
@@ -322,6 +325,7 @@ export async function handleStreamingReceivePackPOST(
       return createSidebandReceiveResponse({
         env,
         repoId,
+        namespaceId: options?.namespaceId,
         request,
         ctx,
         stub,
@@ -343,6 +347,7 @@ export async function handleStreamingReceivePackPOST(
     const result = await executeReceivePipeline({
       env,
       repoId,
+      namespaceId: options?.namespaceId,
       request,
       ctx,
       packStream,

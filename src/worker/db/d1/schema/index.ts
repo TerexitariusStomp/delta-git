@@ -2,6 +2,7 @@ export * from "./agents";
 export * from "./users";
 export * from "./namespaces";
 export * from "./namespaceMemberships";
+export * from "./identities";
 export * from "./repositories";
 export * from "./personalAccessTokens";
 export * from "./patNamespaceGrants";

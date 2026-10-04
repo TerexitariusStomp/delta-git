@@ -47,7 +47,12 @@ export function registerAuthOidcRoutes(router: AppRouter) {
       return await renderUiDocumentResponse(
         c.env,
         "auth-signin",
-        { errorCode },
+        {
+          errorCode,
+          // DID sign-in is the front door; tessera is opt-in via TESSERA_AUTH.
+          didAuth: true,
+          tesseraAuth: c.env.TESSERA_AUTH !== "off",
+        },
         { failureBody: "Failed to render page\n", viewer: null }
       );
     } catch {
@@ -57,6 +62,12 @@ export function registerAuthOidcRoutes(router: AppRouter) {
 
   router.get(`/auth/start`, async (c) => {
     const log = c.var.logFor({ service: "AuthOidc" });
+    // atproto DID sign-in is the primary path; tessera stays wired but is
+    // feature-flagged off via TESSERA_AUTH=off.
+    if (c.env.TESSERA_AUTH === "off") {
+      log.info("oidc:start-disabled");
+      return errorRedirect(c, "oidc_unavailable");
+    }
     const result = loadOidcConfig(c.env);
     if (!result.ok) {
       log.warn("oidc:start-config-missing", { reason: result.reason });

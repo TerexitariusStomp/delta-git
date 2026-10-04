@@ -10,7 +10,13 @@ import type { Logger } from "@/worker/common/logger";
 
 import { asTypedStorage } from "./repoState";
 import { getDb } from "./db/client";
-import { getActivePackCatalogCount } from "./db";
+import {
+  getActivePackCatalogCount,
+  listActivePackCatalog,
+  listMergeIntentsByStatus,
+  listOpLogTail,
+  listRecentWorkIntents,
+} from "./db";
 import { doPrefix } from "@/worker/keys";
 import { ensureScheduled } from "./scheduler";
 import { getConfig } from "./repoConfig";
@@ -56,6 +62,7 @@ export async function handleIdleAndMaintenance(
         lastAccess: decision.lastAccess,
         nextIdleAt: decision.nextIdleAt,
       });
+      await maybeWriteStateSnapshot(ctx, env, store, now, logger);
       await ensureScheduled(ctx, env, now);
       return;
     }
@@ -115,6 +122,65 @@ async function decideIdleCleanup(
     hasHeadTarget: typeof head?.target === "string" && head.target.length > 0,
     activePackCount: catalogCount,
   };
+}
+
+// ---------------------------------------------------------------------------
+// DO state snapshots → R2 (disaster recovery)
+// ---------------------------------------------------------------------------
+//
+// While a repo stays active, each alarm cycle writes a point-in-time state
+// snapshot to `<doPrefix>/snapshots/latest.json` at most once per day. The
+// snapshot carries everything needed to reconstruct DO metadata (refs,
+// head, op-log tail, merge/work intents, pack catalog) if the DO is lost —
+// the git objects themselves already live in R2 packs.
+
+const SNAPSHOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const SNAPSHOT_LAST_KEY = "lastSnapshotMs";
+
+async function maybeWriteStateSnapshot(
+  ctx: DurableObjectState,
+  env: Env,
+  store: ReturnType<typeof asTypedStorage<RepoStateSchema>>,
+  now: number,
+  logger?: Logger
+): Promise<void> {
+  const last = (await store.get(SNAPSHOT_LAST_KEY)) ?? 0;
+  if (now - last < SNAPSHOT_INTERVAL_MS) return;
+  try {
+    const db = getDb(ctx.storage);
+    const [refs, head, opLogTail, intents, workIntents, catalog] = await Promise.all([
+      store.get("refs"),
+      store.get("head"),
+      listOpLogTail(db, 500),
+      listMergeIntentsByStatus(db, [
+        "open",
+        "merging",
+        "adjudicating",
+        "conflict",
+        "merged",
+        "rejected",
+        "expired",
+      ]),
+      listRecentWorkIntents(db),
+      listActivePackCatalog(db),
+    ]);
+    const snapshot = {
+      version: 1,
+      snapshot_at: now,
+      refs: refs ?? [],
+      head: head ?? null,
+      op_log_tail: opLogTail,
+      merge_intents: intents,
+      work_intents: workIntents,
+      pack_catalog: catalog,
+    };
+    const key = `${doPrefix(ctx.id.toString())}/snapshots/latest.json`;
+    await env.REPO_BUCKET.put(key, JSON.stringify(snapshot));
+    await store.put(SNAPSHOT_LAST_KEY, now);
+    logger?.info("cleanup:state-snapshot", { key });
+  } catch (error) {
+    logger?.warn("cleanup:state-snapshot-failed", { error: String(error) });
+  }
 }
 
 async function clearIdleAlarm(ctx: DurableObjectState, logger?: Logger): Promise<void> {

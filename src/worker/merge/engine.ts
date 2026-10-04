@@ -9,6 +9,7 @@ import { mergeFileContents } from "./file";
 import { writeServerPack, type NewObject } from "./packWriter";
 import { isTreeMode, parseTree, serializeTree, type Tree, type TreeEntry } from "./tree";
 import { writeMergeAttestation } from "@/worker/agent/attest";
+import { enqueueFederatePush } from "@/worker/tasks/federate";
 import { createLogger } from "@/worker/common/logger";
 
 // Worker-side merge engine.
@@ -436,7 +437,7 @@ export async function attemptMerge(args: {
     method: "auto",
     voters: [`actor:${actor}`],
   }).catch((error) => log.warn("attest:write-failed", { error: String(error) }));
-  // Deploy-on-commit for merge landings on heads refs.
+  // Deploy-on-commit + mirror-out federation for merge landings on heads refs.
   if (intent.targetRef.startsWith("refs/heads/")) {
     await env.REPO_TASKS_QUEUE.send({
       kind: "deploy",
@@ -446,6 +447,9 @@ export async function attemptMerge(args: {
       sha: mergeOid,
       actor,
     }).catch(() => {});
+    await enqueueFederatePush(env, stub.id.toString(), repoId, intent.targetRef, mergeOid).catch(
+      () => {}
+    );
   }
   return { kind: "merged", intentId, mergeOid };
 }

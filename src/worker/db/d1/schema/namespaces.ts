@@ -12,6 +12,9 @@ export const namespaces = sqliteTable("namespaces", {
   createdBy: text("created_by")
     .notNull()
     .references(() => users.id, { onDelete: "restrict" }),
+  // The atproto DID that claimed this namespace via DID sign-in, when
+  // applicable. Enables handle→namespace URL resolution and DID-session ACL.
+  ownerDid: text("owner_did"),
   createdAt: integer("created_at").notNull(),
 });
 

@@ -43,17 +43,22 @@ import {
 import {
   acceptPatchCommitState,
   addWebhookSubState,
+  castWorkVoteState,
   claimWorkIntentState,
   closeWorkIntentState,
   createWorkIntentState,
   getCommitStatusesState,
+  getWorkIntentState,
   importPackState,
   listRepoSecretCiphertextsState,
   listRepoSecretsMetaState,
   listWebhookSubsState,
+  listWorkIntentsByKindState,
   listWorkIntentsState,
+  listWorkVotesState,
   putRepoSecretState,
   setCommitStatusState,
+  updateWorkIntentResultState,
 } from "./catalog/agentApi";
 import type { CommitStatusRow, WebhookSubRow, WorkIntentRow } from "./db/schema";
 import type { StagedImportPack } from "./catalog/agentApi";
@@ -507,6 +512,38 @@ export class RepoDurableObject extends DurableObject {
   public async closeWorkIntent(args: { id: string; actor: string }) {
     await this.ensureAccessAndAlarm();
     return await closeWorkIntentState({ ctx: this.ctx, id: args.id, actor: args.actor });
+  }
+
+  public async getWorkIntent(id: string) {
+    await this.ensureAccessAndAlarm();
+    return await getWorkIntentState(this.ctx, id);
+  }
+
+  public async listWorkIntentsByKind(kind: string) {
+    await this.ensureAccessAndAlarm();
+    return await listWorkIntentsByKindState(this.ctx, kind);
+  }
+
+  public async updateWorkIntentResult(args: { id: string; result: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await updateWorkIntentResultState({ ctx: this.ctx, ...args });
+  }
+
+  public async castWorkVote(args: {
+    workIntentId: string;
+    voterDid: string;
+    resolutionDigest: string;
+    rationale?: string;
+    signature: string;
+    quorumK: number;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await castWorkVoteState({ ctx: this.ctx, ...args });
+  }
+
+  public async listWorkVotes(workIntentId: string) {
+    await this.ensureAccessAndAlarm();
+    return await listWorkVotesState(this.ctx, workIntentId);
   }
 
   public async importPack(args: {

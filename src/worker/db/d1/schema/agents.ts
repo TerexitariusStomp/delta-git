@@ -3,10 +3,11 @@ import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-o
 
 // delta-git agent registry — global, cross-repo identity.
 //
-// Agents authenticate with ed25519 signatures over request envelopes and are
-// identified by `did:dg:<base58-pubkey>`. Reputation is earned by correct
-// adjudication votes and slashed on minority/malicious votes; it gates the
-// `merge`/`verify` lanes and rep-protected ref updates.
+// Agents authenticate with ed25519 signatures over request envelopes. New
+// registrations mint standard `did:key` identifiers; legacy `did:dg:<hex>`
+// rows remain readable (dual-format lookup in getAgent). Reputation is
+// earned by correct adjudication votes and slashed on minority/malicious
+// votes; it gates the `merge`/`verify` lanes and rep-protected ref updates.
 export const agents = sqliteTable(
   "agents",
   {
@@ -15,6 +16,12 @@ export const agents = sqliteTable(
     pubkey: text("pubkey").notNull(),
     // Optional human-readable label for the leaderboard/UI.
     label: text("label"),
+    // The human DID (identities.did) that operates/owns this agent, when the
+    // registration was made under a DID session.
+    ownerDid: text("owner_did"),
+    // "agent" (default) | "workers-ai" — built-in seats get their own kind
+    // so rep gates and UI can treat platform actors distinctly.
+    kind: text("kind").notNull().default("agent"),
     rep: integer("rep").notNull().default(0),
     banned: integer("banned").notNull().default(0),
     createdAt: integer("created_at").notNull(),

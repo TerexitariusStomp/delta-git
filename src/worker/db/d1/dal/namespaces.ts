@@ -25,6 +25,15 @@ export async function findNamespaceById(
   return rows[0];
 }
 
+/** Handle-URL lookup: the namespace an atproto DID claimed at sign-in. */
+export async function findNamespaceByOwnerDid(
+  db: Db,
+  did: string
+): Promise<NamespaceRow | undefined> {
+  const rows = await db.select().from(namespaces).where(eq(namespaces.ownerDid, did)).limit(1);
+  return rows[0];
+}
+
 // Attempt to claim an unused namespace slug for a user. Returns the inserted
 // row on success; returns undefined when another row already holds the slug
 // (race lost or pre-existing). Callers must NOT treat undefined as failure

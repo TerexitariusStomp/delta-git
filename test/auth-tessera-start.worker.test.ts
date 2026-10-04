@@ -1,6 +1,6 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { env, exports as workerExports } from "cloudflare:workers";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { __test as oidcTest } from "@/worker/auth/oidc";
 import { OIDC_TX_COOKIE_HEADER_NAME } from "@/worker/auth/cookies";
@@ -8,8 +8,18 @@ import { OIDC_TX_COOKIE_HEADER_NAME } from "@/worker/auth/cookies";
 import { fakeProvider } from "./util/oidcFake";
 import { readAppD1Migrations } from "./util/d1Migrations";
 
+// This suite exercises the legacy tessera OIDC path, which is feature-flagged
+// off by default (TESSERA_AUTH=off). Enable it for the duration of the file —
+// same env-override pattern the session tests use for SESSION_SECRET.
+const ORIGINAL_TESSERA_AUTH = env.TESSERA_AUTH;
+
 beforeAll(async () => {
+  (env as { TESSERA_AUTH: string }).TESSERA_AUTH = "on";
   await applyD1Migrations(env.DB, readAppD1Migrations());
+});
+
+afterAll(() => {
+  env.TESSERA_AUTH = ORIGINAL_TESSERA_AUTH;
 });
 
 afterEach(() => {

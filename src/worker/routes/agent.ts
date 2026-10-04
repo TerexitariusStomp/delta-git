@@ -15,6 +15,14 @@ import { writeServerPack } from "@/worker/merge/packWriter";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { encryptRepoSecret } from "@/worker/agent/secrets";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
+import {
+  DEFAULT_STORAGE_QUOTA_BYTES,
+  getStorageUsed,
+  LIMITS,
+  metric,
+  rateLimit,
+} from "@/worker/agent/abuse";
+import { bytesToHex } from "@/worker/common/hex";
 
 // delta-git agent API.
 //
@@ -651,6 +659,9 @@ export function registerAgentRoutes(router: AppRouter): void {
         title: parsed.title.slice(0, 200),
         body: parsed.body?.slice(0, 8000) ?? null,
         createdBy: principal.actor,
+        kind: "work",
+        sourceUri: null,
+        result: null,
         status: "open",
         claimedBy: null,
         claimExpiresAt: null,
@@ -690,6 +701,299 @@ export function registerAgentRoutes(router: AppRouter): void {
     });
     if (outcome.status !== "closed") return bad(c, "work-unavailable", 409);
     return json(c, { closed: true });
+  });
+
+  // --- ideas: free-text proposals that agents turn into work -------------------
+  // `kind="idea"` work intents. Humans post ideas (DID session, PAT, or
+  // signed agent); the overnight agent claims them and drives
+  // idea→spec→patch→merge; humans verify via quorum votes.
+
+  router.get("/api/:owner/:repo/dg/ideas", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const ideas = await stub.listWorkIntentsByKind("idea");
+    const votes = await Promise.all(ideas.map((i) => stub.listWorkVotes(i.id)));
+    return json(c, {
+      ideas: ideas.map((row, i) => ({
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        source_uri: row.sourceUri,
+        created_by: row.createdBy,
+        status: row.status,
+        claimed_by: row.claimedBy,
+        result: row.result,
+        votes: votes[i].map((v) => ({
+          seat: v.seat,
+          voter_did: v.voterDid,
+          digest: v.resolutionDigest,
+        })),
+        created_at: row.createdAt,
+      })),
+    });
+  });
+
+  router.post("/api/:owner/:repo/dg/ideas", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.ideaPost, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
+      title?: string;
+      body?: string;
+      source_uri?: string;
+    };
+    if (!parsed.title?.trim() && !parsed.body?.trim()) return bad(c, "title-or-body required");
+    const stub = getRepoStub(c.env, route.doName);
+    const row = await stub.createWorkIntent({
+      row: {
+        id: `idea-${crypto.randomUUID().slice(0, 8)}`,
+        title: (parsed.title ?? parsed.body ?? "").slice(0, 200) || "untitled idea",
+        body: parsed.body?.slice(0, 8000) ?? null,
+        createdBy: principal.actor,
+        kind: "idea",
+        sourceUri: parsed.source_uri?.slice(0, 500) ?? null,
+        result: null,
+        status: "open",
+        claimedBy: null,
+        claimExpiresAt: null,
+        createdAt: Date.now(),
+        closedAt: null,
+      },
+      actor: principal.actor,
+    });
+    metric(c.env, "agent.action", { scope: "idea.post", index: principal.actor });
+    return json(c, { id: row.id, status: row.status });
+  });
+
+  // Import an idea from an at:// URI or social post URL. The provenance is
+  // kept verbatim in source_uri — fetching is best-effort (bsky public API).
+  router.post("/api/:owner/:repo/dg/ideas/import", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.ideaImport, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
+      url?: string;
+      title?: string;
+    };
+    if (!parsed.url) return bad(c, "url required");
+
+    let title = parsed.title?.trim() ?? "";
+    let text = "";
+    const uri = parsed.url.trim();
+    if (uri.startsWith("at://")) {
+      // at://did/collection/rkey → fetch the record via public bsky API.
+      const m = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(uri);
+      if (m && m[2] === "app.bsky.feed.post") {
+        const api = `https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?uris=${encodeURIComponent(uri)}`;
+        const res = await fetch(api).catch(() => undefined);
+        if (res?.ok) {
+          const data = (await res.json().catch(() => undefined)) as
+            | { posts?: { record?: { text?: string } }[] }
+            | undefined;
+          text = data?.posts?.[0]?.record?.text?.slice(0, 8000) ?? "";
+        }
+      }
+    }
+    if (!title) title = text.split("\n")[0].slice(0, 200) || uri.slice(0, 80);
+    if (!text) text = `Imported idea source: ${uri}`;
+
+    const stub = getRepoStub(c.env, route.doName);
+    const row = await stub.createWorkIntent({
+      row: {
+        id: `idea-${crypto.randomUUID().slice(0, 8)}`,
+        title,
+        body: text,
+        createdBy: principal.actor,
+        kind: "idea",
+        sourceUri: uri.slice(0, 500),
+        result: null,
+        status: "open",
+        claimedBy: null,
+        claimExpiresAt: null,
+        createdAt: Date.now(),
+        closedAt: null,
+      },
+      actor: principal.actor,
+    });
+    metric(c.env, "agent.action", { scope: "idea.import", index: principal.actor });
+    return json(c, { id: row.id, status: row.status });
+  });
+
+  // Verify-by-quorum: agents/humans cast signed votes toward a shared
+  // resolution digest (e.g. "verified:<sha256>"). Majority closes the idea.
+  router.post("/api/:owner/:repo/dg/ideas/:id/verify", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.vote, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
+      resolution_digest?: string;
+      rationale?: string;
+    };
+    if (!parsed.resolution_digest) return bad(c, "resolution_digest required");
+    const stub = getRepoStub(c.env, route.doName);
+    const digest = parsed.resolution_digest.slice(0, 200);
+    const digestBytes = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(`${principal.actor}:${digest}`)
+    );
+    const outcome = await stub.castWorkVote({
+      workIntentId: c.req.param("id"),
+      voterDid: principal.actor,
+      resolutionDigest: digest,
+      rationale: parsed.rationale?.slice(0, 500),
+      signature: bytesToHex(new Uint8Array(digestBytes)),
+      quorumK: DEFAULT_QUORUM_K,
+    });
+    if (outcome.status !== "accepted") return bad(c, `vote:${outcome.reason}`, 409);
+    return json(c, outcome);
+  });
+
+  router.get("/api/:owner/:repo/dg/ideas/:id/votes", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const votes = await stub.listWorkVotes(c.req.param("id"));
+    return json(c, {
+      votes: votes.map((v) => ({
+        seat: v.seat,
+        voter_did: v.voterDid,
+        digest: v.resolutionDigest,
+        rationale: v.rationale,
+        created_at: v.createdAt,
+      })),
+    });
+  });
+
+  // Kick an overnight self-improvement pass for this repo (agent lane).
+  router.post("/api/:owner/:repo/dg/overnight", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const stub = getRepoStub(c.env, route.doName);
+    const parsed =
+      body.length > 0
+        ? (JSON.parse(new TextDecoder().decode(body)) as { work_intent_id?: string })
+        : {};
+    await c.env.REPO_TASKS_QUEUE.send({
+      kind: "overnight",
+      doId: stub.id.toString(),
+      repoId: route.doName,
+      workIntentId: parsed.work_intent_id,
+    });
+    return json(c, { queued: true });
+  });
+
+  // --- provenance export ------------------------------------------------------
+  // GET /dg/export → signed, tamper-evident bundle: op-log, intents, votes,
+  // attestations, refs, repo metadata. The manifest is HMAC'd with the
+  // worker KEK so a forge-issued export is attributable.
+
+  router.get("/api/:owner/:repo/dg/export", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const [refsData, opLog, intents, ideas] = await Promise.all([
+      stub.getHeadAndRefs(),
+      stub.listOpLog(-1),
+      stub.listMergeIntents([
+        "open",
+        "merging",
+        "adjudicating",
+        "conflict",
+        "merged",
+        "rejected",
+        "expired",
+      ]),
+      stub.listWorkIntentsByKind("idea"),
+    ]);
+    const votes: Record<string, unknown[]> = {};
+    for (const intent of intents) {
+      votes[intent.id] = (await stub.listMergeVotes(intent.id)).map((v) => ({
+        seat: v.seat,
+        voter_did: v.voterDid,
+        digest: v.resolutionDigest,
+        rationale: v.rationale,
+        signature: v.signature,
+      }));
+    }
+    // Embed DSSE envelopes for merged commits where they exist.
+    const doId = stub.id.toString();
+    const attestations: Record<string, unknown> = {};
+    for (const intent of intents) {
+      if (!intent.resultOid) continue;
+      const key = `${doPrefix(doId)}/attestations/${intent.resultOid.toLowerCase()}.dsse.json`;
+      const obj = await c.env.REPO_BUCKET.get(key);
+      if (obj) attestations[intent.resultOid] = JSON.parse(await obj.text());
+    }
+    const bundle = {
+      version: 1,
+      exported_at: Date.now(),
+      repo: { owner: route.routeNamespaceSlug, repo: route.routeRepoSlug },
+      refs: refsData,
+      op_log: opLog,
+      merge_intents: intents,
+      merge_votes: votes,
+      work_intents: ideas,
+      attestations,
+    };
+    const bundleJson = JSON.stringify(bundle);
+    const manifestHash = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(bundleJson)
+    );
+    const kek = (c.env as { DG_KEK?: string }).DG_KEK ?? "insecure-dev-kek";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(kek) as BufferSource,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(bundleJson) as BufferSource
+    );
+    const envelope = {
+      manifest_sha256: bytesToHex(new Uint8Array(manifestHash)),
+      signature: `hmac-sha256:${bytesToHex(new Uint8Array(sig))}`,
+      tip_op_log_hash: opLog.length > 0 ? opLog[opLog.length - 1].hash : null,
+      bundle,
+    };
+    return new Response(JSON.stringify(envelope), {
+      headers: {
+        "Content-Type": "application/x-dg-provenance+json",
+        "Cache-Control": "no-store",
+      },
+    });
+  });
+
+  // --- ops stats: storage quota usage for this namespace ------------------------
+
+  router.get("/api/:owner/:repo/dg/stats", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const used = await getStorageUsed(c.env.ROUTES, route.namespaceId);
+    return json(c, {
+      namespace_id: route.namespaceId,
+      storage_used_bytes: used,
+      storage_quota_bytes: DEFAULT_STORAGE_QUOTA_BYTES,
+    });
   });
 
   // --- merge attestations (in-toto / DSSE envelopes) ---------------------------

@@ -25,6 +25,18 @@
       {
         "name": "REPO_DO",
         "class_name": "RepoDurableObject"
+      },
+      {
+        "name": "ADJUDICATOR_DO",
+        "class_name": "AdjudicatorAgent"
+      },
+      {
+        "name": "REPO_AGENT_DO",
+        "class_name": "RepoAgent"
+      },
+      {
+        "name": "FIREHOSE_DO",
+        "class_name": "FirehoseAgent"
       }
     ]
   },
@@ -45,6 +57,14 @@
       "tag": "v3",
       "deleted_classes": [
         "AuthDurableObject"
+      ]
+    },
+    {
+      "tag": "v4",
+      "new_classes": [
+        "AdjudicatorAgent",
+        "RepoAgent",
+        "FirehoseAgent"
       ]
     }
   ],
@@ -71,6 +91,12 @@
   "ai": {
     "binding": "AI"
   },
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "dg_metrics"
+    }
+  ],
   "queues": {
     "producers": [
       {
@@ -103,6 +129,12 @@
     // tessera OIDC issuer (production). Override via .dev.vars for local dev.
     // Client id and secret are runtime concerns and live in .dev.vars / `wrangler secret put`.
     "TESSERA_OIDC_ISSUER": "https://auth.limic.dev",
+    // atproto DID sign-in is the primary web identity; tessera stays wired
+    // in code but disabled. Set to "on" to re-enable the OIDC login path.
+    "TESSERA_AUTH": "off",
+    // atproto PDS/base URL used for DID+handle resolution
+    // (com.atproto.identity.resolveDid / resolveHandle).
+    "ATP_PDS_URL": "https://bsky.social",
     // Hermes browser-agent deployment origin (embed.js source for /embed/hermes).
     "HERMES_ORIGIN": "https://hermes.widespread.fyi"
   }

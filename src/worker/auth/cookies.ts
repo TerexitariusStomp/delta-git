@@ -68,3 +68,23 @@ export async function getOidcTransactionCookie(
 export function clearOidcTransactionCookie(c: AppContext): void {
   deleteCookie(c, OIDC_TX_COOKIE_NAME, SHARED_COOKIE_OPTIONS);
 }
+
+// DID session cookie — carries a signed JWT (HS256 over SESSION_SECRET)
+// whose jti is revocable via the did_sessions D1 table.
+export const DID_SESSION_COOKIE_NAME = "dg_session";
+const DID_SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24; // 24h, matches JWT exp
+
+export function setDidSessionCookie(c: AppContext, jwt: string): void {
+  setCookie(c, DID_SESSION_COOKIE_NAME, jwt, {
+    ...SHARED_COOKIE_OPTIONS,
+    maxAge: DID_SESSION_COOKIE_MAX_AGE_SECONDS,
+  });
+}
+
+export function getDidSessionCookie(c: AppContext): string | undefined {
+  return getCookie(c, DID_SESSION_COOKIE_NAME, AUTH_COOKIE_PREFIX);
+}
+
+export function clearDidSessionCookie(c: AppContext): void {
+  deleteCookie(c, DID_SESSION_COOKIE_NAME, SHARED_COOKIE_OPTIONS);
+}

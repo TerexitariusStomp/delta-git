@@ -88,6 +88,33 @@ export const AdjudicateQueueMessageSchema = z.object({
 
 export type AdjudicateQueueMessage = z.infer<typeof AdjudicateQueueMessageSchema>;
 
+// Federation mirror-out: a public ref advanced → push the delta to
+// configured mirror targets (Tangled, Radicle, or a signed webhook relay).
+export const FederateQueueMessageSchema = z.object({
+  kind: z.literal("federate"),
+  doId: z.string(),
+  repoId: z.string().optional(),
+  // The public ref that moved.
+  ref: z.string(),
+  sha: z.string(),
+  // Named mirror targets (see docs/federation.md). Empty = all configured.
+  targets: z.array(z.string()).optional(),
+});
+
+export type FederateQueueMessage = z.infer<typeof FederateQueueMessageSchema>;
+
+// Overnight self-improvement pass: pick open idea work-intents and drive
+// idea → spec → patch → verify → merge → attest through the normal lanes.
+export const OvernightQueueMessageSchema = z.object({
+  kind: z.literal("overnight"),
+  doId: z.string(),
+  repoId: z.string().optional(),
+  // Optional work-intent id to process; absent = sweep all open ideas.
+  workIntentId: z.string().optional(),
+});
+
+export type OvernightQueueMessage = z.infer<typeof OvernightQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
@@ -97,6 +124,8 @@ export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   WebhookQueueMessageSchema,
   DeployQueueMessageSchema,
   AdjudicateQueueMessageSchema,
+  FederateQueueMessageSchema,
+  OvernightQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;

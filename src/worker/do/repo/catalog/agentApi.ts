@@ -1,4 +1,10 @@
-import type { CommitStatusRow, MergeIntentRow, WebhookSubRow, WorkIntentRow } from "../db/schema";
+import type {
+  CommitStatusRow,
+  MergeIntentRow,
+  MergeVoteRow,
+  WebhookSubRow,
+  WorkIntentRow,
+} from "../db/schema";
 import type { RepoStateSchema } from "../repoState";
 
 import { deltaRefFor, mergeIntentIdFor, MERGE_INTENT_TTL_MS } from "./diverge";
@@ -6,12 +12,16 @@ import {
   getDb,
   getWorkIntent,
   insertMergeIntent,
+  insertMergeVote,
   insertWebhookSub,
   insertWorkIntent,
   listActiveWebhookSubs,
   listCommitStatuses,
+  listMergeVotes,
   listOpenWorkIntents,
   listRepoSecretMeta,
+  listWorkIntentsByKind,
+  tallyMergeVotes,
   updateWorkIntent,
   upsertCommitStatus,
   upsertPackCatalogRow,
@@ -369,4 +379,135 @@ export async function closeWorkIntentState(args: {
     Date.now()
   );
   return { status: "closed" };
+}
+
+/** List work intents of a kind across all statuses (ideas/verify boards). */
+export async function listWorkIntentsByKindState(
+  ctx: DurableObjectState,
+  kind: string
+): Promise<WorkIntentRow[]> {
+  return await listWorkIntentsByKind(getDb(ctx.storage), kind);
+}
+
+export async function getWorkIntentState(
+  ctx: DurableObjectState,
+  id: string
+): Promise<WorkIntentRow | undefined> {
+  return await getWorkIntent(getDb(ctx.storage), id);
+}
+
+/** Record an outcome against a work intent without closing it (specs,
+ *  progress notes, landed-shares). */
+export async function updateWorkIntentResultState(args: {
+  ctx: DurableObjectState;
+  id: string;
+  result: string;
+  actor: string;
+}): Promise<{ status: "ok" } | { status: "unavailable" }> {
+  const db = getDb(args.ctx.storage);
+  const row = await getWorkIntent(db, args.id);
+  if (!row) return { status: "unavailable" };
+  await updateWorkIntent(db, args.id, { result: args.result });
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "work.result",
+      actor: args.actor,
+      payload: { id: args.id },
+    },
+    Date.now()
+  );
+  return { status: "ok" };
+}
+
+// ---------------------------------------------------------------------------
+// Work-intent verification votes ("verify by quorum")
+// ---------------------------------------------------------------------------
+// Verification reuses the merge_votes quorum machinery with intent ids of
+// the form `work:<id>` — same seat/dedup/tally semantics as merge
+// adjudication, no merge_intents row required. A work intent flips to
+// `verified` once a digest reaches majority.
+
+export type CastWorkVoteResult =
+  | { status: "accepted"; seat: number; resolved: boolean }
+  | { status: "rejected"; reason: string };
+
+export async function castWorkVoteState(args: {
+  ctx: DurableObjectState;
+  workIntentId: string;
+  voterDid: string;
+  resolutionDigest: string;
+  rationale?: string;
+  signature: string;
+  quorumK: number;
+}): Promise<CastWorkVoteResult> {
+  const db = getDb(args.ctx.storage);
+  const row = await getWorkIntent(db, args.workIntentId);
+  if (!row) return { status: "rejected", reason: "intent-not-found" };
+  if (row.status === "closed" || row.status === "verified") {
+    return { status: "rejected", reason: `intent-${row.status}` };
+  }
+
+  const voteKey = `work:${args.workIntentId}`;
+  const existing = await listMergeVotes(db, voteKey);
+  if (existing.some((vote) => vote.voterDid === args.voterDid)) {
+    return { status: "rejected", reason: "duplicate-voter" };
+  }
+  if (existing.length >= args.quorumK) {
+    return { status: "rejected", reason: "quorum-full" };
+  }
+
+  const vote: MergeVoteRow = {
+    intentId: voteKey,
+    seat: existing.length + 1,
+    voterDid: args.voterDid,
+    resolutionDigest: args.resolutionDigest,
+    rationale: args.rationale ?? null,
+    signature: args.signature,
+    createdAt: Date.now(),
+  };
+  await insertMergeVote(db, vote);
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "work.vote",
+      actor: args.voterDid,
+      payload: { id: args.workIntentId, seat: vote.seat, resolutionDigest: args.resolutionDigest },
+    },
+    Date.now()
+  );
+
+  const tallies = await tallyMergeVotes(db, voteKey);
+  const majority = Math.floor(args.quorumK / 2) + 1;
+  const winner = tallies.find((t) => t.votes >= majority);
+  if (winner) {
+    await updateWorkIntent(db, args.workIntentId, {
+      status: "verified",
+      closedAt: Date.now(),
+      result: row.result ?? `verified:${winner.resolutionDigest}`,
+    });
+    await appendOpLogEntry(
+      db,
+      {
+        kind: "work.verified",
+        actor: args.voterDid,
+        payload: {
+          id: args.workIntentId,
+          winningDigest: winner.resolutionDigest,
+          votes: winner.votes,
+          quorumK: args.quorumK,
+        },
+      },
+      Date.now()
+    );
+    return { status: "accepted", seat: vote.seat, resolved: true };
+  }
+  return { status: "accepted", seat: vote.seat, resolved: false };
+}
+
+export async function listWorkVotesState(
+  ctx: DurableObjectState,
+  workIntentId: string
+): Promise<MergeVoteRow[]> {
+  return await listMergeVotes(getDb(ctx.storage), `work:${workIntentId}`);
 }

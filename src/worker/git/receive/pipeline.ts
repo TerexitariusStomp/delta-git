@@ -11,6 +11,8 @@ import {
   scanPack,
 } from "@/worker/git/pack/indexer";
 import { doPrefix, r2PackKey } from "@/worker/keys";
+import { enqueueFederatePush } from "@/worker/tasks/federate";
+import { chargeStorageQuota, metric } from "@/worker/agent/abuse";
 import { deleteStagedPack, stagePackToR2, type StagedPackUpload } from "./r2Upload";
 import { buildReceiveReportStatus, isReceiveAbort, throwIfReceiveAborted } from "./support";
 
@@ -155,6 +157,8 @@ async function cleanupFailedReceive(args: {
 type ExecuteReceivePipelineArgs = {
   env: Env;
   repoId: string;
+  /** Owning namespace id — used for per-owner storage quota charging. */
+  namespaceId?: string;
   request: Request;
   ctx: ExecutionContext;
   packStream: ReadableStream<Uint8Array>;
@@ -306,6 +310,47 @@ export async function executeReceivePipeline(
         idxBytes: resolveResult.idxBytes,
         objectCount: resolveResult.objectCount,
       };
+
+      // Per-owner storage quota (Phase 2 abuse controls): charge the staged
+      // pack+idx bytes against the namespace budget before committing. The
+      // accounting is approximate KV bookkeeping — hard invariants stay in
+      // the DO; quota rejections surface as a clean unpack failure.
+      if (args.namespaceId && stagedPack) {
+        const charged = await chargeStorageQuota(
+          args.env.ROUTES,
+          args.namespaceId,
+          stagedPack.packBytes + stagedPack.idxBytes
+        ).catch(() => true); // quota store unavailable → fail open, log below
+        if (!charged) {
+          metric(args.env, "quota.exceeded", {
+            scope: "receive",
+            index: args.namespaceId,
+            value: stagedPack.packBytes + stagedPack.idxBytes,
+          });
+          args.log.warn("receive:quota-exceeded", {
+            repoId: args.repoId,
+            bytes: stagedPack.packBytes + stagedPack.idxBytes,
+          });
+          await cleanupStagedPack({
+            stagedUpload,
+            log: args.log,
+            reason: "quota-exceeded",
+            attempt: "inline",
+          });
+          return buildReceiveResult({
+            unpackOk: false,
+            unpackMessage: "storage quota exceeded for this namespace",
+            commands: args.commands,
+            statuses: args.commands.map((command) => ({
+              ref: command.ref,
+              ok: false,
+              message: "storage quota exceeded",
+            })),
+            changed: false,
+            empty: false,
+          });
+        }
+      }
     }
 
     args.countSubrequest("do:finalize-receive");
@@ -396,6 +441,17 @@ export async function executeReceivePipeline(
             error: String(error),
           });
         })
+      );
+      // Mirror-out federation: the task itself filters private repos and
+      // repos without configured targets, so enqueue unconditionally.
+      args.ctx.waitUntil(
+        enqueueFederatePush(
+          args.env,
+          args.stub.id.toString(),
+          args.repoId,
+          command.ref,
+          command.newOid
+        ).catch(() => {})
       );
     }
 

@@ -193,6 +193,12 @@ export async function listOpLogSince(
     .limit(limit);
 }
 
+/** Most recent op-log entries in ascending order (state snapshots). */
+export async function listOpLogTail(db: DrizzleSqliteDODatabase, limit = 500): Promise<OpLogRow[]> {
+  const rows = await db.select().from(opLog).orderBy(desc(opLog.seq)).limit(limit);
+  return rows.reverse();
+}
+
 // ---------------------------------------------------------------------------
 // Work intents
 // ---------------------------------------------------------------------------
@@ -214,13 +220,39 @@ export async function getWorkIntent(
 
 export async function listOpenWorkIntents(
   db: DrizzleSqliteDODatabase,
-  limit = 100
+  limit = 100,
+  kind?: string
+): Promise<WorkIntentRow[]> {
+  const where = kind
+    ? and(eq(workIntents.status, "open"), eq(workIntents.kind, kind))
+    : eq(workIntents.status, "open");
+  return await db
+    .select()
+    .from(workIntents)
+    .where(where)
+    .orderBy(asc(workIntents.createdAt))
+    .limit(limit);
+}
+
+/** Most recent work intents across all kinds/statuses (state snapshots). */
+export async function listRecentWorkIntents(
+  db: DrizzleSqliteDODatabase,
+  limit = 200
+): Promise<WorkIntentRow[]> {
+  return await db.select().from(workIntents).orderBy(desc(workIntents.createdAt)).limit(limit);
+}
+
+/** List work intents of a kind across statuses (ideas page, verify queue). */
+export async function listWorkIntentsByKind(
+  db: DrizzleSqliteDODatabase,
+  kind: string,
+  limit = 200
 ): Promise<WorkIntentRow[]> {
   return await db
     .select()
     .from(workIntents)
-    .where(eq(workIntents.status, "open"))
-    .orderBy(asc(workIntents.createdAt))
+    .where(eq(workIntents.kind, kind))
+    .orderBy(desc(workIntents.createdAt))
     .limit(limit);
 }
 

@@ -12,6 +12,7 @@ import {
 } from "./engine";
 import { serializeTree } from "./tree";
 import { writeServerPack, type NewObject } from "./packWriter";
+import { enqueueFederatePush } from "@/worker/tasks/federate";
 
 // Adjudicated-resolution application.
 //
@@ -152,6 +153,9 @@ export async function applyResolution(args: {
       sha: mergeOid,
       actor,
     }).catch(() => {});
+    await enqueueFederatePush(env, stub.id.toString(), repoId, intent.targetRef, mergeOid).catch(
+      () => {}
+    );
   }
   return { kind: "merged", mergeOid };
 }

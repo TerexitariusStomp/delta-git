@@ -23,6 +23,14 @@ export const repositories = sqliteTable(
       .references(() => users.id, { onDelete: "restrict" }),
     slug: text("slug").notNull(),
     doName: text("do_name").notNull(),
+    // Federation-addressable repo DID (`did:dg:repo:<hash>`), minted at
+    // creation. Stable across renames; NULL for repos predating the column
+    // (minted lazily on first federation touch).
+    did: text("did"),
+    // JSON array of mirror targets [{name,url}] — `https://` remotes get a
+    // real smart-HTTP push; ssh/rad/tangled targets go through the signed
+    // federation relay. See docs/federation.md.
+    mirrorTargets: text("mirror_targets"),
     visibility: text("visibility").notNull().$type<RepositoryVisibility>(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),

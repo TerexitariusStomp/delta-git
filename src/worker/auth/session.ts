@@ -1,11 +1,22 @@
 import type { Viewer } from "@/client/server/viewer";
 import { newPrefixedId } from "@/worker/common";
-import { findUserById, listNamespacesForUser } from "@/worker/db/d1/dal";
+import {
+  findIdentityByDid,
+  findLiveDidSession,
+  findUserById,
+  listNamespacesForUser,
+} from "@/worker/db/d1/dal";
 import type { UserRow } from "@/worker/db/d1/schema";
 import type { AppContext } from "@/worker/routes/hono";
 import { z } from "zod";
 
-import { clearSessionCookie, getSessionCookie, setSessionCookie } from "./cookies";
+import {
+  clearSessionCookie,
+  getDidSessionCookie,
+  getSessionCookie,
+  setSessionCookie,
+} from "./cookies";
+import { verifyDidSession } from "@/worker/agent/atpauth/jwt";
 
 // Session cookie value shape: `goc_sess_<base64url AES-GCM blob>`.
 // The sealed blob contains the user id and expiry and is authenticated with
@@ -162,10 +173,40 @@ export async function createSessionForUser(
 }
 
 async function readActiveSessionUncached(c: AppContext): Promise<ActiveSession | null> {
-  const token = getSessionCookie(c);
-  if (!token) return null;
   const config = loadSessionConfig(c.env);
   if (!config.ok) return null;
+
+  // DID session path: dg_session JWT (revocable via did_sessions) →
+  // identities.userId bridge → shared user principal.
+  const didToken = getDidSessionCookie(c);
+  if (didToken) {
+    try {
+      const claims = await verifyDidSession(config.secret, didToken);
+      if (claims) {
+        const live = await findLiveDidSession(c.var.db, claims.jti);
+        if (live) {
+          const identity = await findIdentityByDid(c.var.db, claims.sub);
+          const user = identity ? await findUserById(c.var.db, identity.userId) : undefined;
+          if (identity && user) {
+            return {
+              user,
+              payload: {
+                version: SESSION_VERSION,
+                userId: user.id,
+                createdAt: claims.iat * 1000,
+                expiresAt: claims.exp * 1000,
+              },
+            };
+          }
+        }
+      }
+    } catch {
+      /* fall through to tessera cookie */
+    }
+  }
+
+  const token = getSessionCookie(c);
+  if (!token) return null;
   try {
     const unsealed = await unsealSession(config.secret, token, Date.now());
     if (!unsealed.ok) return null;

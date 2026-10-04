@@ -4,10 +4,14 @@ import type { Db } from "@/worker/db/d1";
 import { eq } from "drizzle-orm";
 import { agents } from "@/worker/db/d1/schema";
 import { bytesToHex } from "@/worker/common/hex";
+import { didKeyFromPubkey, pubkeyFromDidKey } from "./atpauth/didkey";
 
 // delta-git agent auth — ed25519 DID + signed request envelopes.
 //
-// Agents register a public key and are identified by `did:dg:<pubkey-hex>`.
+// Agents register a public key and are identified by standard
+// `did:key:z6Mk…` identifiers. Legacy rows use `did:dg:<pubkey-hex>` and
+// remain fully valid — getAgent resolves both formats from the same key
+// material so old clients keep working.
 // Mutating agent endpoints carry signature headers:
 //   x-dg-did, x-dg-ts (unix seconds), x-dg-nonce, x-dg-sig (hex)
 // The signed payload is sha256("dg1\n" + did + "\n" + ts + "\n" + nonce + "\n"
@@ -18,7 +22,13 @@ export const AGENT_SIG_WINDOW_SEC = 300;
 
 const te = new TextEncoder();
 
+/** Canonical agent DID for a new registration: `did:key` (ed25519). */
 export function didForPubkey(pubkeyBytes: Uint8Array): string {
+  return didKeyFromPubkey(pubkeyBytes, "ed25519");
+}
+
+/** Legacy alias format still accepted for pre-did:key agents. */
+export function legacyDidForPubkey(pubkeyBytes: Uint8Array): string {
   return `did:dg:${bytesToHex(pubkeyBytes)}`;
 }
 
@@ -55,15 +65,39 @@ async function importPubkey(pubkeyBytes: Uint8Array): Promise<CryptoKey | undefi
 
 export type AgentAuth = { kind: "ok"; agent: AgentRow } | { kind: "rejected"; reason: string };
 
-/** Look up a registered agent by DID. */
+/** Look up a registered agent by DID — resolves both `did:key` and
+ * legacy `did:dg:` spellings of the same key material. */
 export async function getAgent(db: Db, did: string): Promise<AgentRow | undefined> {
   const rows = await db.select().from(agents).where(eq(agents.did, did)).limit(1);
-  return rows[0];
+  if (rows[0]) return rows[0];
+  // Cross-format alias: derive the pubkey and try the other spelling.
+  if (did.startsWith("did:dg:")) {
+    const pubkey = hexToBytesSafe(did.slice("did:dg:".length));
+    if (pubkey && pubkey.length === 32) {
+      const alt = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.did, didKeyFromPubkey(pubkey, "ed25519")))
+        .limit(1);
+      return alt[0];
+    }
+  } else if (did.startsWith("did:key:")) {
+    const decoded = pubkeyFromDidKey(did);
+    if (decoded?.curve === "ed25519") {
+      const alt = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.did, legacyDidForPubkey(decoded.pubkey)))
+        .limit(1);
+      return alt[0];
+    }
+  }
+  return undefined;
 }
 
 export async function registerAgent(
   db: Db,
-  args: { pubkeyHex: string; label?: string }
+  args: { pubkeyHex: string; label?: string; kind?: string; ownerDid?: string }
 ): Promise<AgentRow | { error: string }> {
   const pubkeyBytes = hexToBytesSafe(args.pubkeyHex);
   if (!pubkeyBytes || pubkeyBytes.length !== 32) return { error: "pubkey must be 32-byte hex" };
@@ -74,6 +108,8 @@ export async function registerAgent(
     did,
     pubkey: args.pubkeyHex.toLowerCase(),
     label: args.label ?? null,
+    ownerDid: args.ownerDid ?? null,
+    kind: args.kind ?? "agent",
     rep: 0,
     banned: 0,
     createdAt: Date.now(),

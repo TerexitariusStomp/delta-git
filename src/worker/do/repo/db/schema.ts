@@ -129,6 +129,14 @@ export const workIntents = sqliteTable(
     title: text("title").notNull(),
     body: text("body"),
     createdBy: text("created_by").notNull(),
+    // "work" (default claimable task) | "idea" (free-text proposal) |
+    // "issue" (bug report surfaced via XRPC) | "verify" (verification ask).
+    kind: text("kind").notNull().default("work"),
+    // Optional at:// URI or URL the intent was imported from.
+    sourceUri: text("source_uri"),
+    // Free-form outcome record (spec text, verdict, landed sha) written by
+    // the actor that processed the intent.
+    result: text("result"),
     status: text("status").notNull(),
     claimedBy: text("claimed_by"),
     claimExpiresAt: integer("claim_expires_at"),
@@ -138,7 +146,9 @@ export const workIntents = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.id], name: "work_intents_pk" }),
     index("idx_work_intents_status").on(t.status),
-    check("chk_work_intents_status", sql`"status" IN ('open','claimed','closed')`),
+    index("idx_work_intents_kind_status").on(t.kind, t.status),
+    check("chk_work_intents_status", sql`"status" IN ('open','claimed','closed','verified')`),
+    check("chk_work_intents_kind", sql`"kind" IN ('work','idea','issue','verify')`),
   ]
 );
 

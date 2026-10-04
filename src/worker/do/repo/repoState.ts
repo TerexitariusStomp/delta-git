@@ -21,6 +21,7 @@ export type RepoStateSchema = {
   compactLease: RepoLease | undefined;
   compactionWantedAt: number | undefined;
   lastAccessMs: number;
+  lastSnapshotMs: number | undefined;
 } & Record<ObjKey, Uint8Array | ArrayBuffer>;
 
 export type TypedStorage<S> = {

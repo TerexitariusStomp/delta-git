@@ -1,9 +1,15 @@
 import { ShieldCheck } from "lucide-react";
 
+import { IslandHost } from "@/client/server/IslandHost";
+import { DidSignInIsland } from "@/client/islands/did-signin";
 import { Button, Card, ErrorBanner, PageHeader } from "@/client/components/ui";
 
 export type AuthSignInPageProps = {
   errorCode?: string;
+  /** atproto DID sign-in is the primary path (always on). */
+  didAuth: boolean;
+  /** Legacy tessera OIDC, feature-flagged via TESSERA_AUTH. */
+  tesseraAuth: boolean;
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -25,7 +31,7 @@ function describeError(code: string | undefined): string | null {
   return ERROR_MESSAGES[code] ?? "Sign-in failed. Start a fresh sign-in.";
 }
 
-export function AuthSignInPage({ errorCode }: AuthSignInPageProps) {
+export function AuthSignInPage({ errorCode, didAuth, tesseraAuth }: AuthSignInPageProps) {
   const errorText = describeError(errorCode);
   return (
     <div className="mx-auto max-w-md py-10">
@@ -35,26 +41,37 @@ export function AuthSignInPage({ errorCode }: AuthSignInPageProps) {
             Sign in
           </h1>
           <p className="m-0 mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-            Authenticate with tessera to manage your namespaces.
+            {didAuth
+              ? "Prove your atproto identity — sign a one-time challenge with your DID key."
+              : "Authenticate with tessera to manage your namespaces."}
           </p>
         </div>
       </PageHeader>
       {errorText ? <ErrorBanner>{errorText}</ErrorBanner> : null}
-      <Card>
-        <div className="flex flex-col items-stretch gap-5">
-          <pre className="m-0 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50/60 p-3 font-mono text-xs leading-relaxed text-zinc-500 dark:border-zinc-800/60 dark:bg-zinc-950/40">
-            <code className="bg-transparent p-0 font-mono text-xs">
-              <span className="select-none">$ </span>tessera authorize{"\n"}
-              <span className="select-none">→ </span>verify id_token{"\n"}
-              <span className="select-none">→ </span>claim @namespace
-            </code>
-          </pre>
-          <Button href="/auth/start" variant="primary">
-            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-            Continue with tessera
-          </Button>
-        </div>
-      </Card>
+      {didAuth ? (
+        <Card>
+          <IslandHost name="did-signin" props={{}}>
+            <DidSignInIsland />
+          </IslandHost>
+        </Card>
+      ) : null}
+      {tesseraAuth ? (
+        <Card>
+          <div className="flex flex-col items-stretch gap-5">
+            <pre className="m-0 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50/60 p-3 font-mono text-xs leading-relaxed text-zinc-500 dark:border-zinc-800/60 dark:bg-zinc-950/40">
+              <code className="bg-transparent p-0 font-mono text-xs">
+                <span className="select-none">$ </span>tessera authorize{"\n"}
+                <span className="select-none">→ </span>verify id_token{"\n"}
+                <span className="select-none">→ </span>claim @namespace
+              </code>
+            </pre>
+            <Button href="/auth/start" variant="primary">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              Continue with tessera
+            </Button>
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }

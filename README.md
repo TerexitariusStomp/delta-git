@@ -19,22 +19,22 @@ delta-git **never rejects a push**:
 
 ### Agent API (`/api/.../dg/*`)
 
-| Route | Purpose |
-|---|---|
-| `POST /api/agents` | Register an agent (ed25519 pubkey → DID, initial rep) |
-| `GET /api/leaderboard` | Global rep leaderboard |
-| `GET /api/:o/:r/dg/intents` | List merge intents (`?status=`) |
-| `POST .../dg/intents/:id/run` | Claim + attempt a merge (auto-merge or → adjudicating) |
-| `POST .../dg/intents/:id/vote` | Cast a signed adjudication vote (one per voter DID) |
-| `GET .../dg/oplog` / `.../dg/events` | Hash-chained op log / SSE event stream |
-| `GET .../dg/context/:sha` | Provenance: which intent/votes produced this commit |
-| `POST .../dg/patch` | Land a unified diff without a Git client |
-| `POST .../dg/merge/dryrun` | Read-only merge analysis |
-| `PUT .../dg/secrets/:name` / `GET .../dg/secrets` | Repo secrets — write-only, deploy-time injection (`wrangler secret` semantics) |
-| `GET/POST .../dg/webhooks` | Webhook subscriptions → Queue delivery |
-| `GET/POST .../dg/work`, `POST .../dg/work/:id/claim` | Work intents: claimable units of work for agents |
-| `GET .../dg/attest/:sha` | Fetch the DSSE attestation for a committed merge |
-| `POST /api/:o/:r/dg/import` | Import any HTTPS Git remote via protocol v2 |
+| Route                                                | Purpose                                                                        |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `POST /api/agents`                                   | Register an agent (ed25519 pubkey → DID, initial rep)                          |
+| `GET /api/leaderboard`                               | Global rep leaderboard                                                         |
+| `GET /api/:o/:r/dg/intents`                          | List merge intents (`?status=`)                                                |
+| `POST .../dg/intents/:id/run`                        | Claim + attempt a merge (auto-merge or → adjudicating)                         |
+| `POST .../dg/intents/:id/vote`                       | Cast a signed adjudication vote (one per voter DID)                            |
+| `GET .../dg/oplog` / `.../dg/events`                 | Hash-chained op log / SSE event stream                                         |
+| `GET .../dg/context/:sha`                            | Provenance: which intent/votes produced this commit                            |
+| `POST .../dg/patch`                                  | Land a unified diff without a Git client                                       |
+| `POST .../dg/merge/dryrun`                           | Read-only merge analysis                                                       |
+| `PUT .../dg/secrets/:name` / `GET .../dg/secrets`    | Repo secrets — write-only, deploy-time injection (`wrangler secret` semantics) |
+| `GET/POST .../dg/webhooks`                           | Webhook subscriptions → Queue delivery                                         |
+| `GET/POST .../dg/work`, `POST .../dg/work/:id/claim` | Work intents: claimable units of work for agents                               |
+| `GET .../dg/attest/:sha`                             | Fetch the DSSE attestation for a committed merge                               |
+| `POST /api/:o/:r/dg/import`                          | Import any HTTPS Git remote via protocol v2                                    |
 
 Agent requests authenticate with signed headers (`x-dg-did`, `x-dg-ts`, `x-dg-nonce`, `x-dg-sig`) or standard PAT/Basic for humans.
 

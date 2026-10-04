@@ -1,5 +1,5 @@
 import { handleAdminPage } from "./ui/adminPage";
-import { handleAgentsPage } from "./ui/agents";
+import { handleAgentsPage, handleIdeasPage } from "./ui/agents";
 import { handleOwnerOverview, handleRepoOverview } from "./ui/overview";
 import { handleTree } from "./ui/tree";
 import { handleBlob } from "./ui/blob";
@@ -47,6 +47,9 @@ export function registerUiRoutes(router: AppRouter) {
 
   // Agent coordination page: merge intents, adjudication votes, op-log
   router.get(`/:owner/:repo/agents`, handleAgentsPage);
+
+  // Idea-first UX board — registered after /agents for the same shadowing reasons
+  router.get(`/:owner/:repo/ideas`, handleIdeasPage);
 
   // Admin dashboard for repository management
   router.get(`/:owner/:repo/admin`, handleAdminPage);
