@@ -16,6 +16,9 @@ export interface Env {
   SESSION_SECRET?: string;
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;
+  // visitor-compute network (localchimera coordinator)
+  COORDINATOR_URL?: string;
+  DISPATCH_AUTH_TOKEN?: string;
   // paid-tier bindings (env.paid)
   TENANT?: DurableObjectNamespace;
   PROVISION?: Queue;

@@ -15,7 +15,10 @@
     "USDC_CHAIN": "base",
     "USDC_CONTRACT": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "USDC_RPC": "https://mainnet.base.org",
-    "USDC_CONFIRMATIONS": "3"
+    "USDC_CONFIRMATIONS": "3",
+    // Chimera visitor-compute network — coordinator ws/http base.
+    // DISPATCH_AUTH_TOKEN stays a secret (wrangler secret put).
+    "COORDINATOR_URL": "wss://coordinator.localchimera.com"
   },
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   "triggers": {

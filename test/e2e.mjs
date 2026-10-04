@@ -133,6 +133,27 @@ ok(vovr.status === 402 && vovr.body.needed === "business", "mysql8 override gate
 const s2 = await api(`/api/sites/${siteId}`);
 ok(s2.body.site?.db_engine === "sqlite" || s2.body.site?.db_engine === "mysql8", "site row has variant columns");
 
+// 21. visitor-compute: earn toggle + endpoint shape (coordinator absent → graceful zeros)
+const earnOff = await api(`/api/sites/${siteId}/earn`, { method: "POST", body: JSON.stringify({ enabled: true }) });
+ok(earnOff.status === 200 && earnOff.body.earn_enabled === true, "earn card enabled on site");
+const earnGet = await api(`/api/sites/${siteId}/earn`);
+ok(earnGet.status === 200 && earnGet.body.ledger && typeof earnGet.body.network_nodes === "number", "earn status readable w/o coordinator");
+// serving injection: enable → HTML carries visitor-node script tag.
+// Publish a fresh manifest — new sha = new cache key (cached pages would
+// otherwise serve the pre-enable response for their TTL).
+execSync(`echo '<h1>earn page</h1>' > /tmp/wpc-earn.html`);
+execSync(`cd ${process.env.HOME}/wp-cloud && npx wrangler r2 object put wpcloud-artifacts/sites/${siteId}/artifacts/earn123/index.html --file /tmp/wpc-earn.html --local`, { stdio: "pipe" });
+const pub2 = await api(`/api/sites/${siteId}/publish`, { method: "POST", body: JSON.stringify({ sha: "earn123", files: [{ path: "/index.html", size: 20 }], plugins: [] }) });
+ok(pub2.status === 200, "earn manifest published");
+const earnHtml = await fetch(`http://preview-${siteId}.localhost:8787/`).then((r) => r.text());
+if (!earnHtml.includes("visitor-node")) console.log("  [debug] served html:", earnHtml.slice(0, 200));
+ok(earnHtml.includes("visitor-node.js") && earnHtml.includes(`data-site="${siteId}"`), "earn script injected into served HTML");
+const vn = await fetch(`http://preview-${siteId}.localhost:8787/visitor-node.js`);
+ok(vn.status === 200 && (await vn.text()).includes("JOB_DISPATCH"), "visitor-node.js served on site host");
+// disable → injection stops (cache may hold TTL; check flag flip accepted)
+const earnDisable = await api(`/api/sites/${siteId}/earn`, { method: "POST", body: JSON.stringify({ enabled: false }) });
+ok(earnDisable.status === 200 && earnDisable.body.earn_enabled === false, "earn card disable accepted");
+
 // 11. cron: USDC watcher (needs USDC_DEPOSIT_ADDRESS — skip gracefully if unset)
 const cron = await fetch(BASE + "/cdn-cgi/handler/scheduled").catch(() => null);
 

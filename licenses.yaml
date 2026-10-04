@@ -46,6 +46,22 @@ versioning:
   - { name: isomorphic-git,       license: MIT,           url: https://isomorphic-git.org }
 dashboard:
   - { name: htmx,                 license: BSD-2-Clause,  url: https://htmx.org }
+visitor_compute:
+  - { name: localchimera-browser-sdk, license: MIT,      url: https://github.com/localchimera/browser-sdk, note: "npm pkg only — monorepo is AGPL-3.0, never vendor repo code" }
+  - { name: localchimera-coordinator, license: "own-code (private)", url: https://localchimera.com, note: "volunteer/job coordinator DO — deployed service" }
+  - { name: web-llm,              license: "Apache-2.0",  url: https://github.com/mlc-ai/web-llm, note: "WebGPU visitor inference, optional peer" }
+  - { name: transformersjs,       license: "Apache-2.0",  url: https://github.com/huggingface/transformers.js, note: "CPU/WASM fallback inference" }
+  - { name: helia,                license: "Apache-2.0 OR MIT", url: https://github.com/ipfs/helia, note: "IPFS storage jobs, optional peer" }
+  - { name: wasmer-sdk,           license: "MIT (verify LICENSE)", url: https://github.com/wasmerio/wasmer-js, note: "WASI sandboxed compute jobs, optional peer" }
+  - { name: multiformats,         license: "Apache-2.0 OR MIT", url: https://github.com/multiformats/js-multiformats }
+  - { name: web3auth,             license: "MIT/ISC (per-pkg varies)", url: https://github.com/Web3Auth, note: "visitor wallet connect — earn path only, optional" }
+  - { name: wllama,               license: MIT,           url: https://github.com/ngxson/wllama, conditional: "device path only, not browser plugin" }
+model_weights:
+  - { name: "Qwen2.5 (default)",  license: "Apache-2.0",  url: https://huggingface.co/Qwen, note: "default visitor-inference model — permissive weights" }
+  - { name: "SmolLM2",            license: "Apache-2.0",  url: https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct }
+  - { name: "Phi-4-mini",         license: MIT,           url: https://huggingface.co/microsoft/Phi-4-mini-instruct }
+  - { name: "Llama-3.x",          license: "Meta Community License", restricted: "ToU-bound — site-owner opt-in only, never default" }
+  - { name: "Gemma",              license: "Gemma Terms of Use", restricted: "ToU-bound — site-owner opt-in only" }
 search:
   - { name: pagefind,             license: MIT,           url: https://pagefind.app }
 tooling:

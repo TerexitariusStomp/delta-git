@@ -1,16 +1,11 @@
-// P4: AI support bot on Workers AI (10k free neurons/day) + status endpoint
+// P4: AI support bot — visitor compute (Chimera) first, Workers AI floor.
 import type { Env } from "./env";
+import { infer, JOB } from "./earn";
 
 export async function supportAnswer(env: Env & { AI?: Ai }, question: string): Promise<string> {
-  if (!env.AI) return "AI support not available on this tier.";
-  const r = await env.AI.run("@cf/meta/llama-3.1-8b-instruct" as any, {
-    messages: [
-      { role: "system", content: "You are the wp-cloud support bot. WordPress hosting on Cloudflare: browser-Playground authoring, static publish to R2, lanes 1-3, USDC billing. Be concise." },
-      { role: "user", content: question },
-    ],
-    max_tokens: 300,
-  } as any);
-  return (r as any).response ?? "no answer";
+  const prompt = `You are the wp-cloud support bot. WordPress hosting on Cloudflare: browser-Playground authoring, static publish to R2, lanes 1-3, USDC billing. Be concise.\n\nQuestion: ${question}`;
+  const r = await infer(env, prompt, undefined, JOB.SUPPORT);
+  return r.text || "AI support not available on this tier.";
 }
 
 export async function statusPage(env: Env): Promise<Response> {

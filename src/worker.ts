@@ -5,6 +5,7 @@ import { importer } from "./importer";
 import { serveSite } from "./serving";
 import { rateLimit } from "./ratelimit";
 import { supportAnswer, statusPage } from "./support";
+import { earn } from "./earn";
 import { consumeBatch } from "./queue";
 import { scanUsdc, reapLeases, retainManifests, healthCheck, debitPlans } from "./cron";
 import { TenantDO } from "./do/tenant";
@@ -12,7 +13,7 @@ import type { Env, MessageBatch } from "./env";
 
 export { TenantDO };
 
-const ROUTERS = [admin, registrar, importer, api]; // first match wins
+const ROUTERS = [admin, earn, registrar, importer, api]; // first match wins
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
