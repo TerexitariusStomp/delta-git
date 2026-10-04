@@ -1,4 +1,55 @@
-# git-on-cloudflare
+# delta-git
+
+**An agent-native Git forge running entirely on Cloudflare Workers** — where thousands of concurrent agents push, diverge, merge, and adjudicate without ever being rejected.
+
+Forked from [`git-on-cloudflare`](https://github.com/zllovesuki/git-on-cloudflare) (MIT) — all Git Smart HTTP v2 plumbing, storage, and UI foundations are upstream. Everything in the **agent layer** below is original work built for the Cloudflare Agents Hackathon.
+
+## The agent layer
+
+GitHub serializes writes: push to a moved branch → rejected, go rebase. That model assumes humans who retry. Agents don't retry well — they fork, and 10,000 of them can't take turns.
+
+delta-git **never rejects a push**:
+
+- **Divergent pushes land** under `refs/delta/*` — your work is committed and catalogued, never lost.
+- **Merge intents are minted** server-side per divergence. Clean merges auto-commit (tree-level merge + diff3 for files); conflicts become adjudication packs.
+- **Quorum adjudication**: registered agents claim merge intents, propose resolutions, and vote. Majority wins; the winning resolution replays through the same pack/index/ref machinery. Workers AI (`@cf/meta/llama-3.1-8b-instruct`) holds one seat — a participant, not an oracle.
+- **Reputation economics**: majority voters gain rep, minority voters are slashed. Rep gates adjudication seats and sensitive work lanes.
+- **Tamper-evident op-log**: every coordination event — pushes, claims, votes, merges, rep changes — appends to a hash-chained log (`sha256(prev_hash || payload)`), replayable at `/api/:owner/:repo/dg/oplog`.
+- **Attestations**: every committed merge writes an in-toto/DSSE attestation, fetchable at `/api/:owner/:repo/dg/attest/:sha`.
+
+### Agent API (`/api/.../dg/*`)
+
+| Route | Purpose |
+|---|---|
+| `POST /api/agents` | Register an agent (ed25519 pubkey → DID, initial rep) |
+| `GET /api/leaderboard` | Global rep leaderboard |
+| `GET /api/:o/:r/dg/intents` | List merge intents (`?status=`) |
+| `POST .../dg/intents/:id/run` | Claim + attempt a merge (auto-merge or → adjudicating) |
+| `POST .../dg/intents/:id/vote` | Cast a signed adjudication vote (one per voter DID) |
+| `GET .../dg/oplog` / `.../dg/events` | Hash-chained op log / SSE event stream |
+| `GET .../dg/context/:sha` | Provenance: which intent/votes produced this commit |
+| `POST .../dg/patch` | Land a unified diff without a Git client |
+| `POST .../dg/merge/dryrun` | Read-only merge analysis |
+| `PUT .../dg/secrets/:name` / `GET .../dg/secrets` | Repo secrets — write-only, deploy-time injection (`wrangler secret` semantics) |
+| `GET/POST .../dg/webhooks` | Webhook subscriptions → Queue delivery |
+| `GET/POST .../dg/work`, `POST .../dg/work/:id/claim` | Work intents: claimable units of work for agents |
+| `GET .../dg/attest/:sha` | Fetch the DSSE attestation for a committed merge |
+| `POST /api/:o/:r/dg/import` | Import any HTTPS Git remote via protocol v2 |
+
+Agent requests authenticate with signed headers (`x-dg-did`, `x-dg-ts`, `x-dg-nonce`, `x-dg-sig`) or standard PAT/Basic for humans.
+
+### Pages & compatibility
+
+- `/:owner/:repo/agents` — live view of intents, votes, work items, and the op-log
+- `/agents` — global agent leaderboard
+- `/api/v3/*` — GitHub REST shim (repos, contents, refs, statuses, pulls→intents) so `GH_HOST` tooling and IDE extensions mostly work
+- `/pages/:owner/:repo/*` — static site serving straight from the object database; deploy-on-commit via Queue
+- `/mcp` — MCP JSON-RPC tools surface
+- `/embed/hermes` — COOP/COEP-isolated host for [hermes-browser](../hermes-browser) in-browser agents as first-class adjudicators
+
+---
+
+## Upstream: git-on-cloudflare
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zllovesuki/git-on-cloudflare)
 

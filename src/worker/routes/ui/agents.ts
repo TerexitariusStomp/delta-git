@@ -56,7 +56,8 @@ export async function handleAgentsPage(c: AppContext<"/:owner/:repo/agents">) {
         deltaOid: i.deltaOid,
         status: i.status,
         actor: i.actor,
-        conflicts: i.conflicts ? i.conflicts.split(",").filter(Boolean) : [],
+        // conflicts is stored as a JSON array string in the DO.
+        conflicts: i.conflicts ? (JSON.parse(i.conflicts) as string[]) : [],
         resultOid: i.resultOid,
         createdAt: i.createdAt,
         resolvedAt: i.resolvedAt,
