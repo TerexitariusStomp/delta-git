@@ -99,7 +99,7 @@ async function main() {
       const collide = i < 2;
       const file = collide ? "contested.md" : `agent-${i}.md`;
       const patch = [
-        `--- a/${file}`,
+        `--- ${collide ? `a/${file}` : "/dev/null"}`,
         `+++ b/${file}`,
         `@@ -0,0 +1,1 @@`,
         `+${agent.label} claims this file at ${Date.now()}`,
@@ -109,11 +109,18 @@ async function main() {
         patch,
         message: `${agent.label}: update ${file}`,
       });
-      return { agent: agent.label, status: r.status, intent: r.body?.intent?.id, merge: r.body?.merge?.kind };
+      return {
+        agent: agent.label,
+        status: r.status,
+        intent: r.body?.intent?.id,
+        merge: r.body?.merge?.kind,
+      };
     })
   );
   for (const r of patchResults) {
-    console.log(`  ${r.agent}: HTTP ${r.status} intent=${r.intent?.slice(0, 8) ?? "—"} merge=${r.merge ?? "—"}`);
+    console.log(
+      `  ${r.agent}: HTTP ${r.status} intent=${r.intent?.slice(0, 8) ?? "—"} merge=${r.merge ?? "—"}`
+    );
   }
 
   // Phase 2 — claim + run any still-open intents.

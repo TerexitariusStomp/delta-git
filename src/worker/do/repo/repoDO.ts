@@ -37,6 +37,8 @@ import {
   listMergeVotesState,
   listOpLogState,
   markMergeAdjudicatingState,
+  markMergeUpToDateState,
+  releaseMergeIntentState,
 } from "./catalog/merge";
 import {
   acceptPatchCommitState,
@@ -403,19 +405,46 @@ export class RepoDurableObject extends DurableObject {
     });
   }
 
+  public async releaseMergeIntent(args: { id: string; reason: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await releaseMergeIntentState({
+      ctx: this.ctx,
+      intentId: args.id,
+      reason: args.reason,
+      actor: args.actor,
+    });
+  }
+
+  public async markMergeUpToDate(args: { intentId: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await markMergeUpToDateState({
+      ctx: this.ctx,
+      intentId: args.intentId,
+      actor: args.actor,
+    });
+  }
+
   public async acceptPatchCommit(args: {
     targetRef: string;
     newOid: string;
     actor: string;
     kind: string;
+    stagedPack?: {
+      packKey: string;
+      packBytes: number;
+      idxBytes: number;
+      objectCount: number;
+    };
   }) {
     await this.ensureAccessAndAlarm();
     return await acceptPatchCommitState({
       ctx: this.ctx,
+      env: this.env,
       targetRef: args.targetRef,
       newOid: args.newOid,
       actor: args.actor,
       kind: args.kind,
+      stagedPack: args.stagedPack,
     });
   }
 

@@ -487,7 +487,19 @@ export function registerAgentRoutes(router: AppRouter): void {
       newOid: applied.commitOid,
       actor: principal.actor,
       kind: "push.patch",
+      stagedPack: {
+        packKey,
+        packBytes: pack.packBytes.length,
+        idxBytes: pack.idxBytes.length,
+        objectCount: pack.objectCount,
+      },
     });
+    // applyUnifiedPatch memoized the pack catalog before the patch pack was
+    // registered; drop it so the merge attempt sees the new objects.
+    if (c.var.cacheCtx?.memo) {
+      c.var.cacheCtx.memo.packCatalog = undefined;
+      c.var.cacheCtx.memo.packCatalogPromise = undefined;
+    }
     // Auto-attempt merge — most patches merge cleanly and land immediately.
     const merge = await attemptMerge({
       env: c.env,

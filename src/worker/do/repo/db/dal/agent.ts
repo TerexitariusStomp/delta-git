@@ -74,7 +74,30 @@ export async function claimMergeIntent(
   return rows.length > 0;
 }
 
-/** Expire open intents whose deadline passed. Returns affected ids. */
+/**
+ * Release a merge lease back to `open`. Only flips rows still in `merging`,
+ * so callers may invoke it unconditionally on failed attempts: if another
+ * actor already moved the intent (adjudicating, merged, ...) the update
+ * simply matches nothing.
+ */
+export async function releaseMergeIntent(
+  db: DrizzleSqliteDODatabase,
+  id: string
+): Promise<boolean> {
+  const rows = await db
+    .update(mergeIntents)
+    .set({ status: "open" })
+    .where(and(eq(mergeIntents.id, id), eq(mergeIntents.status, "merging")))
+    .returning({ id: mergeIntents.id });
+  return rows.length > 0;
+}
+
+/**
+ * Expire open intents whose deadline passed. `merging` is included as a
+ * crash backstop: a worker that dies between claim and commit leaves no
+ * graceful release, so the intent TTL eventually reclaims the lease.
+ * Returns affected ids.
+ */
 export async function expireMergeIntents(
   db: DrizzleSqliteDODatabase,
   now: number
@@ -82,7 +105,7 @@ export async function expireMergeIntents(
   const rows = await db
     .update(mergeIntents)
     .set({ status: "expired" })
-    .where(and(eq(mergeIntents.status, "open"), lt(mergeIntents.expiresAt, now)))
+    .where(and(inArray(mergeIntents.status, ["open", "merging"]), lt(mergeIntents.expiresAt, now)))
     .returning({ id: mergeIntents.id });
   return rows.map((r) => r.id);
 }

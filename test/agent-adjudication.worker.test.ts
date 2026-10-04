@@ -9,6 +9,7 @@ import { lookupPushAuth, setupRepoForTests } from "./util/repoSeed";
 import { seedPackFirstRepo } from "./util/pack-first";
 import { decodeReportStatus } from "./util/streaming-helpers";
 import { writeServerPack } from "@/worker/merge/packWriter";
+import { attemptMerge } from "@/worker/merge/engine";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 
 const encoder = new TextEncoder();
@@ -312,5 +313,101 @@ describe("merge adjudication", () => {
         })
     );
     expect(replay.status).toBe("intent_state");
+  });
+});
+
+describe("server-side patch", () => {
+  it("registers the patch pack so the auto-merge lands on the target ref", async () => {
+    const owner = "o";
+    const repo = uniqueRepoId("agent-patch");
+    await setupRepoForTests(env, owner, repo);
+    const seeded = await seedPackFirstRepo(`${owner}/${repo}`);
+    const auth = lookupPushAuth(owner, repo);
+    expect(auth).toBeDefined();
+
+    // README.md is "version two\n" in the seeded head; append a line.
+    const patch = [
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1,1 +1,2 @@",
+      " version two",
+      "+patched by an agent",
+    ].join("\n");
+
+    const response = await workerExports.default.fetch(
+      `https://example.com/api/${owner}/${repo}/dg/patch`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: auth! },
+        body: JSON.stringify({ base_ref: "main", patch, message: "agent patch" }),
+      } as any
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      intent: { id: string };
+      merge: { kind: string; mergeOid?: string };
+    };
+    // The merge only succeeds if the delta objects are readable — i.e. the
+    // staged patch pack made it into the DO pack catalog.
+    expect(body.merge.kind).toBe("merged");
+
+    const done = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) => await stub.getMergeIntent(body.intent.id)
+    );
+    expect(done?.status).toBe("merged");
+    expect(done?.resultOid).toBe(body.merge.mergeOid);
+
+    const { refs } = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) => await stub.getHeadAndRefs()
+    );
+    expect(refs.find((ref: { name: string }) => ref.name === "refs/heads/main")?.oid).toBe(
+      body.merge.mergeOid
+    );
+  });
+
+  it("releases the merge lease when the attempt cannot proceed", async () => {
+    const owner = "o";
+    const repo = uniqueRepoId("agent-release");
+    await setupRepoForTests(env, owner, repo);
+    const seeded = await seedPackFirstRepo(`${owner}/${repo}`);
+    const stub = seeded.getStub();
+
+    // Mint an intent whose delta objects were never staged — the historical
+    // missing-stagedPack path that wedged intents in `merging` forever.
+    const accepted = await callStubWithRetry(
+      seeded.getStub,
+      async (s) =>
+        await s.acceptPatchCommit({
+          targetRef: "refs/heads/main",
+          newOid: "1".repeat(40),
+          actor: "test",
+          kind: "push.patch",
+        })
+    );
+    expect(accepted.status).toBe("accepted");
+
+    const repoId = `${owner}/${repo}`;
+    const result = await attemptMerge({
+      env,
+      repoId,
+      stub,
+      intentId: accepted.intent.id,
+      actor: "test",
+    });
+    expect(result).toEqual({ kind: "skipped", reason: "missing-commit-objects" });
+
+    // The lease was released: the intent is open again and re-claimable.
+    const after = await callStubWithRetry(
+      seeded.getStub,
+      async (s) => await s.getMergeIntent(accepted.intent.id)
+    );
+    expect(after?.status).toBe("open");
+    const reclaimed = await callStubWithRetry(
+      seeded.getStub,
+      async (s) => await s.claimMergeIntent(accepted.intent.id)
+    );
+    expect(reclaimed?.status).toBe("merging");
   });
 });

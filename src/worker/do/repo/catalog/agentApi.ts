@@ -21,6 +21,9 @@ import {
 import { appendOpLogEntry } from "./oplog";
 import { asTypedStorage } from "../repoState";
 import { bumpPacksetVersion, ensureRepoMetadataDefaults } from "./shared";
+import { catalogNeedsCompaction, scheduleCompactionWake } from "./compaction/plan";
+import { listActivePackCatalog } from "../db";
+import type { StagedMergePack } from "./merge";
 
 // Remaining agent-layer DO state: commit statuses, webhook subscriptions,
 // repo secrets (ciphertext only), work intents, and server-side patch
@@ -36,18 +39,49 @@ export type AcceptPatchResult =
  * Land a server-constructed commit as a delta ref + merge intent. Used by
  * the /patch endpoint and importer flows where the commit was built in the
  * worker rather than pushed by a git client.
+ *
+ * `stagedPack` registers the caller-uploaded pack holding the new objects
+ * in the pack catalog — without it the delta ref would point at objects the
+ * object store cannot see, and every merge attempt would fail with
+ * missing-commit-objects while holding a lease.
  */
 export async function acceptPatchCommitState(args: {
   ctx: DurableObjectState;
+  env: Env;
   targetRef: string;
   newOid: string;
   actor: string;
   kind: string;
+  stagedPack?: StagedMergePack;
 }): Promise<AcceptPatchResult> {
   const store = asTypedStorage<RepoStateSchema>(args.ctx.storage);
   await ensureRepoMetadataDefaults(store);
   const db = getDb(args.ctx.storage);
   const now = Date.now();
+
+  if (args.stagedPack) {
+    const nextPackSeq = (await store.get("nextPackSeq")) || 1;
+    await upsertPackCatalogRow(db, {
+      packKey: args.stagedPack.packKey,
+      kind: "receive",
+      state: "active",
+      tier: 0,
+      seqLo: nextPackSeq,
+      seqHi: nextPackSeq,
+      objectCount: args.stagedPack.objectCount,
+      packBytes: args.stagedPack.packBytes,
+      idxBytes: args.stagedPack.idxBytes,
+      createdAt: now,
+      supersededBy: null,
+    });
+    await store.put("nextPackSeq", nextPackSeq + 1);
+    await bumpPacksetVersion(store);
+    const activeCatalog = await listActivePackCatalog(db);
+    if (catalogNeedsCompaction(activeCatalog)) {
+      await store.put("compactionWantedAt", Date.now());
+      await scheduleCompactionWake(args.ctx, args.env);
+    }
+  }
 
   const currentRefs = (await store.get("refs")) || [];
   const deltaRef = deltaRefFor(args.targetRef, args.newOid);

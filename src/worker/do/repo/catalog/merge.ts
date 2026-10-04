@@ -11,6 +11,7 @@ import {
   listMergeIntentsByStatus,
   listMergeVotes,
   listOpLogSince,
+  releaseMergeIntent,
   tallyMergeVotes,
   updateMergeIntent,
 } from "../db";
@@ -318,6 +319,82 @@ export async function claimMergeIntentState(
   await expireMergeIntents(db, Date.now());
   const claimed = await claimMergeIntent(db, id, "merging");
   return claimed ? await getMergeIntent(db, id) : undefined;
+}
+
+export type ReleaseMergeIntentResult =
+  | { status: "released"; intent: MergeIntentRow }
+  | { status: "not_releasable"; state: string }
+  | { status: "not_found" };
+
+/**
+ * Return a merge lease to `open` after a failed attempt so the intent can be
+ * retried (or expire on its own TTL). Safe to call unconditionally: the CAS
+ * only flips rows still in `merging`.
+ */
+export async function releaseMergeIntentState(args: {
+  ctx: DurableObjectState;
+  intentId: string;
+  reason: string;
+  actor: string;
+}): Promise<ReleaseMergeIntentResult> {
+  const db = getDb(args.ctx.storage);
+  const released = await releaseMergeIntent(db, args.intentId);
+  if (!released) {
+    const intent = await getMergeIntent(db, args.intentId);
+    return intent ? { status: "not_releasable", state: intent.status } : { status: "not_found" };
+  }
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "merge.release",
+      actor: args.actor,
+      payload: { intentId: args.intentId, reason: args.reason },
+    },
+    Date.now()
+  );
+  const intent = (await getMergeIntent(db, args.intentId))!;
+  return { status: "released", intent };
+}
+
+/**
+ * Settle an intent whose delta oid is already the target head — the work is
+ * landed by definition, so the intent closes as `merged` with no merge
+ * commit of its own.
+ */
+export async function markMergeUpToDateState(args: {
+  ctx: DurableObjectState;
+  intentId: string;
+  actor: string;
+}): Promise<MarkAdjudicatingResult> {
+  const db = getDb(args.ctx.storage);
+  const intent = await getMergeIntent(db, args.intentId);
+  if (!intent) return { status: "not_found" };
+  if (!ADJUDICATABLE_STATES.has(intent.status)) {
+    return { status: "intent_state", state: intent.status };
+  }
+  const now = Date.now();
+  await updateMergeIntent(db, intent.id, {
+    status: "merged",
+    resultOid: intent.deltaOid,
+    resolvedAt: now,
+  });
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "merge.up_to_date",
+      actor: args.actor,
+      payload: {
+        intentId: intent.id,
+        targetRef: intent.targetRef,
+        deltaOid: intent.deltaOid,
+      },
+    },
+    now
+  );
+  return {
+    status: "ok",
+    intent: { ...intent, status: "merged", resultOid: intent.deltaOid, resolvedAt: now },
+  };
 }
 
 export { countOpenIntentsForRef };

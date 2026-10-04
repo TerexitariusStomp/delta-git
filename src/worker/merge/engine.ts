@@ -309,16 +309,29 @@ export async function attemptMerge(args: {
       : { kind: "not_found" };
   }
 
+  // Every early return below this point must settle the lease we just took:
+  // either release it back to `open` so the intent can be retried, or close
+  // it as merged. Leaving `merging` behind would wedge the intent until its
+  // TTL expires.
+  const release = (reason: string) =>
+    stub.releaseMergeIntent({ id: intentId, reason, actor }).catch(() => {});
+
   const { refs } = await stub.getHeadAndRefs();
   const target = refs.find((ref) => ref.name === intent.targetRef);
   const baseOid = target?.oid ?? intent.baseOid;
-  if (baseOid === intent.deltaOid) return { kind: "up_to_date", intentId };
+  if (baseOid === intent.deltaOid) {
+    await stub.markMergeUpToDate({ intentId, actor });
+    return { kind: "up_to_date", intentId };
+  }
 
   const [oursCommit, theirsCommit] = await Promise.all([
     readCommit(env, repoId, baseOid, cacheCtx),
     readCommit(env, repoId, intent.deltaOid, cacheCtx),
   ]);
-  if (!oursCommit || !theirsCommit) return { kind: "skipped", reason: "missing-commit-objects" };
+  if (!oursCommit || !theirsCommit) {
+    await release("missing-commit-objects");
+    return { kind: "skipped", reason: "missing-commit-objects" };
+  }
 
   const mergeBaseOid = await findMergeBase(env, repoId, baseOid, intent.deltaOid, cacheCtx);
   const mergeBaseCommit = mergeBaseOid
@@ -334,14 +347,23 @@ export async function attemptMerge(args: {
     theirsCommit.tree,
     cacheCtx
   );
-  if (treeMerge === "too_big") return { kind: "skipped", reason: "merge-too-large" };
+  if (treeMerge === "too_big") {
+    await release("merge-too-large");
+    return { kind: "skipped", reason: "merge-too-large" };
+  }
 
   if (treeMerge.conflicts.length > 0) {
-    await stub.markMergeAdjudicating({
+    const marked = await stub.markMergeAdjudicating({
       intentId,
       conflicts: treeMerge.conflicts,
       actor,
     });
+    if (marked.status !== "ok") {
+      // The intent moved under us before it could be adjudicated; make sure
+      // we did not leave our `merging` lease behind (release is a no-op if
+      // the status already changed).
+      await release(`adjudicate-mark-failed:${marked.status}`);
+    }
     // The Workers-AI seat votes on every adjudication via the queue.
     await env.REPO_TASKS_QUEUE.send({
       kind: "adjudicate",
@@ -391,9 +413,15 @@ export async function attemptMerge(args: {
   });
 
   if (committed.status === "base_moved") {
+    // The intent is still `merging` (commitMergeState returns without a
+    // status change on CAS failure); reopen it so a retry merges against
+    // the new head.
+    await release("base-moved");
     return { kind: "base_moved", intentId, currentOid: committed.currentOid };
   }
   if (committed.status !== "committed") {
+    // `intent_state`/`not_found` mean the intent left `merging` under us —
+    // another actor owns it now, so there is no lease to release.
     return { kind: "skipped", reason: committed.status };
   }
   // in-toto/DSSE attestation for the committed merge — provenance forever.

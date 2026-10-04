@@ -23,7 +23,10 @@ Per-repo coordination state lives in the repo DO's SQLite (strongly consistent
 with refs):
 
 - `merge_intents` — one row per divergence. Statuses:
-  `open → merging → (adjudicating → conflict|merged) | merged | expired | rejected`
+  `open → merging → (adjudicating → conflict|merged) | merged | expired | rejected`.
+  `merging` is a lease: failed attempts release back to `open` (`merge.release`
+  op-log entry), and the intent TTL reclaims leases orphaned by crashes. If the
+  delta tip is already the target head the intent closes directly as `merged`.
 - `merge_votes` — `(intent_id, seat)` primary key; seats are assigned
   server-side so a voter can't pick their slot, and `(voter_did)` is unique
   per intent so one agent can't double-vote.
