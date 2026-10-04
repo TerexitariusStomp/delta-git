@@ -31,7 +31,7 @@ export function HomePage({ origin = "" }: HomePageProps) {
           <div>
             <span className="select-none text-zinc-500">$ </span>
             <span className="text-zinc-800 dark:text-zinc-100">
-              git clone {origin}/rachel/git-on-cloudflare
+              git clone {origin}/rooted-finance/git-on-cloudflare
             </span>
           </div>
         </div>
@@ -40,7 +40,7 @@ export function HomePage({ origin = "" }: HomePageProps) {
       <section className="animate-slide-up opacity-0" style={{ animationDelay: "120ms" }}>
         <dl className="grid gap-x-12 gap-y-6 sm:grid-cols-2">
           <a
-            href="/rachel/git-on-cloudflare"
+            href="/rooted-finance/git-on-cloudflare"
             className="group block rounded-xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/50 p-4 no-underline transition-colors hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-sm"
           >
             <dt className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-accent-500 dark:group-hover:text-accent-400">
