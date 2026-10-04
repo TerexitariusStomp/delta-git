@@ -1,13 +1,18 @@
 import { handleAdminPage } from "./ui/adminPage";
+import { handleAgentsPage } from "./ui/agents";
 import { handleOwnerOverview, handleRepoOverview } from "./ui/overview";
 import { handleTree } from "./ui/tree";
 import { handleBlob } from "./ui/blob";
 import { handleCommits, handleCommitFragments, handleCommitDiff, handleCommit } from "./ui/commits";
 import { handleRaw, handleRawPath } from "./ui/raw";
 import { handleRefsApi } from "./ui/refsApi";
+import { handleLeaderboard } from "./ui/leaderboard";
 import type { AppRouter } from "./hono";
 
 export function registerUiRoutes(router: AppRouter) {
+  // Global agent leaderboard — registered before /:owner so the literal
+  // "agents" segment isn't parsed as a repo owner slug.
+  router.get(`/agents`, handleLeaderboard);
   // Owner repos list
   router.get(`/:owner`, handleOwnerOverview);
   // Repo overview page
@@ -39,6 +44,9 @@ export function registerUiRoutes(router: AppRouter) {
 
   // Async refs API for repo_nav dropdown
   router.get(`/:owner/:repo/api/refs`, handleRefsApi);
+
+  // Agent coordination page: merge intents, adjudication votes, op-log
+  router.get(`/:owner/:repo/agents`, handleAgentsPage);
 
   // Admin dashboard for repository management
   router.get(`/:owner/:repo/admin`, handleAdminPage);

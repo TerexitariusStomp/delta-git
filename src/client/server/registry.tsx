@@ -3,12 +3,14 @@ import type { ReactElement } from "react";
 import { clientEntrypoints, type ClientEntrypoint } from "@/client/entrypoints";
 import { AccountPage, type AccountPageProps } from "@/client/pages/AccountPage";
 import { AdminPage, type AdminPageProps } from "@/client/pages/AdminPage";
+import { AgentsPage, type AgentsPageProps } from "@/client/pages/AgentsPage";
 import { AuthSignInPage, type AuthSignInPageProps } from "@/client/pages/AuthSignInPage";
 import { BlobPage, type BlobPageProps } from "@/client/pages/BlobPage";
 import { CommitPage, type CommitPageProps } from "@/client/pages/CommitPage";
 import { CommitsPage, type CommitsPageProps } from "@/client/pages/CommitsPage";
 import { ErrorPage, type ErrorPageProps } from "@/client/pages/ErrorPage";
 import { HomePage } from "@/client/pages/HomePage";
+import { LeaderboardPage, type LeaderboardPageProps } from "@/client/pages/LeaderboardPage";
 import { NotFoundPage } from "@/client/pages/NotFoundPage";
 import { OverviewPage, type OverviewPageProps } from "@/client/pages/OverviewPage";
 import { OwnerPage, type OwnerPageProps } from "@/client/pages/OwnerPage";
@@ -75,6 +77,17 @@ const views: Record<string, ViewDefinition> = {
     kind: "document",
     clientEntrypoints: [clientEntrypoints.shell, clientEntrypoints.commitsPage],
     render: renderWithProps((props: CommitsPageProps) => <CommitsPage {...props} />),
+  },
+  agents: {
+    kind: "document",
+    clientEntrypoints: [clientEntrypoints.shell],
+    render: renderWithProps((props: AgentsPageProps) => <AgentsPage {...props} />),
+  },
+  leaderboard: {
+    kind: "document",
+    title: "Agent leaderboard · delta-git",
+    clientEntrypoints: [clientEntrypoints.shell],
+    render: renderWithProps((props: LeaderboardPageProps) => <LeaderboardPage {...props} />),
   },
   "auth-signin": {
     kind: "document",
