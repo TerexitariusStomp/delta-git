@@ -5,6 +5,7 @@ import { consumeChallenge, issueChallenge } from "@/worker/agent/atpauth/challen
 import { resolveDid, resolveHandle } from "@/worker/agent/atpauth/pds";
 import { signDidSession, verifyDidSession } from "@/worker/agent/atpauth/jwt";
 import { canonicalJson, utf8, verifyKeySignature } from "@/worker/agent/atpauth/verify";
+import { completeOAuth, startOAuth, takeOAuthState } from "@/worker/agent/atpauth/oauth";
 import { decodeKeyMultibase } from "@/worker/agent/atpauth/didkey";
 import {
   clearDidSessionCookie,
@@ -38,6 +39,9 @@ import { generateNamespaceId } from "@/worker/auth/session";
 
 // atproto DID auth routes — the front door for human sign-in.
 //
+//   GET  /auth/oauth/start?handle         → PAR → redirect to the PDS OAuth UI
+//   GET  /auth/oauth/callback?code&state  → token exchange → dg_session → /auth/account
+//   GET  /client-metadata.json            → atproto OAuth client metadata (client_id doc)
 //   GET  /auth/did/challenge?did|handle   → nonce + canonical payload
 //   POST /auth/did/verify                 → verify sig → httpOnly dg_session
 //   POST /auth/did/logout                 → revoke jti, clear cookie
@@ -71,6 +75,79 @@ async function rateGate(
 /** Client IP bucket for unauthenticated rate limits (not an identity). */
 function callerKey(c: AppContext): string {
   return (c.req.header("cf-connecting-ip") ?? "anon").slice(0, 45);
+}
+
+/**
+ * Shared post-identity step for every sign-in path (challenge verify, OAuth
+ * callback): upsert the identity/user bridge, bootstrap the caller's
+ * namespace, and issue the dg_session cookie. Returns the namespace slug.
+ */
+async function establishDidSession(
+  c: AppContext,
+  did: string,
+  handle: string | undefined
+): Promise<{ namespaceSlug: string | undefined } | Response> {
+  const config = loadSessionConfig(c.env);
+  if (!config.ok) return bad(c, "session-unavailable", 500);
+
+  const identity = await ensureIdentity(c.var.db, { did, handle });
+
+  // Namespace bootstrap: first-label of the handle, else a did-derived
+  // slug. Race-safe via claimNamespace's ON CONFLICT.
+  let namespaceSlug: string | undefined;
+  const candidate = handle
+    ? handle
+        .split(".")[0]
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "")
+    : undefined;
+  const slug = candidate && candidate.length >= 2 ? candidate : `u-${did.slice(-8).toLowerCase()}`;
+  const existing = await findNamespaceBySlug(c.var.db, slug);
+  if (!existing) {
+    const nsId = generateNamespaceId();
+    const claimed = await claimNamespace(c.var.db, {
+      id: nsId,
+      slug,
+      createdBy: identity.userId,
+      ownerDid: did,
+      createdAt: Date.now(),
+    });
+    const ns = claimed ?? (await findNamespaceBySlug(c.var.db, slug));
+    if (ns) {
+      await insertMembershipIfMissing(c.var.db, {
+        namespaceId: ns.id,
+        userId: identity.userId,
+        createdAt: Date.now(),
+      });
+      await c.var.db.update(namespaces).set({ ownerDid: did }).where(eq(namespaces.id, ns.id));
+      namespaceSlug = ns.slug;
+    }
+  } else if (existing.ownerDid === did) {
+    // Re-join membership if the DID already owns this namespace.
+    await insertMembershipIfMissing(c.var.db, {
+      namespaceId: existing.id,
+      userId: identity.userId,
+      createdAt: Date.now(),
+    });
+    namespaceSlug = existing.slug;
+  }
+
+  const jti = crypto.randomUUID();
+  const iat = Math.floor(Date.now() / 1000);
+  await insertDidSession(c.var.db, {
+    jti,
+    did,
+    expiresAt: Date.now() + SESSION_TTL_SEC * 1000,
+  });
+  const token = await signDidSession(config.secret, {
+    sub: did,
+    handle,
+    jti,
+    iat,
+    exp: iat + SESSION_TTL_SEC,
+  });
+  setDidSessionCookie(c, token);
+  return { namespaceSlug };
 }
 
 export function registerAtpAuthRoutes(router: AppRouter): void {
@@ -175,80 +252,85 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
       return bad(c, "signature-invalid", 401);
     }
 
-    // Identity + bridged user.
-    const identity = await ensureIdentity(c.var.db, {
-      did: parsed.did,
-      handle: resolved.handle,
-    });
-
-    // Namespace bootstrap: first-label of the handle, else a did-derived
-    // slug. Race-safe via claimNamespace's ON CONFLICT.
-    let namespaceSlug: string | undefined;
-    const candidate = resolved.handle
-      ? resolved.handle
-          .split(".")[0]
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, "")
-      : undefined;
-    const slug =
-      candidate && candidate.length >= 2 ? candidate : `u-${parsed.did.slice(-8).toLowerCase()}`;
-    const existing = await findNamespaceBySlug(c.var.db, slug);
-    if (!existing) {
-      const nsId = generateNamespaceId();
-      const claimed = await claimNamespace(c.var.db, {
-        id: nsId,
-        slug,
-        createdBy: identity.userId,
-        ownerDid: parsed.did,
-        createdAt: Date.now(),
-      });
-      const ns = claimed ?? (await findNamespaceBySlug(c.var.db, slug));
-      if (ns) {
-        await insertMembershipIfMissing(c.var.db, {
-          namespaceId: ns.id,
-          userId: identity.userId,
-          createdAt: Date.now(),
-        });
-        await c.var.db
-          .update(namespaces)
-          .set({ ownerDid: parsed.did })
-          .where(eq(namespaces.id, ns.id));
-        namespaceSlug = ns.slug;
-      }
-    } else {
-      // Re-join membership if the DID already owns this namespace.
-      if (existing.ownerDid === parsed.did) {
-        await insertMembershipIfMissing(c.var.db, {
-          namespaceId: existing.id,
-          userId: identity.userId,
-          createdAt: Date.now(),
-        });
-        namespaceSlug = existing.slug;
-      }
-    }
-
-    const jti = crypto.randomUUID();
-    const iat = Math.floor(Date.now() / 1000);
-    await insertDidSession(c.var.db, {
-      jti,
-      did: parsed.did,
-      expiresAt: Date.now() + SESSION_TTL_SEC * 1000,
-    });
-    const token = await signDidSession(config.secret, {
-      sub: parsed.did,
-      handle: resolved.handle,
-      jti,
-      iat,
-      exp: iat + SESSION_TTL_SEC,
-    });
-    setDidSessionCookie(c, token);
+    const established = await establishDidSession(c, parsed.did, resolved.handle);
+    if (established instanceof Response) return established;
     metric(c.env, "auth.did", { scope: "verified", index: parsed.did });
     return c.json({
       did: parsed.did,
       handle: resolved.handle ?? null,
-      namespace: namespaceSlug ?? null,
-      session_expires_at: (iat + SESSION_TTL_SEC) * 1000,
+      namespace: established.namespaceSlug ?? null,
+      session_expires_at: Date.now() + SESSION_TTL_SEC * 1000,
     });
+  });
+
+  // --- atproto OAuth (browser sign-in) -----------------------------------------
+  // Public-client OAuth: PAR + PKCE + DPoP, no client secret. The state KV
+  // entry holds the PKCE verifier + DPoP key until the callback consumes it.
+
+  router.get("/client-metadata.json", async (c) => {
+    const origin = new URL(c.req.url).origin;
+    return c.json({
+      client_id: `${origin}/client-metadata.json`,
+      client_name: "delta-git",
+      client_uri: origin,
+      redirect_uris: [`${origin}/auth/oauth/callback`],
+      scope: "atproto",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      application_type: "web",
+      token_endpoint_auth_method: "none",
+      dpop_bound_access_tokens: true,
+    });
+  });
+
+  router.get("/auth/oauth/start", async (c) => {
+    const limited = await rateGate(c, LIMITS.authChallenge, callerKey(c));
+    if (limited) return limited;
+
+    const rawHandle = c.req.query("handle")?.trim().toLowerCase().replace(/^@/, "");
+    const handle = rawHandle
+      ? rawHandle.includes(".")
+        ? rawHandle
+        : `${rawHandle}.bsky.social`
+      : undefined;
+    const result = await startOAuth({
+      env: c.env,
+      kv: c.env.ROUTES,
+      origin: new URL(c.req.url).origin,
+      handle,
+    });
+    if (!result.ok) {
+      metric(c.env, "auth.did", { scope: "oauth-start-failed", index: result.error });
+      return c.redirect(`/auth?error=oauth_start`);
+    }
+    metric(c.env, "auth.did", { scope: "oauth-start", index: handle ?? "none" });
+    return c.redirect(result.redirectUrl);
+  });
+
+  router.get("/auth/oauth/callback", async (c) => {
+    const code = c.req.query("code");
+    const stateNonce = c.req.query("state");
+    const iss = c.req.query("iss");
+    if (!code || !stateNonce || !iss) {
+      return c.redirect(`/auth?error=invalid_request`);
+    }
+    const state = await takeOAuthState(c.env.ROUTES, stateNonce);
+    if (!state || state.issuer !== iss) {
+      return c.redirect(`/auth?error=invalid_state`);
+    }
+    const origin = new URL(c.req.url).origin;
+    const result = await completeOAuth({ origin, code, state });
+    if (!result.ok) {
+      metric(c.env, "auth.did", { scope: "oauth-token-failed", index: result.error });
+      return c.redirect(`/auth?error=oauth_token`);
+    }
+    const resolved = await resolveDid(c.env, result.did);
+    const established = await establishDidSession(c, result.did, resolved?.handle);
+    if (established instanceof Response) {
+      return c.redirect(`/auth?error=session_create_failed`);
+    }
+    metric(c.env, "auth.did", { scope: "oauth-verified", index: result.did });
+    return c.redirect("/auth/account");
   });
 
   // --- logout / session -------------------------------------------------------

@@ -24,6 +24,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   oidc_unavailable: "tessera sign-in is not configured for this deployment. Contact your operator.",
   session_create_failed:
     "Could not create your session after sign-in. Try again, then check the worker logs if it persists.",
+  oauth_start: "Could not reach the Bluesky authorization service. Check the handle and try again.",
+  oauth_token:
+    "Bluesky could not complete the token exchange. Start a fresh sign-in and try again.",
 };
 
 function describeError(code: string | undefined): string | null {
@@ -42,7 +45,7 @@ export function AuthSignInPage({ errorCode, didAuth, tesseraAuth }: AuthSignInPa
           </h1>
           <p className="m-0 mt-2 text-sm text-zinc-500 dark:text-zinc-400">
             {didAuth
-              ? "Prove your atproto identity — sign a one-time challenge with your DID key."
+              ? "Sign in with your Bluesky account, or prove a DID by signing a one-time challenge."
               : "Authenticate with tessera to manage your namespaces."}
           </p>
         </div>

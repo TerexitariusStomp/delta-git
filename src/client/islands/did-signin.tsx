@@ -6,16 +6,12 @@ import { Fingerprint, KeyRound } from "lucide-react";
 import { hydrateIsland } from "@/client/hydrate";
 import { Button, ErrorBanner, Input } from "@/client/components/ui";
 
-// DID sign-in island — drives the atproto challenge→verify flow:
-//   1. user enters a handle (alice.bsky.social) or DID (did:plc:…/did:key:…)
-//   2. GET /auth/did/challenge → nonce + canonical payload
-//   3. user signs the payload with their atproto/device key and pastes the
-//      base64url signature (wallets/extensions can prefill it)
-//   4. POST /auth/did/verify → session cookie → account
+// DID sign-in island — two paths behind one input:
+//   handle (alice.bsky.social) → /auth/oauth/start → Bluesky OAuth → callback
+//   did:* (did:plc:/did:key:) → /auth/did/challenge → paste-signed verify
 //
-// The server never sees a private key — only a signature over a single-use
-// nonce. This is deliberately paste-based for now; OAuth-style PDS auth is
-// out of scope (see docs/security.md).
+// The manual challenge path stays for device keys and agents; humans get the
+// OAuth redirect they expect. The server never sees a private key.
 
 type Challenge = {
   did: string;
@@ -36,6 +32,18 @@ export function DidSignInIsland(_props: DidSignInIslandProps) {
   const [signature, setSignature] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const continueWithAtproto = async () => {
+    const id = identifier.trim();
+    // Handles (and an empty box — Bluesky asks there) go through OAuth;
+    // DIDs sign a challenge, since did:key/device keys aren't OAuth accounts.
+    if (!id.startsWith("did:")) {
+      const qs = id ? `?handle=${encodeURIComponent(id)}` : "";
+      window.location.assign(`/auth/oauth/start${qs}`);
+      return;
+    }
+    await fetchChallenge();
+  };
 
   const fetchChallenge = async () => {
     setError(null);
@@ -102,10 +110,22 @@ export function DidSignInIsland(_props: DidSignInIslandProps) {
             autoComplete="username"
           />
         </label>
-        <Button variant="primary" onClick={fetchChallenge} disabled={busy || !identifier.trim()}>
+        <Button variant="primary" onClick={continueWithAtproto} disabled={busy}>
           <Fingerprint className="h-4 w-4" aria-hidden="true" />
-          {busy ? "Issuing challenge…" : "Continue with atproto"}
+          {busy
+            ? "Issuing challenge…"
+            : identifier.trim().startsWith("did:")
+              ? "Continue with challenge"
+              : "Continue with Bluesky"}
         </Button>
+        <button
+          type="button"
+          className="cursor-pointer self-center text-xs text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-700 dark:text-zinc-400 dark:decoration-zinc-700 dark:hover:text-zinc-200"
+          onClick={fetchChallenge}
+          disabled={busy || !identifier.trim()}
+        >
+          Sign with an atproto key instead
+        </button>
       </div>
     );
   }
