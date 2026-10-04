@@ -6,20 +6,8 @@
   "compatibility_flags": [
     "nodejs_als"
   ],
-  "workers_dev": false,
-  "routes": [
-    {
-      "pattern": "git-on-cloudflare.com",
-      "custom_domain": true
-    },
-    {
-      "pattern": "git.limic.dev",
-      "custom_domain": true
-    }
-  ],
-  "limits": {
-    "cpu_ms": 300000
-  },
+  "workers_dev": true,
+  // Free plan: custom cpu_ms limits need Workers Paid (default 30s cap).
   "durable_objects": {
     "bindings": [
       {
@@ -61,7 +49,9 @@
     },
     {
       "tag": "v4",
-      "new_classes": [
+      // SQLite-backed so the agent DOs deploy on the free plan (KV-backed
+      // new_classes is paid-only); the KV-style storage API works unchanged.
+      "new_sqlite_classes": [
         "AdjudicatorAgent",
         "RepoAgent",
         "FirehoseAgent"
@@ -71,7 +61,7 @@
   "kv_namespaces": [
     {
       "binding": "ROUTES",
-      "id": "4e471bad6c5e44ceb91c4adf5559cb44"
+      "id": "947d755b199a45b7bf85c0ddfbe31fac"
     }
   ],
   "d1_databases": [
@@ -91,12 +81,15 @@
   "ai": {
     "binding": "AI"
   },
-  "analytics_engine_datasets": [
-    {
-      "binding": "ANALYTICS",
-      "dataset": "dg_metrics"
-    }
-  ],
+  // Analytics Engine needs a one-time dashboard opt-in per account
+  // (dash.cloudflare.com/<acct>/workers/analytics-engine). Re-enable this
+  // binding once opted in — `metric()` no-ops while it's absent.
+  // "analytics_engine_datasets": [
+  //   {
+  //     "binding": "ANALYTICS",
+  //     "dataset": "dg_metrics"
+  //   }
+  // ],
   "queues": {
     "producers": [
       {
