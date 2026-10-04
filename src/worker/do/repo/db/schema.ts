@@ -157,10 +157,7 @@ export const commitStatus = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.sha, t.context], name: "commit_status_pk" }),
-    check(
-      "chk_commit_status_state",
-      sql`"state" IN ('pending','success','failure','error')`
-    ),
+    check("chk_commit_status_state", sql`"state" IN ('pending','success','failure','error')`),
   ]
 );
 

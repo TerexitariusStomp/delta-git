@@ -53,9 +53,7 @@ async function importPubkey(pubkeyBytes: Uint8Array): Promise<CryptoKey | undefi
   }
 }
 
-export type AgentAuth =
-  | { kind: "ok"; agent: AgentRow }
-  | { kind: "rejected"; reason: string };
+export type AgentAuth = { kind: "ok"; agent: AgentRow } | { kind: "rejected"; reason: string };
 
 /** Look up a registered agent by DID. */
 export async function getAgent(db: Db, did: string): Promise<AgentRow | undefined> {

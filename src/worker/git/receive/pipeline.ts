@@ -369,6 +369,36 @@ export async function executeReceivePipeline(
       );
     }
 
+    // Deploy-on-commit: every successful heads-ref advance enqueues the
+    // deploy lane (static → /pages serving, dynamic → Workers Scripts API).
+    for (let i = 0; i < args.commands.length; i++) {
+      const command = args.commands[i];
+      const status = finalize.statuses[i];
+      if (
+        !status?.ok ||
+        !command.ref.startsWith("refs/heads/") ||
+        /^0{40}$/i.test(command.newOid)
+      ) {
+        continue;
+      }
+      args.ctx.waitUntil(
+        args.env.REPO_TASKS_QUEUE.send({
+          kind: "deploy",
+          doId: args.stub.id.toString(),
+          repoId: args.repoId,
+          ref: command.ref,
+          sha: command.newOid,
+          actor: args.actor,
+        }).catch((error) => {
+          args.log.warn("receive:deploy-enqueue-failed", {
+            repoId: args.repoId,
+            ref: command.ref,
+            error: String(error),
+          });
+        })
+      );
+    }
+
     return buildReceiveResult({
       unpackOk: true,
       commands: args.commands,

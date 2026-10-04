@@ -58,7 +58,11 @@ function mergeJsonValue(base: Json, ours: Json, theirs: Json): JsonMergeResult {
   if (!baseObj || !oursObj || !theirsObj) return { ok: false };
 
   const out: { [k: string]: Json } = {};
-  const keys = new Set([...Object.keys(baseObj), ...Object.keys(oursObj), ...Object.keys(theirsObj)]);
+  const keys = new Set([
+    ...Object.keys(baseObj),
+    ...Object.keys(oursObj),
+    ...Object.keys(theirsObj),
+  ]);
   for (const key of keys) {
     const b = key in baseObj ? baseObj[key] : undefined;
     const o = key in oursObj ? oursObj[key] : undefined;
@@ -111,11 +115,10 @@ function mergeTextFile(base: Uint8Array, ours: Uint8Array, theirs: Uint8Array): 
   if (baseText === undefined || oursText === undefined || theirsText === undefined) {
     return { kind: "conflict", reason: "binary" };
   }
-  const result = diff3Merge(
-    oursText.split("\n"),
-    baseText.split("\n"),
-    theirsText.split("\n")
-  ) as { conflict: boolean; result: string[] };
+  const result = diff3Merge(oursText.split("\n"), baseText.split("\n"), theirsText.split("\n")) as {
+    conflict: boolean;
+    result: string[];
+  };
   if (result.conflict) return { kind: "conflict", reason: "text-hunk-overlap" };
   return { kind: "merged", content: te.encode(result.result.join("\n")) };
 }

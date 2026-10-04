@@ -1,9 +1,4 @@
-import type {
-  CommitStatusRow,
-  MergeIntentRow,
-  WebhookSubRow,
-  WorkIntentRow,
-} from "../db/schema";
+import type { CommitStatusRow, MergeIntentRow, WebhookSubRow, WorkIntentRow } from "../db/schema";
 import type { RepoStateSchema } from "../repoState";
 
 import { deltaRefFor, mergeIntentIdFor, MERGE_INTENT_TTL_MS } from "./diverge";
@@ -53,8 +48,7 @@ export async function acceptPatchCommitState(args: {
   const currentRefs = (await store.get("refs")) || [];
   const deltaRef = deltaRefFor(args.targetRef, args.newOid);
   const intentId = mergeIntentIdFor(args.targetRef, args.newOid);
-  const baseOid =
-    currentRefs.find((ref) => ref.name === args.targetRef)?.oid ?? ZERO_OID;
+  const baseOid = currentRefs.find((ref) => ref.name === args.targetRef)?.oid ?? ZERO_OID;
 
   if (!currentRefs.some((ref) => ref.name === deltaRef)) {
     await store.put("refs", [...currentRefs, { name: deltaRef, oid: args.newOid }]);

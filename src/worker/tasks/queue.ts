@@ -4,6 +4,8 @@ import { handleCompactionDeleteMessage, handleCompactionMessage } from "./compac
 import { handlePackRefBackfillMessage } from "./refBackfill";
 import { handleRouteCacheSyncMessage } from "./routeCacheSync";
 import { handleRepositoryDeleteMessage } from "./repositoryDelete";
+import { handleDeployMessage } from "./deploy";
+import { handleAdjudicateMessage } from "./adjudicate";
 import { handleWebhookMessage } from "./webhook";
 import { RepoTaskQueueMessageSchema } from "./types";
 
@@ -50,6 +52,12 @@ export async function handleRepoTaskQueue(
         break;
       case "webhook":
         await handleWebhookMessage(message, body, env);
+        break;
+      case "deploy":
+        await handleDeployMessage(message, body, env);
+        break;
+      case "adjudicate":
+        await handleAdjudicateMessage(message, body, env);
         break;
       default: {
         const _exhaustive: never = body;

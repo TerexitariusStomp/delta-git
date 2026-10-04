@@ -153,10 +153,7 @@ export async function getLatestOpLogRow(
   return rows[0];
 }
 
-export async function appendOpLog(
-  db: DrizzleSqliteDODatabase,
-  row: OpLogRow
-): Promise<void> {
+export async function appendOpLog(db: DrizzleSqliteDODatabase, row: OpLogRow): Promise<void> {
   await db.insert(opLog).values(row);
 }
 
@@ -220,16 +217,19 @@ export async function upsertCommitStatus(
   db: DrizzleSqliteDODatabase,
   row: CommitStatusRow
 ): Promise<void> {
-  await db.insert(commitStatus).values(row).onConflictDoUpdate({
-    target: [commitStatus.sha, commitStatus.context],
-    set: {
-      state: row.state,
-      description: row.description,
-      targetUrl: row.targetUrl,
-      createdBy: row.createdBy,
-      createdAt: row.createdAt,
-    },
-  });
+  await db
+    .insert(commitStatus)
+    .values(row)
+    .onConflictDoUpdate({
+      target: [commitStatus.sha, commitStatus.context],
+      set: {
+        state: row.state,
+        description: row.description,
+        targetUrl: row.targetUrl,
+        createdBy: row.createdBy,
+        createdAt: row.createdAt,
+      },
+    });
 }
 
 export async function listCommitStatuses(
@@ -254,9 +254,7 @@ export async function insertWebhookSub(
   await db.insert(webhookSubs).values(row);
 }
 
-export async function listActiveWebhookSubs(
-  db: DrizzleSqliteDODatabase
-): Promise<WebhookSubRow[]> {
+export async function listActiveWebhookSubs(db: DrizzleSqliteDODatabase): Promise<WebhookSubRow[]> {
   return await db.select().from(webhookSubs).where(eq(webhookSubs.active, 1));
 }
 
@@ -279,14 +277,17 @@ export async function upsertRepoSecret(
   db: DrizzleSqliteDODatabase,
   row: RepoSecretRow
 ): Promise<void> {
-  await db.insert(repoSecrets).values(row).onConflictDoUpdate({
-    target: [repoSecrets.name],
-    set: {
-      ciphertext: row.ciphertext,
-      createdBy: row.createdBy,
-      updatedAt: row.updatedAt,
-    },
-  });
+  await db
+    .insert(repoSecrets)
+    .values(row)
+    .onConflictDoUpdate({
+      target: [repoSecrets.name],
+      set: {
+        ciphertext: row.ciphertext,
+        createdBy: row.createdBy,
+        updatedAt: row.updatedAt,
+      },
+    });
 }
 
 export async function listRepoSecretMeta(

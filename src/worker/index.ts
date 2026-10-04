@@ -2,6 +2,9 @@ import { Hono } from "hono";
 import { registerGitRoutes } from "./routes/git";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerAgentRoutes } from "./routes/agent";
+import { registerApiV3Routes } from "./routes/apiv3";
+import { registerPagesRoutes } from "./routes/pages";
+import { registerMcpRoutes } from "./routes/mcp";
 import { registerUiRoutes } from "./routes/ui";
 import { registerAuthRoutes } from "./routes/auth";
 import { requestServicesMiddleware, type AppBindings, type AppContext } from "./routes/hono";
@@ -20,6 +23,10 @@ registerAdminRoutes(app);
 registerAuthRoutes(app);
 // delta-git agent API under /api/* — registered before UI for the same reason
 registerAgentRoutes(app);
+registerApiV3Routes(app);
+registerMcpRoutes(app);
+// Static site serving from repo refs
+registerPagesRoutes(app);
 
 app.get("/", async (c) => {
   const viewer = await loadViewer(c);

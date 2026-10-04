@@ -61,7 +61,10 @@ export async function applyResolution(args: {
     return { kind: "failed", reason: "resolution-parse-error" };
   }
 
-  const resolutions = new Map<string, { kind: "content"; content: Uint8Array } | { kind: "delete" }>();
+  const resolutions = new Map<
+    string,
+    { kind: "content"; content: Uint8Array } | { kind: "delete" }
+  >();
   for (const [path, file] of Object.entries(doc.files ?? {})) {
     if (file.delete) resolutions.set(path, { kind: "delete" });
     else if (typeof file.content_b64 === "string") {
@@ -114,7 +117,10 @@ export async function applyResolution(args: {
     { type: "commit", payload: commitPayload, oid: mergeOid },
   ];
   const pack = await writeServerPack(objects);
-  const packKey = r2PackKey(doPrefix(stub.id.toString()), `pack-merge-${mergeOid.slice(0, 12)}.pack`);
+  const packKey = r2PackKey(
+    doPrefix(stub.id.toString()),
+    `pack-merge-${mergeOid.slice(0, 12)}.pack`
+  );
   await env.REPO_BUCKET.put(packKey, pack.packBytes);
   await env.REPO_BUCKET.put(packIndexKey(packKey), pack.idxBytes);
 
@@ -136,6 +142,16 @@ export async function applyResolution(args: {
   }
   if (committed.status !== "committed") {
     return { kind: "failed", reason: committed.status };
+  }
+  if (intent.targetRef.startsWith("refs/heads/")) {
+    await env.REPO_TASKS_QUEUE.send({
+      kind: "deploy",
+      doId: stub.id.toString(),
+      repoId,
+      ref: intent.targetRef,
+      sha: mergeOid,
+      actor,
+    }).catch(() => {});
   }
   return { kind: "merged", mergeOid };
 }

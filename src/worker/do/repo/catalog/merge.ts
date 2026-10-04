@@ -183,7 +183,13 @@ export async function markMergeAdjudicatingState(args: {
 }
 
 export type CastVoteResult =
-  | { status: "accepted"; seat: number; tallies: { resolutionDigest: string; votes: number }[]; resolved: boolean; winningDigest?: string }
+  | {
+      status: "accepted";
+      seat: number;
+      tallies: { resolutionDigest: string; votes: number }[];
+      resolved: boolean;
+      winningDigest?: string;
+    }
   | { status: "rejected"; reason: string };
 
 /**

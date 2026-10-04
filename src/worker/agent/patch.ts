@@ -23,7 +23,7 @@ export type PatchApplyResult =
   | { kind: "ok"; commitOid: string; objects: NewObject[] }
   | { kind: "failed"; reason: string };
 
-async function readPayload(
+export async function readPayload(
   env: Env,
   repoId: string,
   oid: string,
@@ -225,7 +225,7 @@ export async function applyUnifiedPatch(args: {
   return { kind: "ok", commitOid, objects };
 }
 
-async function resolvePathEntry(
+export async function resolvePathEntry(
   env: Env,
   repoId: string,
   treeOid: string,

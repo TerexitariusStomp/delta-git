@@ -67,6 +67,27 @@ export const WebhookQueueMessageSchema = z.object({
 
 export type WebhookQueueMessage = z.infer<typeof WebhookQueueMessageSchema>;
 
+export const DeployQueueMessageSchema = z.object({
+  kind: z.literal("deploy"),
+  doId: z.string(),
+  repoId: z.string().optional(),
+  ref: z.string(),
+  sha: z.string(),
+  actor: z.string().optional(),
+});
+
+export type DeployQueueMessage = z.infer<typeof DeployQueueMessageSchema>;
+
+export const AdjudicateQueueMessageSchema = z.object({
+  kind: z.literal("adjudicate"),
+  doId: z.string(),
+  repoId: z.string().optional(),
+  intentId: z.string(),
+  seatDid: z.string(),
+});
+
+export type AdjudicateQueueMessage = z.infer<typeof AdjudicateQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
@@ -74,6 +95,8 @@ export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   RouteCacheSyncMessageSchema,
   RepositoryDeleteMessageSchema,
   WebhookQueueMessageSchema,
+  DeployQueueMessageSchema,
+  AdjudicateQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;

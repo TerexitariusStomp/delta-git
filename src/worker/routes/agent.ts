@@ -7,14 +7,10 @@ import { getRepoStub } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
-import {
-  adjustAgentRep,
-  getAgent,
-  registerAgent,
-  verifyAgentRequest,
-} from "@/worker/agent/auth";
+import { adjustAgentRep, getAgent, registerAgent, verifyAgentRequest } from "@/worker/agent/auth";
 import { applyUnifiedPatch } from "@/worker/agent/patch";
-import { attemptMerge } from "@/worker/merge/engine";
+import { scanTextForSecrets } from "@/worker/agent/secretscan";
+import { attemptMerge, mergeDryRun } from "@/worker/merge/engine";
 import { writeServerPack } from "@/worker/merge/packWriter";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { encryptRepoSecret } from "@/worker/agent/secrets";
@@ -185,7 +181,10 @@ export function registerAgentRoutes(router: AppRouter): void {
     if (principal.agent.rep < ADJUDICATOR_MIN_REP) return bad(c, "insufficient-rep", 403);
 
     const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      resolution?: { files: Record<string, { content_b64?: string; delete?: boolean }>; base_oid?: string };
+      resolution?: {
+        files: Record<string, { content_b64?: string; delete?: boolean }>;
+        base_oid?: string;
+      };
       rationale?: string;
     };
     if (!parsed.resolution?.files) return bad(c, "resolution.files required");
@@ -428,7 +427,11 @@ export function registerAgentRoutes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     const rows = await stub.listRepoSecretMeta();
     return json(c, {
-      secrets: rows.map((r) => ({ name: r.name, created_at: r.createdAt, updated_at: r.updatedAt })),
+      secrets: rows.map((r) => ({
+        name: r.name,
+        created_at: r.createdAt,
+        updated_at: r.updatedAt,
+      })),
     });
   });
 
@@ -447,6 +450,10 @@ export function registerAgentRoutes(router: AppRouter): void {
       author?: string;
     };
     if (!parsed.patch || !parsed.message) return bad(c, "patch + message required");
+    const secretFindings = scanTextForSecrets(parsed.patch);
+    if (secretFindings.length > 0) {
+      return bad(c, `push-protection: ${secretFindings.map((f) => f.name).join(", ")}`, 422);
+    }
     const targetRef = parsed.base_ref?.startsWith("refs/")
       ? parsed.base_ref
       : `refs/heads/${parsed.base_ref ?? "main"}`;
@@ -497,5 +504,68 @@ export function registerAgentRoutes(router: AppRouter): void {
     });
 
     return json(c, { commit_oid: applied.commitOid, intent: intentView(accepted.intent), merge });
+  });
+
+  // --- merge dry-run: predict conflicts without mutating state ---------------
+
+  router.post("/api/:owner/:repo/dg/merge/dryrun", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const parsed = await c.req.json<{ ref?: string; delta_oid?: string }>().catch(() => null);
+    if (!parsed?.delta_oid) return bad(c, "delta_oid required");
+    const targetRef = parsed.ref?.startsWith("refs/")
+      ? parsed.ref
+      : `refs/heads/${parsed.ref ?? "main"}`;
+    const stub = getRepoStub(c.env, route.doName);
+    const { refs } = await stub.getHeadAndRefs();
+    const base = refs.find((r) => r.name === targetRef);
+    if (!base) return bad(c, `unknown ref ${targetRef}`, 404);
+    const result = await mergeDryRun({
+      env: c.env,
+      repoId: route.doName,
+      targetRef,
+      baseOid: base.oid,
+      deltaOid: parsed.delta_oid,
+      cacheCtx: c.var.cacheCtx,
+    });
+    if ("error" in result) return bad(c, result.error, 422);
+    return json(c, result);
+  });
+
+  // --- context/provenance: what produced this commit -------------------------
+
+  router.get("/api/:owner/:repo/dg/context/:sha", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const sha = c.req.param("sha").toLowerCase();
+    const stub = getRepoStub(c.env, route.doName);
+    const [open, adjudicated] = await Promise.all([
+      stub.listMergeIntents(["open", "merging", "adjudicating", "conflict"]),
+      stub.listMergeIntents(["merged", "rejected", "expired"]),
+    ]);
+    const related = [...open, ...adjudicated].filter(
+      (i) =>
+        i.deltaOid.toLowerCase() === sha ||
+        i.baseOid.toLowerCase() === sha ||
+        i.resultOid?.toLowerCase() === sha
+    );
+    const votes: Record<string, unknown[]> = {};
+    for (const intent of related) {
+      votes[intent.id] = (await stub.listMergeVotes(intent.id)).map((v) => ({
+        seat: v.seat,
+        voter_did: v.voterDid,
+        digest: v.resolutionDigest,
+        rationale: v.rationale,
+      }));
+    }
+    const opEntries = (await stub.listOpLog(-1))
+      .filter((row) => JSON.stringify(row).includes(sha))
+      .map((row) => ({ seq: row.seq, kind: row.kind, hash: row.hash, created_at: row.createdAt }));
+    return json(c, {
+      sha,
+      intents: related.map(intentView),
+      votes,
+      op_log: opEntries,
+    });
   });
 }

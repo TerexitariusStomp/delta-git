@@ -31,3 +31,6 @@ DG_KEK=0000000000000000000000000000000000000000000000000000000000000001
 # Cloudflare API token for the deploy-on-commit lane (workers+pages edit).
 # Production: `wrangler secret put CF_API_TOKEN`.
 CF_API_TOKEN=local-placeholder
+
+# Cloudflare account id for the deploy lane (not a secret).
+CF_ACCOUNT_ID=00000000000000000000000000000000

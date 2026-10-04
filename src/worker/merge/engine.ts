@@ -128,10 +128,9 @@ type TreeMergeOutcome = {
 };
 
 /** Adjudication hook: resolve a conflicted path to blob content or a delete. */
-export type ConflictResolver = (path: string) =>
-  | { kind: "content"; content: Uint8Array }
-  | { kind: "delete" }
-  | undefined;
+export type ConflictResolver = (
+  path: string
+) => { kind: "content"; content: Uint8Array } | { kind: "delete" } | undefined;
 
 export async function mergeTrees(
   env: Env,
@@ -148,9 +147,9 @@ export async function mergeTrees(
     oursTreeOid ? readPayload(env, repoId, oursTreeOid, cacheCtx, "tree") : undefined,
     theirsTreeOid ? readPayload(env, repoId, theirsTreeOid, cacheCtx, "tree") : undefined,
   ]);
-  const base = baseTree ? parseTree(baseTree) : new Map() as Tree;
-  const ours = oursTree ? parseTree(oursTree) : new Map() as Tree;
-  const theirs = theirsTree ? parseTree(theirsTree) : new Map() as Tree;
+  const base = baseTree ? parseTree(baseTree) : (new Map() as Tree);
+  const ours = oursTree ? parseTree(oursTree) : (new Map() as Tree);
+  const theirs = theirsTree ? parseTree(theirsTree) : (new Map() as Tree);
 
   const out: Tree = new Map();
   const newObjects: NewObject[] = [];
@@ -302,7 +301,9 @@ export async function attemptMerge(args: {
   const intent = await stub.claimMergeIntent(intentId);
   if (!intent) {
     const existing = await stub.getMergeIntent(intentId);
-    return existing ? { kind: "skipped", reason: `intent-${existing.status}` } : { kind: "not_found" };
+    return existing
+      ? { kind: "skipped", reason: `intent-${existing.status}` }
+      : { kind: "not_found" };
   }
 
   const { refs } = await stub.getHeadAndRefs();
@@ -338,6 +339,14 @@ export async function attemptMerge(args: {
       conflicts: treeMerge.conflicts,
       actor,
     });
+    // The Workers-AI seat votes on every adjudication via the queue.
+    await env.REPO_TASKS_QUEUE.send({
+      kind: "adjudicate",
+      doId: stub.id.toString(),
+      repoId,
+      intentId,
+      seatDid: "did:dg:workers-ai",
+    }).catch(() => {});
     return { kind: "conflict", intentId, conflicts: treeMerge.conflicts };
   }
 
@@ -357,7 +366,10 @@ export async function attemptMerge(args: {
     { type: "commit", payload: commitPayload, oid: mergeOid },
   ];
   const pack = await writeServerPack(objects);
-  const packKey = r2PackKey(doPrefix(stub.id.toString()), `pack-merge-${mergeOid.slice(0, 12)}.pack`);
+  const packKey = r2PackKey(
+    doPrefix(stub.id.toString()),
+    `pack-merge-${mergeOid.slice(0, 12)}.pack`
+  );
   await env.REPO_BUCKET.put(packKey, pack.packBytes);
   await env.REPO_BUCKET.put(packIndexKey(packKey), pack.idxBytes);
 
@@ -381,5 +393,67 @@ export async function attemptMerge(args: {
   if (committed.status !== "committed") {
     return { kind: "skipped", reason: committed.status };
   }
+  // Deploy-on-commit for merge landings on heads refs.
+  if (intent.targetRef.startsWith("refs/heads/")) {
+    await env.REPO_TASKS_QUEUE.send({
+      kind: "deploy",
+      doId: stub.id.toString(),
+      repoId,
+      ref: intent.targetRef,
+      sha: mergeOid,
+      actor,
+    }).catch(() => {});
+  }
   return { kind: "merged", intentId, mergeOid };
+}
+
+export type MergeDryRunResult = {
+  mergeable: boolean;
+  conflicts: string[];
+  base_oid: string;
+  delta_oid: string;
+  merge_base_oid?: string;
+};
+
+/**
+ * Predict whether a delta oid would merge cleanly into a target ref without
+ * mutating any state. Agents call this before pushing to decide whether to
+ * rebase early.
+ */
+export async function mergeDryRun(args: {
+  env: Env;
+  repoId: string;
+  targetRef: string;
+  baseOid: string;
+  deltaOid: string;
+  cacheCtx?: CacheContext;
+}): Promise<MergeDryRunResult | { error: string }> {
+  const { env, repoId, cacheCtx } = args;
+  const [oursCommit, theirsCommit] = await Promise.all([
+    readCommit(env, repoId, args.baseOid, cacheCtx),
+    readCommit(env, repoId, args.deltaOid, cacheCtx),
+  ]);
+  if (!oursCommit || !theirsCommit) return { error: "missing-commit-objects" };
+
+  const mergeBaseOid = await findMergeBase(env, repoId, args.baseOid, args.deltaOid, cacheCtx);
+  const mergeBaseCommit = mergeBaseOid
+    ? await readCommit(env, repoId, mergeBaseOid, cacheCtx)
+    : undefined;
+  const merged = await mergeTrees(
+    env,
+    repoId,
+    "",
+    mergeBaseCommit?.tree,
+    oursCommit.tree,
+    theirsCommit.tree,
+    cacheCtx
+  );
+  if (merged === "too_big") return { error: "merge-too-large" };
+  return {
+    mergeable: merged.conflicts.length === 0,
+    conflicts: merged.conflicts,
+    base_oid: args.baseOid,
+    delta_oid: args.deltaOid,
+    merge_base_oid: mergeBaseOid,
+  };
 }

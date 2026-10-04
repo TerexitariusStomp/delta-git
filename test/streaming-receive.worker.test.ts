@@ -367,7 +367,7 @@ describe("streaming receive-pack", () => {
     expect(refs.find((ref) => ref.name === "refs/heads/feature")).toBeUndefined();
   });
 
-  it("rejects stale old-oids and leaves no staged receive packs behind", async () => {
+  it("accepts stale old-oids as divergent pushes to refs/delta/* with a merge intent", async () => {
     const owner = "o";
     const repo = uniqueRepoId("stream-receive-stale");
     await setupRepoForTests(env, owner, repo);
@@ -405,8 +405,24 @@ describe("streaming receive-pack", () => {
     );
     expect(response.status).toBe(200);
     const lines = decodeReportStatus(new Uint8Array(await response.arrayBuffer()));
-    expect(lines.some((line) => line.startsWith("ng refs/heads/main stale old-oid"))).toBe(true);
-    expect(await listStagedReceivePacks(repoId)).toEqual([]);
+    // Never-reject: the divergent push lands on a delta ref, reported ok.
+    expect(lines.some((line) => line === "ok refs/heads/main")).toBe(true);
+
+    const refs = await callStubWithRetry(seeded.getStub, (stub) => stub.listRefs());
+    const deltaRef = refs.find((ref: { name: string }) =>
+      ref.name.startsWith(`refs/delta/main-${commit.oid.slice(0, 12)}`)
+    );
+    expect(deltaRef?.oid).toBe(commit.oid);
+
+    const intents = await callStubWithRetry(seeded.getStub, (stub) =>
+      stub.listMergeIntents(["open"])
+    );
+    expect(intents.length).toBe(1);
+    expect(intents[0].targetRef).toBe("refs/heads/main");
+    expect(intents[0].deltaOid).toBe(commit.oid);
+
+    const opLog = await callStubWithRetry(seeded.getStub, (stub) => stub.listOpLog(-1));
+    expect(opLog.some((entry: { kind: string }) => entry.kind === "push.delta")).toBe(true);
   });
 
   it("accepts thin packs with active external bases, rejects missing ones, and clears the receive lease after failure", async () => {

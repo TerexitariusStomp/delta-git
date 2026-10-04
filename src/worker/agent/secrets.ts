@@ -59,4 +59,3 @@ export async function decryptRepoSecret(env: Env, ciphertext: string): Promise<s
   );
   return td.decode(plain);
 }
-

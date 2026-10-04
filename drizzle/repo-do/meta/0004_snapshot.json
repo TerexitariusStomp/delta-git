@@ -61,10 +61,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "commit_status_pk": {
-          "columns": [
-            "sha",
-            "context"
-          ],
+          "columns": ["sha", "context"],
           "name": "commit_status_pk"
         }
       },
@@ -167,18 +164,12 @@
       "indexes": {
         "idx_merge_intents_status_expiry": {
           "name": "idx_merge_intents_status_expiry",
-          "columns": [
-            "status",
-            "expires_at"
-          ],
+          "columns": ["status", "expires_at"],
           "isUnique": false
         },
         "idx_merge_intents_target_status": {
           "name": "idx_merge_intents_target_status",
-          "columns": [
-            "target_ref",
-            "status"
-          ],
+          "columns": ["target_ref", "status"],
           "isUnique": false
         }
       },
@@ -248,20 +239,14 @@
       "indexes": {
         "idx_merge_votes_intent_digest": {
           "name": "idx_merge_votes_intent_digest",
-          "columns": [
-            "intent_id",
-            "resolution_digest"
-          ],
+          "columns": ["intent_id", "resolution_digest"],
           "isUnique": false
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "merge_votes_pk": {
-          "columns": [
-            "intent_id",
-            "seat"
-          ],
+          "columns": ["intent_id", "seat"],
           "name": "merge_votes_pk"
         }
       },
@@ -329,10 +314,7 @@
       "indexes": {
         "idx_op_log_kind_created": {
           "name": "idx_op_log_kind_created",
-          "columns": [
-            "kind",
-            "created_at"
-          ],
+          "columns": ["kind", "created_at"],
           "isUnique": false
         }
       },
@@ -430,19 +412,12 @@
       "indexes": {
         "idx_pack_catalog_state_seqhi": {
           "name": "idx_pack_catalog_state_seqhi",
-          "columns": [
-            "state",
-            "\"seq_hi\" desc"
-          ],
+          "columns": ["state", "\"seq_hi\" desc"],
           "isUnique": false
         },
         "idx_pack_catalog_state_tier_seqlo": {
           "name": "idx_pack_catalog_state_tier_seqlo",
-          "columns": [
-            "state",
-            "tier",
-            "seq_lo"
-          ],
+          "columns": ["state", "tier", "seq_lo"],
           "isUnique": false
         }
       },
@@ -581,9 +556,7 @@
       "indexes": {
         "idx_webhook_subs_active": {
           "name": "idx_webhook_subs_active",
-          "columns": [
-            "active"
-          ],
+          "columns": ["active"],
           "isUnique": false
         }
       },
@@ -667,9 +640,7 @@
       "indexes": {
         "idx_work_intents_status": {
           "name": "idx_work_intents_status",
-          "columns": [
-            "status"
-          ],
+          "columns": ["status"],
           "isUnique": false
         }
       },

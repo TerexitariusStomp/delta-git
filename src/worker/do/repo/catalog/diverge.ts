@@ -62,10 +62,7 @@ export function mergeIntentIdFor(targetRef: string, deltaOid: string): string {
  * `finalizeReceive` performs the atomic delta rewrite; pushes containing
  * any other failure still short-circuit as conflicts.
  */
-export function canDivergeStatuses(
-  commands: ReceiveCommand[],
-  statuses: ReceiveStatus[]
-): boolean {
+export function canDivergeStatuses(commands: ReceiveCommand[], statuses: ReceiveStatus[]): boolean {
   let sawFailure = false;
   for (let i = 0; i < commands.length; i++) {
     const status = statuses[i];

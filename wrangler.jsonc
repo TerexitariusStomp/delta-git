@@ -68,6 +68,9 @@
       "bucket_name": "git-repos"
     }
   ],
+  "ai": {
+    "binding": "AI"
+  },
   "queues": {
     "producers": [
       {

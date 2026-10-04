@@ -60,9 +60,7 @@ export async function writeServerPack(objs: NewObject[]): Promise<ServerPack> {
   dv.setUint32(8, objs.length);
 
   const body = concatChunks([hdr, ...entries]);
-  const packChecksum = new Uint8Array(
-    await crypto.subtle.digest("SHA-1", asBufferSource(body))
-  );
+  const packChecksum = new Uint8Array(await crypto.subtle.digest("SHA-1", asBufferSource(body)));
   const packBytes = new Uint8Array(body.length + 20);
   packBytes.set(body, 0);
   packBytes.set(packChecksum, body.length);
