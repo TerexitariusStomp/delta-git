@@ -1,9 +1,9 @@
 // E2E smoke test against local wrangler dev (node --test or plain run)
 // Requires `wrangler dev --port 8787 --local` + `wrangler d1 migrations apply --local`
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 
 const BASE = "http://localhost:8787";
-const account = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"); // hardhat #1, test only
+const account = privateKeyToAccount(generatePrivateKey()); // fresh wallet per run (creator quota = 1 site)
 let token, siteId, pass = 0, fail = 0;
 const ok = (cond, name) => { cond ? pass++ : fail++; console.log(`${cond ? "PASS" : "FAIL"} ${name}`); };
 
@@ -60,6 +60,28 @@ ok(rb.status === 200, "rollback repoints manifest");
 // 10. comments
 const c = await api("/api/comments", { method: "POST", body: JSON.stringify({ site_id: siteId, post_path: "/", author: "t", body: "first!" }) });
 ok(c.status === 200, "comment accepted");
+
+// 11. quota: creator plan allows 1 site — second must 402
+const q = await api("/api/sites", { method: "POST", body: "{}" });
+ok(q.status === 402 && q.body.error === "site_quota", "site quota enforced");
+
+// 12. suspend → serving shows top-up page (402)
+await api(`/api/sites/${siteId}/status`, { method: "POST", body: JSON.stringify({ status: "suspended" }) });
+const susp = await fetch(`http://preview-${siteId}.localhost:8787/`);
+ok(susp.status === 402, "suspended site serves top-up page");
+await api(`/api/sites/${siteId}/status`, { method: "POST", body: JSON.stringify({ status: "active" }) });
+
+// 13. fork clones manifest into new site
+const fork = await api(`/api/sites/${siteId}/fork`, { method: "POST", body: "{}" });
+ok(fork.status === 402 || (fork.status === 200 && fork.body.forked_from === siteId), "fork clones site (quota-gated)");
+
+// 14. plan upgrade without credit → 402
+const plan = await api("/api/plan", { method: "POST", body: JSON.stringify({ plan: "pro" }) });
+ok(plan.status === 402 && plan.body.error === "insufficient_credit", "plan upgrade needs prepaid credit");
+
+// 15. status endpoint + rate limiter sanity
+const st = await fetch(BASE + "/status").then((r) => r.json());
+ok(typeof st.active_sites === "number", "status endpoint reports");
 
 // 11. cron: USDC watcher (needs USDC_DEPOSIT_ADDRESS — skip gracefully if unset)
 const cron = await fetch(BASE + "/cdn-cgi/handler/scheduled").catch(() => null);

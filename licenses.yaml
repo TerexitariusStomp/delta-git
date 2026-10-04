@@ -1,0 +1,52 @@
+# OSS inventory — every runtime dependency, license-verified for commercial use.
+# Enforced by CI: trivy fs --scanners license fails on unlisted/changed licenses.
+site_image:
+  - { name: wordpress,            license: "GPL-2.0+",    url: https://wordpress.org }
+  - { name: woocommerce,          license: "GPL-3.0",     url: https://woocommerce.com }
+  - { name: sqlite-database-integration, license: "GPL-2.0+", url: https://wordpress.org/plugins/sqlite-database-integration }
+  - { name: s3-uploads,           license: MIT,           url: https://github.com/humanmade/S3-Uploads }
+  - { name: fluent-smtp,          license: "GPL-2.0+",    url: https://wordpress.org/plugins/fluent-smtp }
+  - { name: sqlite-object-cache,  license: "GPL-2.0+",    url: https://wordpress.org/plugins/sqlite-object-cache }
+  - { name: simply-static,        license: "GPL-2.0+",    url: https://wordpress.org/plugins/simply-static }
+  - { name: cloudflare-plugin,    license: "GPL-2.0+",    url: https://wordpress.org/plugins/cloudflare }
+  - { name: wordpress-importer,   license: "GPL-2.0+",    url: https://wordpress.org/plugins/wordpress-importer }
+  - { name: updraftplus,          license: "GPL-2.0+",    url: https://wordpress.org/plugins/updraftplus, optional: true }
+runtime:
+  - { name: frankenphp,           license: MIT,           url: https://frankenphp.dev }
+  - { name: php,                  license: "PHP-3.01",    url: https://php.net }
+  - { name: sqlite,               license: "blessing/public-domain", url: https://sqlite.org }
+  - { name: alpine,               license: "MIT (musl) + mixed-free", url: https://alpinelinux.org }
+  - { name: php-wasm,             license: "Apache-2.0",  url: https://github.com/seanmorris/php-wasm }
+  - { name: mariadb,              license: "GPL-2.0",     url: https://mariadb.org, conditional: "business tier" }
+control_dev:
+  - { name: adnanh-webhook,       license: MIT,           url: https://github.com/adnanh/webhook }
+  - { name: ttyd,                 license: MIT,           url: https://github.com/tsl0922/ttyd }
+  - { name: adminer,              license: "Apache-2.0",  url: https://www.adminer.org }
+  - { name: wp-cli,               license: MIT,           url: https://wp-cli.org }
+storage:
+  - { name: rclone,               license: MIT,           url: https://rclone.org }
+  - { name: tigrisfs,             license: "Apache-2.0",  url: https://github.com/tigrisdata/tigrisfs, conditional: "fuse fallback only" }
+authoring:
+  - { name: wp-playground-client, license: "GPL-2.0+",    url: https://github.com/WordPress/wordpress-playground, note: "embedded via hosted iframe boundary" }
+edge:
+  - { name: itty-router,          license: MIT,           url: https://github.com/kwhitley/itty-router }
+  - { name: cloudflare-workers-sdk, license: "Apache-2.0/MIT", url: https://github.com/cloudflare/workers-sdk }
+  - { name: aws4fetch,            license: MIT,           url: https://github.com/mhart/aws4fetch }
+  - { name: viem,                 license: MIT,           url: https://github.com/wevm/viem }
+  - { name: typescript,           license: "Apache-2.0",  url: https://typescriptlang.org }
+versioning:
+  - { name: delta-git,            license: MIT,           url: https://github.com/zllovesuki/git-on-cloudflare, note: "own fork; needs DOs+Queues (paid)" }
+  - { name: isomorphic-git,       license: MIT,           url: https://isomorphic-git.org }
+dashboard:
+  - { name: htmx,                 license: BSD-2-Clause,  url: https://htmx.org }
+search:
+  - { name: pagefind,             license: MIT,           url: https://pagefind.app }
+tooling:
+  - { name: node,                 license: MIT,           url: https://nodejs.org }
+  - { name: vitest,               license: MIT,           url: https://vitest.dev }
+  - { name: prettier,             license: MIT,           url: https://prettier.io }
+  - { name: tokei,                license: "MIT/Apache-2.0", url: https://github.com/XAMPPRocky/tokei }
+  - { name: trivy,                license: "Apache-2.0",  url: https://trivy.dev }
+non_oss_services_not_repos:
+  - "Cloudflare: Pages, R2, D1, DOs, Queues, Workers AI, Turnstile, Email Routing/Service, Registrar, CF for SaaS, Analytics Engine, Secrets Store, KV, Cache API"
+  - "External concessions: Resend (free ESP until Email Service flips), Coinbase Pay / Stripe Crypto Onramp (customer fiat→USDC only)"

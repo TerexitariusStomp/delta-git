@@ -22,5 +22,27 @@
     // free tier: 5 cron triggers
     "crons": ["*/5 * * * *"]
   },
-  "routes": []
+  "routes": [],
+  // ---- paid tier (deploy: wrangler deploy -e paid) — client-funded only ----
+  "env": {
+    "paid": {
+      "durable_objects": {
+        "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TenantDO"] }],
+      "containers": [{
+        "class_name": "TenantDO",
+        "image": "./container",
+        "instance_type": "lite",
+        "max_instances": 100,
+        "name": "tenant-site"
+      }],
+      "queues": {
+        "producers": [{ "binding": "PROVISION", "queue": "wpcloud-provision" }],
+        "consumers": [{ "queue": "wpcloud-provision", "max_batch_size": 10 }]
+      },
+      "send_email": [{ "name": "MAIL" }],
+      "ai": { "binding": "AI" }
+    }
+  }
 }

@@ -2,6 +2,8 @@ import { Router } from "itty-router";
 import type { Env } from "./env";
 import { whoami, verifySignature, issueToken, didFromAddress } from "./auth";
 import { presignPut } from "./presign";
+import { planFor } from "./plans";
+import { underSiteQuota, storageUsed } from "./admin";
 
 const DYNAMIC_PLUGINS = ["woocommerce", "wpforms", "gravityforms", "memberpress", "learndash", "lifterlms", "easy-digital-downloads"];
 
@@ -31,6 +33,8 @@ api.post("/api/auth/siwe", async (req, env: Env) => {
 api.post("/api/sites", async (req, env: Env) => {
   const did = await auth(req, env);
   if (did instanceof Response) return did;
+  const user = await env.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first<{ plan: string }>();
+  if (!(await underSiteQuota(env, did, planFor(user)))) return json({ error: "site_quota" }, 402);
   const siteId = id();
   const host = `preview-${siteId}.${env.SITE_HOST_SUFFIX}`;
   const lease = Math.floor(Date.now() / 1000) + 7 * 86400; // 7d preview lease
@@ -78,6 +82,11 @@ api.post("/api/sites/:id/publish", async (req, env: Env) => {
     return json({ error: "dynamic_plugins", plugins: bad, required_lane: 3 }, 422);
 
   const bytes = body.files.reduce((n, f) => n + f.size, 0);
+  // P1 storage quota: total manifest bytes across versions vs plan cap
+  const user = await env.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first<{ plan: string }>();
+  const cap = planFor(user).storage_mb * 1024 * 1024;
+  if ((await storageUsed(env, site.id)) + bytes > cap)
+    return json({ error: "storage_quota", cap_mb: planFor(user).storage_mb }, 402);
   await env.DB.batch([
     env.DB.prepare("INSERT OR IGNORE INTO manifests(site_id, sha, file_count, bytes_total, created_at) VALUES(?,?,?,?,unixepoch())")
       .bind(site.id, body.sha, body.files.length, bytes),

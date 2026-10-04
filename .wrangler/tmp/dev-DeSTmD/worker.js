@@ -14,14 +14,14 @@ var __publicField = (obj, key, value) => {
   return value;
 };
 
-// .wrangler/tmp/bundle-4vd2y0/strip-cf-connecting-ip-header.js
+// .wrangler/tmp/bundle-pZyh7L/strip-cf-connecting-ip-header.js
 function stripCfConnectingIPHeader(input, init) {
   const request = new Request(input, init);
   request.headers.delete("CF-Connecting-IP");
   return request;
 }
 var init_strip_cf_connecting_ip_header = __esm({
-  ".wrangler/tmp/bundle-4vd2y0/strip-cf-connecting-ip-header.js"() {
+  ".wrangler/tmp/bundle-pZyh7L/strip-cf-connecting-ip-header.js"() {
     "use strict";
     __name(stripCfConnectingIPHeader, "stripCfConnectingIPHeader");
     globalThis.fetch = new Proxy(globalThis.fetch, {
@@ -4783,14 +4783,14 @@ var init_isAddressEqual = __esm({
   }
 });
 
-// .wrangler/tmp/bundle-4vd2y0/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-pZyh7L/middleware-loader.entry.ts
 init_strip_cf_connecting_ip_header();
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
 init_performance2();
 
-// .wrangler/tmp/bundle-4vd2y0/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-pZyh7L/middleware-insertion-facade.js
 init_strip_cf_connecting_ip_header();
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
@@ -5373,134 +5373,366 @@ async function presignPut(env2, key) {
 }
 __name(presignPut, "presignPut");
 
-// src/api.ts
-var DYNAMIC_PLUGINS = ["woocommerce", "wpforms", "gravityforms", "memberpress", "learndash", "lifterlms", "easy-digital-downloads"];
-var api = t();
+// src/plans.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+var PLANS = {
+  creator: { name: "Creator", price_micro: 0, lane_max: 1, sites_max: 1, storage_mb: 200, manifests_keep: 3, always_on: false, git_semantics: false },
+  micro: { name: "Micro", price_micro: 5e6, lane_max: 1, sites_max: 3, storage_mb: 1024, manifests_keep: 10, always_on: false, git_semantics: true },
+  starter: { name: "Starter", price_micro: 9e6, lane_max: 2, sites_max: 5, storage_mb: 4096, manifests_keep: 20, always_on: false, git_semantics: true },
+  pro: { name: "Pro", price_micro: 19e6, lane_max: 3, sites_max: 10, storage_mb: 20480, manifests_keep: 50, always_on: false, git_semantics: true },
+  business: { name: "Business", price_micro: 49e6, lane_max: 3, sites_max: 25, storage_mb: 102400, manifests_keep: 100, always_on: true, git_semantics: true },
+  always_on: { name: "Always-On", price_micro: 19e6, lane_max: 3, sites_max: 5, storage_mb: 20480, manifests_keep: 50, always_on: true, git_semantics: true },
+  enterprise: { name: "Enterprise", price_micro: 499e6, lane_max: 3, sites_max: 250, storage_mb: 1048576, manifests_keep: 500, always_on: true, git_semantics: true },
+  agency: { name: "Agency", price_micro: 199e6, lane_max: 3, sites_max: 25, storage_mb: 256e3, manifests_keep: 100, always_on: false, git_semantics: true }
+};
+function planFor(row) {
+  return PLANS[row?.plan ?? "creator"] ?? PLANS.creator;
+}
+__name(planFor, "planFor");
+
+// src/admin.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+var admin = t();
 var json = /* @__PURE__ */ __name((d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } }), "json");
-var id = /* @__PURE__ */ __name(() => crypto.randomUUID().replace(/-/g, "").slice(0, 12), "id");
 async function auth(req, env2) {
   const did = await whoami(env2, req);
   return did ?? json({ error: "unauthorized" }, 401);
 }
 __name(auth, "auth");
+async function audit(env2, did, site_id, action, detail = "") {
+  await env2.DB.prepare("INSERT INTO audit(user_did, site_id, action, detail, created_at) VALUES(?,?,?,?,unixepoch())").bind(did, site_id, action, detail).run();
+}
+__name(audit, "audit");
+admin.post("/api/sites/:id/status", async (req, env2) => {
+  const did = await auth(req, env2);
+  if (did instanceof Response)
+    return did;
+  const { status } = await req.json();
+  if (!["active", "suspended", "archived"].includes(status))
+    return json({ error: "bad status" }, 400);
+  const r2 = await env2.DB.prepare("UPDATE sites SET status=? WHERE id=? AND owner_did=?").bind(status, req.params.id, did).run();
+  if (!r2.meta.changes)
+    return json({ error: "not found" }, 404);
+  await audit(env2, did, req.params.id, `site.${status}`);
+  return json({ ok: true, status });
+});
+admin.post("/api/sites/:id/fork", async (req, env2) => {
+  const did = await auth(req, env2);
+  if (did instanceof Response)
+    return did;
+  const src = await env2.DB.prepare("SELECT * FROM sites WHERE id=?").bind(req.params.id).first();
+  if (!src?.manifest_sha)
+    return json({ error: "nothing to fork" }, 404);
+  const user = await env2.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first();
+  if (!await underSiteQuota(env2, did, planFor(user)))
+    return json({ error: "site_quota" }, 402);
+  const id2 = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  const host = `preview-${id2}.${env2.SITE_HOST_SUFFIX}`;
+  await env2.DB.prepare(
+    "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, manifest_sha, source, created_at) VALUES(?,?,?,?,?,?,'fork',unixepoch())"
+  ).bind(id2, did, src.lane, host, Math.floor(Date.now() / 1e3) + 7 * 86400, src.manifest_sha).run();
+  await env2.DB.prepare("INSERT INTO manifests(site_id, sha, file_count, bytes_total, created_at) SELECT ?, sha, file_count, bytes_total, unixepoch() FROM manifests WHERE site_id=? AND sha=?").bind(id2, src.id, src.manifest_sha).run();
+  await audit(env2, did, id2, "site.fork", `from ${src.id}@${src.manifest_sha.slice(0, 8)}`);
+  return json({ id: id2, preview_host: host, forked_from: src.id });
+});
+admin.post("/api/plan", async (req, env2) => {
+  const did = await auth(req, env2);
+  if (did instanceof Response)
+    return did;
+  const { plan } = await req.json();
+  const target = PLANS[plan];
+  if (!target)
+    return json({ error: "bad plan" }, 400);
+  const bal = await env2.DB.prepare("SELECT balance_micro FROM credits WHERE user_did=?").bind(did).first();
+  if (!bal || bal.balance_micro < target.price_micro)
+    return json({ error: "insufficient_credit", needed_micro: target.price_micro }, 402);
+  await env2.DB.batch([
+    env2.DB.prepare("UPDATE credits SET balance_micro=balance_micro-?, updated_at=unixepoch() WHERE user_did=?").bind(target.price_micro, did),
+    env2.DB.prepare("INSERT INTO ledger(user_did, amount_micro, kind, memo, created_at) VALUES(?,?,'debit',?,unixepoch())").bind(did, -target.price_micro, `plan:${plan}`),
+    env2.DB.prepare("UPDATE users SET plan=? WHERE did=?").bind(plan, did)
+  ]);
+  await audit(env2, did, null, "plan.upgrade", plan);
+  return json({ ok: true, plan });
+});
+admin.post("/api/referral", async (req, env2) => {
+  const did = await auth(req, env2);
+  if (did instanceof Response)
+    return did;
+  const { code } = await req.json();
+  const referrer = await env2.DB.prepare("SELECT did FROM users WHERE referral_code=? AND did<>?").bind(code, did).first();
+  if (!referrer)
+    return json({ error: "bad code" }, 404);
+  const r2 = await env2.DB.prepare("UPDATE users SET referred_by=? WHERE did=? AND referred_by IS NULL").bind(referrer.did, did).run();
+  if (!r2.meta.changes)
+    return json({ error: "already referred" }, 409);
+  await env2.DB.prepare("INSERT INTO credits(user_did, balance_micro, updated_at) VALUES(?,5000000,unixepoch()) ON CONFLICT(user_did) DO UPDATE SET balance_micro=balance_micro+5000000, updated_at=unixepoch()").bind(did).run();
+  await env2.DB.prepare("INSERT INTO ledger(user_did, amount_micro, kind, memo, created_at) VALUES(?,5000000,'deposit','referral',unixepoch())").bind(did).run();
+  await audit(env2, did, null, "referral.claim", code);
+  return json({ ok: true, bonus_micro: 5e6 });
+});
+admin.get("/api/templates", async (_req, env2) => {
+  const r2 = await env2.DB.prepare("SELECT v FROM meta WHERE k='templates'").first();
+  return new Response(r2?.v ?? "[]", { headers: { "content-type": "application/json" } });
+});
+admin.post("/api/sites/:id/domain", async (req, env2) => {
+  const did = await auth(req, env2);
+  if (did instanceof Response)
+    return did;
+  const { fqdn } = await req.json();
+  if (!fqdn || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(fqdn))
+    return json({ error: "bad fqdn" }, 400);
+  const r2 = await env2.DB.prepare("UPDATE sites SET custom_domain=? WHERE id=? AND owner_did=?").bind(fqdn.toLowerCase(), req.params.id, did).run();
+  if (!r2.meta.changes)
+    return json({ error: "not found" }, 404);
+  await audit(env2, did, req.params.id, "domain.attach", fqdn);
+  return json({ ok: true, fqdn });
+});
+async function underSiteQuota(env2, did, plan) {
+  const n = await env2.DB.prepare("SELECT COUNT(*) c FROM sites WHERE owner_did=? AND status<>'archived'").bind(did).first();
+  return (n?.c ?? 0) < plan.sites_max;
+}
+__name(underSiteQuota, "underSiteQuota");
+async function storageUsed(env2, siteId) {
+  const r2 = await env2.DB.prepare("SELECT COALESCE(SUM(bytes_total),0) b FROM manifests WHERE site_id=?").bind(siteId).first();
+  return r2?.b ?? 0;
+}
+__name(storageUsed, "storageUsed");
+
+// src/api.ts
+var DYNAMIC_PLUGINS = ["woocommerce", "wpforms", "gravityforms", "memberpress", "learndash", "lifterlms", "easy-digital-downloads"];
+var api = t();
+var json2 = /* @__PURE__ */ __name((d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } }), "json");
+var id = /* @__PURE__ */ __name(() => crypto.randomUUID().replace(/-/g, "").slice(0, 12), "id");
+async function auth2(req, env2) {
+  const did = await whoami(env2, req);
+  return did ?? json2({ error: "unauthorized" }, 401);
+}
+__name(auth2, "auth");
 api.post("/api/auth/siwe", async (req, env2) => {
   const { address, message, signature } = await req.json();
   if (!address || !message?.toLowerCase().includes(address.toLowerCase()) || !await verifySignature(address, message, signature))
-    return json({ error: "bad signature" }, 401);
+    return json2({ error: "bad signature" }, 401);
   const did = didFromAddress(address);
   await env2.DB.prepare(
     "INSERT INTO users(did, deposit_salt, created_at) VALUES(?, abs(random()) % 900 + 1, unixepoch()) ON CONFLICT(did) DO NOTHING"
   ).bind(did).run();
-  return json({ did, token: await issueToken(env2, did) });
+  return json2({ did, token: await issueToken(env2, did) });
 });
 api.post("/api/sites", async (req, env2) => {
-  const did = await auth(req, env2);
+  const did = await auth2(req, env2);
   if (did instanceof Response)
     return did;
+  const user = await env2.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first();
+  if (!await underSiteQuota(env2, did, planFor(user)))
+    return json2({ error: "site_quota" }, 402);
   const siteId = id();
   const host = `preview-${siteId}.${env2.SITE_HOST_SUFFIX}`;
   const lease = Math.floor(Date.now() / 1e3) + 7 * 86400;
   await env2.DB.prepare(
     "INSERT INTO sites(id, owner_did, preview_host, lease_expires_at, created_at) VALUES(?,?,?,?,unixepoch())"
   ).bind(siteId, did, host, lease).run();
-  return json({ id: siteId, preview_host: host, lease_expires_at: lease });
+  return json2({ id: siteId, preview_host: host, lease_expires_at: lease });
 });
 api.get("/api/sites/:id", async (req, env2) => {
-  const did = await auth(req, env2);
+  const did = await auth2(req, env2);
   if (did instanceof Response)
     return did;
   const site = await env2.DB.prepare("SELECT * FROM sites WHERE id=? AND owner_did=?").bind(req.params.id, did).first();
   if (!site)
-    return json({ error: "not found" }, 404);
+    return json2({ error: "not found" }, 404);
   const versions2 = await env2.DB.prepare("SELECT sha, file_count, bytes_total, created_at FROM manifests WHERE site_id=? ORDER BY created_at DESC").bind(req.params.id).all();
-  return json({ site, versions: versions2.results });
+  return json2({ site, versions: versions2.results });
 });
 api.post("/api/sites/:id/presign", async (req, env2) => {
-  const did = await auth(req, env2);
+  const did = await auth2(req, env2);
   if (did instanceof Response)
     return did;
   const site = await ownedSite(env2, req.params.id, did);
   if (!site)
-    return json({ error: "not found" }, 404);
+    return json2({ error: "not found" }, 404);
   const { sha, files } = await req.json();
   if (!sha || !files?.length || files.length > 5e3)
-    return json({ error: "bad file list" }, 400);
+    return json2({ error: "bad file list" }, 400);
   const urls = {};
   for (const f2 of files) {
     const clean2 = f2.path.replace(/^\/+/, "").replace(/\.\./g, "");
     urls[f2.path] = await presignPut(env2, `sites/${site.id}/artifacts/${sha}/${clean2}`);
   }
-  return json({ urls });
+  return json2({ urls });
 });
 api.post("/api/sites/:id/publish", async (req, env2) => {
-  const did = await auth(req, env2);
+  const did = await auth2(req, env2);
   if (did instanceof Response)
     return did;
   const site = await ownedSite(env2, req.params.id, did);
   if (!site)
-    return json({ error: "not found" }, 404);
+    return json2({ error: "not found" }, 404);
   const body = await req.json();
   const bad = (body.plugins ?? []).filter((p2) => DYNAMIC_PLUGINS.includes(p2.toLowerCase()));
   if (site.lane === 1 && bad.length)
-    return json({ error: "dynamic_plugins", plugins: bad, required_lane: 3 }, 422);
+    return json2({ error: "dynamic_plugins", plugins: bad, required_lane: 3 }, 422);
   const bytes = body.files.reduce((n, f2) => n + f2.size, 0);
+  const user = await env2.DB.prepare("SELECT plan FROM users WHERE did=?").bind(did).first();
+  const cap = planFor(user).storage_mb * 1024 * 1024;
+  if (await storageUsed(env2, site.id) + bytes > cap)
+    return json2({ error: "storage_quota", cap_mb: planFor(user).storage_mb }, 402);
   await env2.DB.batch([
     env2.DB.prepare("INSERT OR IGNORE INTO manifests(site_id, sha, file_count, bytes_total, created_at) VALUES(?,?,?,?,unixepoch())").bind(site.id, body.sha, body.files.length, bytes),
     env2.DB.prepare("UPDATE sites SET manifest_sha=? WHERE id=?").bind(body.sha, site.id)
   ]);
-  return json({ ok: true, sha: body.sha, url: `https://${site.preview_host}` });
+  return json2({ ok: true, sha: body.sha, url: `https://${site.preview_host}` });
 });
 api.post("/api/sites/:id/rollback", async (req, env2) => {
-  const did = await auth(req, env2);
+  const did = await auth2(req, env2);
   if (did instanceof Response)
     return did;
   const { sha } = await req.json();
   const site = await ownedSite(env2, req.params.id, did);
   if (!site)
-    return json({ error: "not found" }, 404);
+    return json2({ error: "not found" }, 404);
   const exists = await env2.DB.prepare("SELECT 1 FROM manifests WHERE site_id=? AND sha=?").bind(site.id, sha).first();
   if (!exists)
-    return json({ error: "unknown sha" }, 404);
+    return json2({ error: "unknown sha" }, 404);
   await env2.DB.prepare("UPDATE sites SET manifest_sha=? WHERE id=?").bind(sha, site.id).run();
-  return json({ ok: true, sha });
+  return json2({ ok: true, sha });
 });
 api.post("/api/topup", async (req, env2) => {
-  const did = await auth(req, env2);
+  const did = await auth2(req, env2);
   if (did instanceof Response)
     return did;
   const { amount } = await req.json();
   if (!amount || amount < 1 || amount > 1e4)
-    return json({ error: "bad amount" }, 400);
+    return json2({ error: "bad amount" }, 400);
   const user = await env2.DB.prepare("SELECT deposit_salt FROM users WHERE did=?").bind(did).first();
   const micro = amount * 1e6 + user.deposit_salt;
   await env2.DB.prepare("INSERT INTO intents(user_did, amount_salt, created_at) VALUES(?,?,unixepoch())").bind(did, String(micro)).run();
-  return json({ address: env2.USDC_DEPOSIT_ADDRESS, amount: micro / 1e6, currency: "USDC", chain: env2.USDC_CHAIN });
+  return json2({ address: env2.USDC_DEPOSIT_ADDRESS, amount: micro / 1e6, currency: "USDC", chain: env2.USDC_CHAIN });
 });
 api.get("/api/credits", async (req, env2) => {
-  const did = await auth(req, env2);
+  const did = await auth2(req, env2);
   if (did instanceof Response)
     return did;
   const row = await env2.DB.prepare("SELECT balance_micro FROM credits WHERE user_did=?").bind(did).first();
-  return json({ balance_micro: row?.balance_micro ?? 0 });
+  return json2({ balance_micro: row?.balance_micro ?? 0 });
 });
 api.post("/api/comments", async (req, env2) => {
   const { site_id, post_path, author, body } = await req.json();
   if (!site_id || !post_path || !author || !body || body.length > 4e3)
-    return json({ error: "bad comment" }, 400);
+    return json2({ error: "bad comment" }, 400);
   await env2.DB.prepare("INSERT INTO comments(site_id, post_path, author, body, created_at) VALUES(?,?,?,?,unixepoch())").bind(site_id, post_path, author.slice(0, 80), body).run();
-  return json({ ok: true, status: "pending" });
+  return json2({ ok: true, status: "pending" });
 });
 api.get("/api/comments", async (req, env2) => {
   const u2 = new URL(req.url);
   const rows = await env2.DB.prepare(
     "SELECT author, body, created_at FROM comments WHERE site_id=? AND post_path=? AND status='approved' ORDER BY created_at"
   ).bind(u2.searchParams.get("site") ?? "", u2.searchParams.get("path") ?? "").all();
-  return json(rows.results);
+  return json2(rows.results);
 });
 async function ownedSite(env2, id2, did) {
   return env2.DB.prepare("SELECT * FROM sites WHERE id=? AND owner_did=?").bind(id2, did).first();
 }
 __name(ownedSite, "ownedSite");
+
+// src/registrar.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+var registrar = t();
+var json3 = /* @__PURE__ */ __name((d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } }), "json");
+var cf = /* @__PURE__ */ __name((env2, path, opts = {}) => fetch(`https://api.cloudflare.com/client/v4/accounts/${env2.CF_ACCOUNT_ID}${path}`, {
+  ...opts,
+  headers: { authorization: `Bearer ${env2.CF_API_TOKEN}`, "content-type": "application/json", ...opts.headers || {} }
+}).then((r2) => r2.json()), "cf");
+registrar.get("/api/domains/search", async (req, env2) => {
+  const q = new URL(req.url).searchParams.get("q") ?? "";
+  const r2 = await cf(env2, `/registrar/domain-search`, { method: "POST", body: JSON.stringify({ search_text: q }) });
+  return json3(r2.result ?? r2);
+});
+registrar.post("/api/domains/check", async (req, env2) => {
+  const { domains } = await req.json();
+  const r2 = await cf(env2, `/registrar/domain-check`, { method: "POST", body: JSON.stringify({ domains: domains.slice(0, 20) }) });
+  return json3(r2.result ?? r2);
+});
+registrar.post("/api/domains/register", async (req, env2) => {
+  const did = await whoami(env2, req);
+  if (!did)
+    return json3({ error: "unauthorized" }, 401);
+  const { domain: domain2, site_id } = await req.json();
+  const check = await cf(env2, `/registrar/domain-check`, { method: "POST", body: JSON.stringify({ domains: [domain2] }) });
+  const offer = check.result?.[0] ?? check.result;
+  if (!offer?.registrable || offer.tier === "premium")
+    return json3({ error: "not_registrable", reason: offer?.reason ?? offer?.tier }, 422);
+  const priceMicro = Math.round((offer.price ?? 0) * 1e6);
+  const bal = await env2.DB.prepare("SELECT balance_micro FROM credits WHERE user_did=?").bind(did).first();
+  if (!bal || bal.balance_micro < priceMicro)
+    return json3({ error: "insufficient_credit", needed_micro: priceMicro }, 402);
+  const reg = await cf(env2, `/registrar/registrations`, { method: "POST", body: JSON.stringify({ domain_name: domain2 }) });
+  if (!reg.success)
+    return json3({ error: "register_failed", detail: reg.errors }, 502);
+  await env2.DB.batch([
+    env2.DB.prepare("UPDATE credits SET balance_micro=balance_micro-? WHERE user_did=?").bind(priceMicro, did),
+    env2.DB.prepare("INSERT INTO ledger(user_did, amount_micro, kind, memo, created_at) VALUES(?,?,'debit',?,unixepoch())").bind(did, -priceMicro, `domain:${domain2}`),
+    env2.DB.prepare("INSERT INTO domains(fqdn, site_id, user_did, status, price_micro, created_at) VALUES(?,?,?,'active',?,unixepoch())").bind(domain2, site_id, did, priceMicro),
+    env2.DB.prepare("UPDATE sites SET custom_domain=?, lease_expires_at=NULL WHERE id=?").bind(domain2, site_id)
+  ]);
+  return json3({ ok: true, domain: domain2, price_micro: priceMicro });
+});
+
+// src/importer.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+var importer = t();
+var json4 = /* @__PURE__ */ __name((d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } }), "json");
+importer.post("/api/import/wxr", async (req, env2) => {
+  const did = await whoami(env2, req);
+  if (!did)
+    return json4({ error: "unauthorized" }, 401);
+  const wxr = await req.text();
+  if (!wxr.includes("<rss") && !wxr.includes("<wxr"))
+    return json4({ error: "not a WXR file" }, 400);
+  const key = `imports/${did.slice(-12)}/${Date.now()}.wxr`;
+  await env2.ARTIFACTS.put(key, wxr, { httpMetadata: { contentType: "application/xml" } });
+  return json4({
+    blueprint: {
+      preferredVersions: { php: "8.3", wp: "latest" },
+      steps: [
+        { step: "installPlugin", pluginData: { resource: "wordpress.org/plugins", slug: "wordpress-importer" } },
+        { step: "importWxr", file: { resource: "url", url: `/api/import/file?key=${encodeURIComponent(key)}` } }
+      ]
+    }
+  });
+});
+importer.get("/api/import/file", async (req, env2) => {
+  const key = new URL(req.url).searchParams.get("key") ?? "";
+  const obj = await env2.ARTIFACTS.get(key);
+  return obj ? new Response(obj.body) : new Response("gone", { status: 404 });
+});
+importer.post("/api/import/full", async (req, env2) => {
+  const did = await whoami(env2, req);
+  if (!did)
+    return json4({ error: "unauthorized" }, 401);
+  const { site_id } = await req.json();
+  const ns = env2.TENANT;
+  const stub = ns?.get(ns.idFromName(site_id));
+  if (!stub)
+    return json4({ error: "lane3 required for full import" }, 422);
+  await stub.fetch("https://tenant.internal/control", { method: "POST", body: JSON.stringify({ action: "wp-cli", body: { cmd: "db import /state/dump.sql" } }) });
+  return json4({ ok: true, note: "upload dump.sql + wp-content via rclone first" });
+});
 
 // src/serving.ts
 init_strip_cf_connecting_ip_header();
@@ -5606,6 +5838,123 @@ function reclaimPage() {
 }
 __name(reclaimPage, "reclaimPage");
 
+// src/ratelimit.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+async function rateLimit(env2, key, limit, windowSec) {
+  const now = Math.floor(Date.now() / 1e3 / windowSec);
+  try {
+    await env2.DB.prepare(
+      "INSERT INTO meta(k,v) VALUES(?, '1') ON CONFLICT(k) DO UPDATE SET v=CAST(v AS INTEGER)+1"
+    ).bind(`rl:${key}:${now}`).run();
+    const row = await env2.DB.prepare("SELECT v FROM meta WHERE k=?").bind(`rl:${key}:${now}`).first();
+    return parseInt(row?.v ?? "0") <= limit;
+  } catch {
+    return true;
+  }
+}
+__name(rateLimit, "rateLimit");
+
+// src/support.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+async function supportAnswer(env2, question) {
+  if (!env2.AI)
+    return "AI support not available on this tier.";
+  const ctx = await env2.DB.prepare(
+    "SELECT action, detail, created_at FROM audit ORDER BY created_at DESC LIMIT 10"
+  ).all();
+  const r2 = await env2.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+    messages: [
+      { role: "system", content: "You are the wp-cloud support bot. WordPress hosting on Cloudflare: browser-Playground authoring, static publish to R2, lanes 1-3, USDC billing. Be concise." },
+      { role: "user", content: question }
+    ],
+    max_tokens: 300
+  });
+  return r2.response ?? "no answer";
+}
+__name(supportAnswer, "supportAnswer");
+async function statusPage(env2) {
+  const sites = await env2.DB.prepare("SELECT COUNT(*) c FROM sites WHERE status='active'").first();
+  const bad = await env2.DB.prepare("SELECT COUNT(*) c FROM health WHERE consecutive_fails>2").first();
+  const cursor = await env2.DB.prepare("SELECT v FROM meta WHERE k='usdc_scan'").first();
+  const body = {
+    status: (bad?.c ?? 0) === 0 ? "operational" : "degraded",
+    active_sites: sites?.c ?? 0,
+    unhealthy_sites: bad?.c ?? 0,
+    usdc_scan_block: cursor?.v ?? null,
+    generated_at: Date.now()
+  };
+  return new Response(JSON.stringify(body, null, 2), { headers: { "content-type": "application/json" } });
+}
+__name(statusPage, "statusPage");
+
+// src/queue.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+async function consumeBatch(batch, env2) {
+  for (const msg of batch.messages) {
+    const j = msg.body;
+    try {
+      switch (j.kind) {
+        case "provision": {
+          const user = await env2.DB.prepare("SELECT plan FROM users WHERE did=?").bind(j.user_did).first();
+          const plan = planFor(user);
+          if (plan.lane_max >= 3) {
+            const ns = env2.TENANT;
+            const stub = ns?.get(ns.idFromName(j.site_id));
+            await doControl(stub, "configure", {
+              siteId: j.site_id,
+              alwaysOn: plan.always_on,
+              cluster: plan.name === "Enterprise",
+              webCount: 2
+            });
+          }
+          await env2.DB.prepare("UPDATE sites SET status='active' WHERE id=?").bind(j.site_id).run();
+          break;
+        }
+        case "suspend":
+          await env2.DB.prepare("UPDATE sites SET status='suspended' WHERE id=?").bind(j.site_id).run();
+          break;
+        case "backup": {
+          const ns = env2.TENANT;
+          await doControl(ns?.get(ns.idFromName(j.site_id)), "sync-out");
+          break;
+        }
+      }
+      msg.ack();
+    } catch {
+      msg.retry({ delaySeconds: 30 });
+    }
+  }
+}
+__name(consumeBatch, "consumeBatch");
+async function doControl(stub, action, body) {
+  if (!stub)
+    return;
+  await stub.fetch("https://tenant.internal/control", {
+    method: "POST",
+    body: JSON.stringify({ action, body })
+  });
+}
+__name(doControl, "doControl");
+
+// src/cron.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+
 // src/usdc.ts
 init_strip_cf_connecting_ip_header();
 init_modules_watch_stub();
@@ -5680,12 +6029,195 @@ async function reapLeases(env2) {
 }
 __name(reapLeases, "reapLeases");
 
+// src/cron.ts
+async function retainManifests(env2) {
+  const sites = await env2.DB.prepare(
+    "SELECT s.id, u.plan FROM sites s JOIN users u ON u.did = s.owner_did"
+  ).all();
+  for (const s of sites.results) {
+    const keep = planFor(s).manifests_keep;
+    const stale = await env2.DB.prepare(
+      "SELECT sha FROM manifests WHERE site_id=? ORDER BY created_at DESC LIMIT -1 OFFSET ?"
+    ).bind(s.id, keep).all();
+    const current = (await env2.DB.prepare("SELECT manifest_sha FROM sites WHERE id=?").bind(s.id).first())?.manifest_sha;
+    for (const m of stale.results) {
+      if (m.sha === current)
+        continue;
+      await env2.ARTIFACTS.delete(
+        (await env2.ARTIFACTS.list({ prefix: `sites/${s.id}/artifacts/${m.sha}/` })).objects.map((o2) => o2.key)
+      );
+      await env2.DB.prepare("DELETE FROM manifests WHERE site_id=? AND sha=?").bind(s.id, m.sha).run();
+    }
+  }
+}
+__name(retainManifests, "retainManifests");
+async function healthCheck(env2) {
+  const sites = await env2.DB.prepare("SELECT id, preview_host FROM sites WHERE status='active' AND preview_host IS NOT NULL").all();
+  for (const s of sites.results) {
+    let status = 0;
+    try {
+      status = (await fetch(`https://${s.preview_host}/`, { cf: { cacheTtl: 0 } })).status;
+    } catch {
+    }
+    const okNow = status > 0 && status < 500;
+    await env2.DB.prepare(
+      "INSERT INTO health(site_id, last_ok_at, last_status, consecutive_fails) VALUES(?,?,?,?) ON CONFLICT(site_id) DO UPDATE SET last_ok_at=CASE WHEN ? THEN unixepoch() ELSE last_ok_at END, last_status=?, consecutive_fails=CASE WHEN ? THEN 0 ELSE consecutive_fails+1 END"
+    ).bind(s.id, okNow ? Date.now() / 1e3 : null, status, okNow ? 0 : 1, okNow ? 1 : 0, status, okNow ? 1 : 0).run();
+  }
+}
+__name(healthCheck, "healthCheck");
+async function debitPlans(env2) {
+  const users = await env2.DB.prepare("SELECT did, plan FROM users WHERE plan<>'creator'").all();
+  for (const u2 of users.results) {
+    const plan = planFor(u2);
+    const already = await env2.DB.prepare(
+      "SELECT 1 FROM ledger WHERE user_did=? AND kind='debit' AND memo=? AND created_at>unixepoch()-2592000"
+    ).bind(u2.did, `plan:${u2.plan}`).first();
+    if (already)
+      continue;
+    const bal = await env2.DB.prepare("SELECT balance_micro FROM credits WHERE user_did=?").bind(u2.did).first();
+    if (!bal || bal.balance_micro < plan.price_micro) {
+      await env2.DB.prepare("UPDATE sites SET status='suspended' WHERE owner_did=? AND status='active'").bind(u2.did).run();
+      continue;
+    }
+    await env2.DB.batch([
+      env2.DB.prepare("UPDATE credits SET balance_micro=balance_micro-?, updated_at=unixepoch() WHERE user_did=?").bind(plan.price_micro, u2.did),
+      env2.DB.prepare("INSERT INTO ledger(user_did, amount_micro, kind, memo, created_at) VALUES(?,?,'debit',?,unixepoch())").bind(u2.did, -plan.price_micro, `plan:${u2.plan}`)
+    ]);
+  }
+}
+__name(debitPlans, "debitPlans");
+
+// src/do/tenant.ts
+init_strip_cf_connecting_ip_header();
+init_modules_watch_stub();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_process();
+init_virtual_unenv_global_polyfill_cloudflare_unenv_preset_node_console();
+init_performance2();
+import { connect } from "cloudflare:sockets";
+var IDLE_MS = 5 * 6e4;
+var AGENT = "http://localhost:8080";
+var TenantDO = class {
+  st;
+  env;
+  constructor(state, env2) {
+    this.st = state;
+    this.env = env2;
+  }
+  async state() {
+    return await this.st.storage.get("s") ?? {
+      siteId: "",
+      status: "cold",
+      lastTouched: 0,
+      alwaysOn: false,
+      cluster: false,
+      webCount: 1
+    };
+  }
+  async set(s) {
+    await this.st.storage.put("s", { ...await this.state(), ...s });
+  }
+  async fetch(req) {
+    if (new URL(req.url).pathname === "/control") {
+      const { action, body } = await req.json();
+      return Response.json(await this.control(action, body));
+    }
+    const s = await this.state();
+    if (s.status === "cold" || s.status === "sleeping")
+      return this.wake(req);
+    await this.touch();
+    return this.proxyToContainer(req, s);
+  }
+  async wake(req) {
+    await this.set({ status: "starting" });
+    try {
+      await this.agent("/restore");
+      await this.set({ status: "awake" });
+      await this.touch();
+      return this.proxyToContainer(req, await this.state());
+    } catch (e) {
+      await this.set({ status: "cold" });
+      return new Response(`wake failed: ${e}`, { status: 503 });
+    }
+  }
+  async proxyToContainer(req, s) {
+    const port = s.cluster ? 8081 : 80;
+    const res = await fetch(new Request(`http://127.0.0.1:${port}${new URL(req.url).pathname}${new URL(req.url).search}`, req));
+    return res;
+  }
+  async touch() {
+    await this.set({ lastTouched: Date.now() });
+    await this.st.storage.setAlarm(Date.now() + IDLE_MS);
+  }
+  async alarm() {
+    const s = await this.state();
+    if (s.alwaysOn || Date.now() - s.lastTouched < IDLE_MS) {
+      if (!s.alwaysOn)
+        await this.st.storage.setAlarm(s.lastTouched + IDLE_MS);
+      return;
+    }
+    await this.agent("/sync-out").catch(() => {
+    });
+    await this.set({ status: "sleeping" });
+  }
+  async agent(path) {
+    const r2 = await fetch(AGENT + path, { method: "POST" });
+    if (!r2.ok)
+      throw new Error(`agent ${path}: ${r2.status}`);
+  }
+  // ---- control API (called by Bridge Worker) ----
+  async control(action, body) {
+    switch (action) {
+      case "configure":
+        await this.set({ siteId: body.siteId, alwaysOn: !!body.alwaysOn, cluster: !!body.cluster, webCount: body.webCount ?? 1 });
+        return { ok: true };
+      case "sync-out":
+        await this.agent("/sync-out");
+        return { ok: true };
+      case "wp-cli":
+        return { out: await (await fetch(`${AGENT}/exec`, { method: "POST", body: JSON.stringify({ cmd: body.cmd }) })).text() };
+      case "db-tcp":
+        return this.dbProxy(body);
+      case "status":
+        return this.state();
+    }
+    return { error: "unknown action" };
+  }
+  // P5: MySQL traffic web→db over same-DC TCP socket
+  async dbProxy(_body) {
+    const sock = connect({ hostname: "127.0.0.1", port: 3306 });
+    const { readable, writable } = new TransformStream();
+    sock.readable.pipeTo(writable).catch(() => {
+    });
+    return new Response(readable, { status: 200 });
+  }
+};
+__name(TenantDO, "TenantDO");
+
 // src/worker.ts
+var ROUTERS = [admin, registrar, importer, api];
 var worker_default = {
   async fetch(req, env2, ctx) {
     const url = new URL(req.url);
-    if (url.pathname.startsWith("/api/"))
-      return api.fetch(req, env2, ctx);
+    const ip = req.headers.get("cf-connecting-ip") ?? "anon";
+    if (url.pathname === "/status")
+      return statusPage(env2);
+    if (url.pathname === "/api/support" && req.method === "POST") {
+      if (!await rateLimit(env2, `support:${ip}`, 20, 3600))
+        return new Response("rate limited", { status: 429 });
+      const { q } = await req.json();
+      return new Response(JSON.stringify({ answer: await supportAnswer(env2, q ?? "") }), { headers: { "content-type": "application/json" } });
+    }
+    if (url.pathname.startsWith("/api/")) {
+      if (!await rateLimit(env2, `api:${ip}`, 300, 60))
+        return new Response("rate limited", { status: 429 });
+      for (const r2 of ROUTERS) {
+        const res = await r2.fetch(req, env2, ctx);
+        if (res && res.status !== 404)
+          return res;
+      }
+      return new Response('{"error":"not found"}', { status: 404, headers: { "content-type": "application/json" } });
+    }
     if (url.pathname === "/healthz")
       return new Response("ok");
     const host = url.hostname;
@@ -5696,6 +6228,12 @@ var worker_default = {
   async scheduled(_e, env2, ctx) {
     ctx.waitUntil(scanUsdc(env2));
     ctx.waitUntil(reapLeases(env2));
+    ctx.waitUntil(retainManifests(env2));
+    ctx.waitUntil(healthCheck(env2));
+    ctx.waitUntil(debitPlans(env2));
+  },
+  async queue(batch, env2) {
+    await consumeBatch(batch, env2);
   }
 };
 
@@ -5750,7 +6288,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-4vd2y0/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-pZyh7L/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -5787,7 +6325,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-4vd2y0/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-pZyh7L/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
@@ -5882,6 +6420,7 @@ if (typeof middleware_insertion_facade_default === "object") {
 }
 var middleware_loader_entry_default = WRAPPED_ENTRY;
 export {
+  TenantDO,
   __INTERNAL_WRANGLER_MIDDLEWARE__,
   middleware_loader_entry_default as default
 };
