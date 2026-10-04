@@ -568,4 +568,132 @@ export function registerAgentRoutes(router: AppRouter): void {
       op_log: opEntries,
     });
   });
+
+  // --- repo importer (git clone for agents) -------------------------------------
+
+  router.post("/api/:owner/:repo/dg/import", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
+      url?: string;
+      branch?: string;
+    };
+    if (!parsed.url) return bad(c, "url required");
+    const stub = getRepoStub(c.env, route.doName);
+    const { importRemoteRepo } = await import("@/worker/agent/importer");
+    const outcome = await importRemoteRepo({
+      env: c.env,
+      repoId: route.doName,
+      stub,
+      url: parsed.url,
+      branch: parsed.branch,
+      actor: principal.actor,
+      cacheCtx: c.var.cacheCtx,
+    });
+    if (outcome.kind === "not_empty") {
+      return bad(c, `repo-not-empty:${outcome.refs}`, 409);
+    }
+    if (outcome.kind === "failed") return bad(c, outcome.reason, 502);
+    return json(c, outcome);
+  });
+
+  // --- work intents (claimable work items) ------------------------------------
+
+  router.get("/api/:owner/:repo/dg/work", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const rows = await stub.listWorkIntents();
+    return json(c, {
+      work: rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        created_by: row.createdBy,
+        status: row.status,
+        claimed_by: row.claimedBy,
+        claim_expires_at: row.claimExpiresAt,
+        created_at: row.createdAt,
+      })),
+    });
+  });
+
+  router.post("/api/:owner/:repo/dg/work", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
+      title?: string;
+      body?: string;
+    };
+    if (!parsed.title?.trim()) return bad(c, "title required");
+    const stub = getRepoStub(c.env, route.doName);
+    const row = await stub.createWorkIntent({
+      row: {
+        id: `work-${crypto.randomUUID().slice(0, 8)}`,
+        title: parsed.title.slice(0, 200),
+        body: parsed.body?.slice(0, 8000) ?? null,
+        createdBy: principal.actor,
+        status: "open",
+        claimedBy: null,
+        claimExpiresAt: null,
+        createdAt: Date.now(),
+        closedAt: null,
+      },
+      actor: principal.actor,
+    });
+    return json(c, { id: row.id, status: row.status });
+  });
+
+  router.post("/api/:owner/:repo/dg/work/:id/claim", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const stub = getRepoStub(c.env, route.doName);
+    const outcome = await stub.claimWorkIntent({
+      id: c.req.param("id"),
+      actor: principal.actor,
+    });
+    if (outcome.status !== "claimed") return bad(c, "work-unavailable", 409);
+    return json(c, { claimed: true, expires_at: outcome.row.claimExpiresAt });
+  });
+
+  router.post("/api/:owner/:repo/dg/work/:id/close", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const stub = getRepoStub(c.env, route.doName);
+    const outcome = await stub.closeWorkIntent({
+      id: c.req.param("id"),
+      actor: principal.actor,
+    });
+    if (outcome.status !== "closed") return bad(c, "work-unavailable", 409);
+    return json(c, { closed: true });
+  });
+
+  // --- merge attestations (in-toto / DSSE envelopes) ---------------------------
+
+  router.get("/api/:owner/:repo/dg/attest/:sha", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const doId = c.env.REPO_DO.idFromName(route.doName).toString();
+    const key = `${doPrefix(doId)}/attestations/${c.req.param("sha").toLowerCase()}.dsse.json`;
+    const obj = await c.env.REPO_BUCKET.get(key);
+    if (!obj) return bad(c, "attestation-not-found", 404);
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": "application/vnd.dsse-envelope+json",
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
+  });
 }

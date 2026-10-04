@@ -41,7 +41,11 @@ import {
 import {
   acceptPatchCommitState,
   addWebhookSubState,
+  claimWorkIntentState,
+  closeWorkIntentState,
+  createWorkIntentState,
   getCommitStatusesState,
+  importPackState,
   listRepoSecretCiphertextsState,
   listRepoSecretsMetaState,
   listWebhookSubsState,
@@ -49,7 +53,8 @@ import {
   putRepoSecretState,
   setCommitStatusState,
 } from "./catalog/agentApi";
-import type { CommitStatusRow, WebhookSubRow } from "./db/schema";
+import type { CommitStatusRow, WebhookSubRow, WorkIntentRow } from "./db/schema";
+import type { StagedImportPack } from "./catalog/agentApi";
 import { handleIdleAndMaintenance } from "./maintenance";
 import {
   debugState,
@@ -458,6 +463,37 @@ export class RepoDurableObject extends DurableObject {
   public async listWorkIntents() {
     await this.ensureAccessAndAlarm();
     return await listWorkIntentsState(this.ctx);
+  }
+
+  public async createWorkIntent(args: { row: WorkIntentRow; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await createWorkIntentState({ ctx: this.ctx, row: args.row, actor: args.actor });
+  }
+
+  public async claimWorkIntent(args: { id: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await claimWorkIntentState({ ctx: this.ctx, id: args.id, actor: args.actor });
+  }
+
+  public async closeWorkIntent(args: { id: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await closeWorkIntentState({ ctx: this.ctx, id: args.id, actor: args.actor });
+  }
+
+  public async importPack(args: {
+    packs: StagedImportPack[];
+    refs: { name: string; oid: string }[];
+    head: { target: string; oid: string };
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await importPackState({
+      ctx: this.ctx,
+      packs: args.packs,
+      refs: args.refs,
+      head: args.head,
+      actor: args.actor,
+    });
   }
 
   private prefix() {

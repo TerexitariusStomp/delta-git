@@ -102,6 +102,8 @@
     "LOG_LEVEL": "info",
     // tessera OIDC issuer (production). Override via .dev.vars for local dev.
     // Client id and secret are runtime concerns and live in .dev.vars / `wrangler secret put`.
-    "TESSERA_OIDC_ISSUER": "https://auth.limic.dev"
+    "TESSERA_OIDC_ISSUER": "https://auth.limic.dev",
+    // Hermes browser-agent deployment origin (embed.js source for /embed/hermes).
+    "HERMES_ORIGIN": "https://hermes.widespread.fyi"
   }
 }

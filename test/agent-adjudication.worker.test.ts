@@ -20,8 +20,6 @@ async function sha256Hex(input: string): Promise<string> {
     .join("");
 }
 
-type SeededIntentRepo = Awaited<ReturnType<typeof seedDivergentRepo>>;
-
 /** Seed a repo and land one divergent push; returns the minted merge intent. */
 async function seedDivergentRepo() {
   const owner = "o";
@@ -81,18 +79,21 @@ describe("merge adjudication", () => {
     const { seeded, intent } = await seedDivergentRepo();
 
     // Merge lease: engine claims the intent before attempting a merge.
-    const claimed = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.claimMergeIntent(intent.id)
+    const claimed = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) => await stub.claimMergeIntent(intent.id)
     );
     expect(claimed?.status).toBe("merging");
 
     // Merge found conflicts → intent moves to adjudication with a path list.
-    const marked = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.markMergeAdjudicating({
-        intentId: intent.id,
-        conflicts: ["README.md"],
-        actor: "merge-engine",
-      })
+    const marked = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) =>
+        await stub.markMergeAdjudicating({
+          intentId: intent.id,
+          conflicts: ["README.md"],
+          actor: "merge-engine",
+        })
     );
     expect(marked.status).toBe("ok");
 
@@ -100,14 +101,16 @@ describe("merge adjudication", () => {
     const digestB = "b".repeat(64);
     const quorumK = 3;
 
-    const vote1 = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.castMergeVote({
-        intentId: intent.id,
-        voterDid: "did:dg:agent-1",
-        resolutionDigest: digestA,
-        signature: "sig1",
-        quorumK,
-      })
+    const vote1 = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) =>
+        await stub.castMergeVote({
+          intentId: intent.id,
+          voterDid: "did:dg:agent-1",
+          resolutionDigest: digestA,
+          signature: "sig1",
+          quorumK,
+        })
     );
     expect(vote1.status).toBe("accepted");
     if (vote1.status === "accepted") {
@@ -116,38 +119,44 @@ describe("merge adjudication", () => {
     }
 
     // Same voter may not take a second seat.
-    const dup = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.castMergeVote({
-        intentId: intent.id,
-        voterDid: "did:dg:agent-1",
-        resolutionDigest: digestA,
-        signature: "sig1b",
-        quorumK,
-      })
+    const dup = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) =>
+        await stub.castMergeVote({
+          intentId: intent.id,
+          voterDid: "did:dg:agent-1",
+          resolutionDigest: digestA,
+          signature: "sig1b",
+          quorumK,
+        })
     );
     expect(dup).toEqual({ status: "rejected", reason: "duplicate-voter" });
 
-    const vote2 = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.castMergeVote({
-        intentId: intent.id,
-        voterDid: "did:dg:agent-2",
-        resolutionDigest: digestB,
-        signature: "sig2",
-        quorumK,
-      })
+    const vote2 = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) =>
+        await stub.castMergeVote({
+          intentId: intent.id,
+          voterDid: "did:dg:agent-2",
+          resolutionDigest: digestB,
+          signature: "sig2",
+          quorumK,
+        })
     );
     expect(vote2.status).toBe("accepted");
     if (vote2.status === "accepted") expect(vote2.resolved).toBe(false);
 
     // Third vote gives digestA a 2/3 majority → quorum reached.
-    const vote3 = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.castMergeVote({
-        intentId: intent.id,
-        voterDid: "did:dg:hermes-3",
-        resolutionDigest: digestA,
-        signature: "sig3",
-        quorumK,
-      })
+    const vote3 = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) =>
+        await stub.castMergeVote({
+          intentId: intent.id,
+          voterDid: "did:dg:hermes-3",
+          resolutionDigest: digestA,
+          signature: "sig3",
+          quorumK,
+        })
     );
     expect(vote3.status).toBe("accepted");
     if (vote3.status === "accepted") {
@@ -156,24 +165,27 @@ describe("merge adjudication", () => {
     }
 
     // Post-quorum the intent awaits resolution application; no more votes.
-    const late = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.castMergeVote({
-        intentId: intent.id,
-        voterDid: "did:dg:agent-4",
-        resolutionDigest: digestA,
-        signature: "sig4",
-        quorumK,
-      })
+    const late = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) =>
+        await stub.castMergeVote({
+          intentId: intent.id,
+          voterDid: "did:dg:agent-4",
+          resolutionDigest: digestA,
+          signature: "sig4",
+          quorumK,
+        })
     );
     expect(late.status).toBe("rejected");
 
-    const resolved = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.getMergeIntent(intent.id)
+    const resolved = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) => await stub.getMergeIntent(intent.id)
     );
     expect(resolved?.status).toBe("conflict");
 
     // Replay the op log and re-verify the hash chain end to end.
-    const opLog = await callStubWithRetry(seeded.getStub, (stub) => stub.listOpLog(-1));
+    const opLog = await callStubWithRetry(seeded.getStub, async (stub) => await stub.listOpLog(-1));
     expect(opLog.length).toBeGreaterThanOrEqual(5);
     let prevHash = "genesis";
     for (const row of opLog) {
@@ -200,22 +212,24 @@ describe("merge adjudication", () => {
     const baseOid = seeded.nextCommit.oid;
 
     // Wrong expected base → base_moved, no ref change.
-    const moved = await callStubWithRetry(seeded.getStub, (stub) =>
-      stub.commitMerge({
-        intentId: intent.id,
-        expectedBaseOid: zero40(),
-        mergeOid: commit.oid,
-        stagedPack: { packKey: "unused.pack", packBytes: 0, idxBytes: 0, objectCount: 0 },
-        actor: "merge-engine",
-        method: "auto",
-      })
+    const moved = await callStubWithRetry(
+      seeded.getStub,
+      async (stub) =>
+        await stub.commitMerge({
+          intentId: intent.id,
+          expectedBaseOid: zero40(),
+          mergeOid: commit.oid,
+          stagedPack: { packKey: "unused.pack", packBytes: 0, idxBytes: 0, objectCount: 0 },
+          actor: "merge-engine",
+          method: "auto",
+        })
     );
     expect(moved.status).toBe("base_moved");
 
     // Build a real merge commit (two parents: base + delta tip) and stage its
     // pack the same way the engine does.
     const author = "Merge <m@example.com> 0 +0000";
-    const refs = await callStubWithRetry(seeded.getStub, (stub) => stub.listRefs());
+    const refs = await callStubWithRetry(seeded.getStub, async (stub) => await stub.listRefs());
     const deltaRef = refs.find((ref: { name: string }) => ref.name.startsWith("refs/delta/"));
     expect(deltaRef?.oid).toBe(commit.oid);
 
@@ -251,44 +265,51 @@ describe("merge adjudication", () => {
     await env.REPO_BUCKET.put(packKey, pack.packBytes);
     await env.REPO_BUCKET.put(packIndexKey(packKey), pack.idxBytes);
 
-    const committed = await callStubWithRetry(seeded.getStub, (s) =>
-      s.commitMerge({
-        intentId: intent.id,
-        expectedBaseOid: baseOid,
-        mergeOid: mergeCommit.oid,
-        stagedPack: {
-          packKey,
-          packBytes: pack.packBytes.byteLength,
-          idxBytes: pack.idxBytes.byteLength,
-          objectCount: pack.objectCount,
-        },
-        actor: "merge-engine",
-        method: "adjudicated",
-      })
+    const committed = await callStubWithRetry(
+      seeded.getStub,
+      async (s) =>
+        await s.commitMerge({
+          intentId: intent.id,
+          expectedBaseOid: baseOid,
+          mergeOid: mergeCommit.oid,
+          stagedPack: {
+            packKey,
+            packBytes: pack.packBytes.byteLength,
+            idxBytes: pack.idxBytes.byteLength,
+            objectCount: pack.objectCount,
+          },
+          actor: "merge-engine",
+          method: "adjudicated",
+        })
     );
     expect(committed.status).toBe("committed");
 
-    const after = await callStubWithRetry(seeded.getStub, (s) => s.listRefs());
+    const after = await callStubWithRetry(seeded.getStub, async (s) => await s.listRefs());
     expect(after.find((ref: { name: string }) => ref.name === "refs/heads/main")?.oid).toBe(
       mergeCommit.oid
     );
-    const head = await callStubWithRetry(seeded.getStub, (s) => s.getHead());
+    const head = await callStubWithRetry(seeded.getStub, async (s) => await s.getHead());
     expect(head.oid).toBe(mergeCommit.oid);
 
-    const done = await callStubWithRetry(seeded.getStub, (s) => s.getMergeIntent(intent.id));
+    const done = await callStubWithRetry(
+      seeded.getStub,
+      async (s) => await s.getMergeIntent(intent.id)
+    );
     expect(done?.status).toBe("merged");
     expect(done?.resultOid).toBe(mergeCommit.oid);
 
     // Replay protection: a merged intent is not committable again.
-    const replay = await callStubWithRetry(seeded.getStub, (s) =>
-      s.commitMerge({
-        intentId: intent.id,
-        expectedBaseOid: mergeCommit.oid,
-        mergeOid: commit.oid,
-        stagedPack: { packKey, packBytes: 1, idxBytes: 1, objectCount: 1 },
-        actor: "merge-engine",
-        method: "auto",
-      })
+    const replay = await callStubWithRetry(
+      seeded.getStub,
+      async (s) =>
+        await s.commitMerge({
+          intentId: intent.id,
+          expectedBaseOid: mergeCommit.oid,
+          mergeOid: commit.oid,
+          stagedPack: { packKey, packBytes: 1, idxBytes: 1, objectCount: 1 },
+          actor: "merge-engine",
+          method: "auto",
+        })
     );
     expect(replay.status).toBe("intent_state");
   });

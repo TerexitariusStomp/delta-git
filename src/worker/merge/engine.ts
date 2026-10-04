@@ -8,6 +8,8 @@ import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { mergeFileContents } from "./file";
 import { writeServerPack, type NewObject } from "./packWriter";
 import { isTreeMode, parseTree, serializeTree, type Tree, type TreeEntry } from "./tree";
+import { writeMergeAttestation } from "@/worker/agent/attest";
+import { createLogger } from "@/worker/common/logger";
 
 // Worker-side merge engine.
 //
@@ -298,6 +300,7 @@ export async function attemptMerge(args: {
   cacheCtx?: CacheContext;
 }): Promise<MergeAttemptResult> {
   const { env, repoId, stub, intentId, actor, cacheCtx } = args;
+  const log = createLogger(env.LOG_LEVEL, { service: "MergeEngine", repoId });
   const intent = await stub.claimMergeIntent(intentId);
   if (!intent) {
     const existing = await stub.getMergeIntent(intentId);
@@ -393,6 +396,18 @@ export async function attemptMerge(args: {
   if (committed.status !== "committed") {
     return { kind: "skipped", reason: committed.status };
   }
+  // in-toto/DSSE attestation for the committed merge — provenance forever.
+  await writeMergeAttestation({
+    env,
+    doId: stub.id.toString(),
+    intentId,
+    mergeOid,
+    targetRef: intent.targetRef,
+    baseOid,
+    deltaOid: intent.deltaOid,
+    method: "auto",
+    voters: [`actor:${actor}`],
+  }).catch((error) => log.warn("attest:write-failed", { error: String(error) }));
   // Deploy-on-commit for merge landings on heads refs.
   if (intent.targetRef.startsWith("refs/heads/")) {
     await env.REPO_TASKS_QUEUE.send({

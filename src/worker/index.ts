@@ -5,6 +5,7 @@ import { registerAgentRoutes } from "./routes/agent";
 import { registerApiV3Routes } from "./routes/apiv3";
 import { registerPagesRoutes } from "./routes/pages";
 import { registerMcpRoutes } from "./routes/mcp";
+import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
 import { registerUiRoutes } from "./routes/ui";
 import { registerAuthRoutes } from "./routes/auth";
 import { requestServicesMiddleware, type AppBindings, type AppContext } from "./routes/hono";
@@ -15,6 +16,16 @@ import { handleRepoTaskQueue } from "./tasks/queue";
 
 const app = new Hono<AppBindings>({ strict: false });
 app.use("*", requestServicesMiddleware);
+// Cross-origin isolation on all HTML pages: required so embedded
+// Hermes mounts (SharedArrayBuffer/Atomics) work inline rather than
+// degrading to a popup. credentialless keeps cross-origin subresources
+// working while still granting isolation on supporting browsers.
+app.use("*", async (c, next) => {
+  await next();
+  if (c.res.headers.get("Content-Type")?.startsWith("text/html")) {
+    for (const [k, v] of Object.entries(ISOLATION_HEADERS)) c.res.headers.set(k, v);
+  }
+});
 // Register Git protocol routes (info/refs, upload-pack, receive-pack)
 registerGitRoutes(app);
 // Register Admin routes
@@ -25,6 +36,7 @@ registerAuthRoutes(app);
 registerAgentRoutes(app);
 registerApiV3Routes(app);
 registerMcpRoutes(app);
+registerHermesRoutes(app);
 // Static site serving from repo refs
 registerPagesRoutes(app);
 
