@@ -83,10 +83,14 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
     if (limited) return limited;
 
     let did = c.req.query("did")?.trim();
-    const handle = c.req.query("handle")?.trim().toLowerCase();
+    // Handles are domains (alice.bsky.social). Forgive the common shorthand:
+    // a bare word gets the default bsky.social TLD; a leading @ is stripped.
+    const rawHandle = c.req.query("handle")?.trim().toLowerCase().replace(/^@/, "");
+    const handle =
+      rawHandle && !rawHandle.includes(".") ? `${rawHandle}.bsky.social` : rawHandle;
     if (!did && handle) {
       did = await resolveHandle(c.env, handle);
-      if (!did) return bad(c, "handle-unresolved", 404);
+      if (!did) return bad(c, `handle "${handle}" did not resolve`, 404);
     }
     if (!did || !/^did:(plc|web|key|dg):[a-zA-Z0-9._:%-]+$/.test(did)) {
       return bad(c, "did-or-handle-required");

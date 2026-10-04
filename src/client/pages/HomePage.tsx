@@ -1,6 +1,11 @@
 import { ArrowRight } from "lucide-react";
 
-export function HomePage() {
+export type HomePageProps = {
+  /** Deployment origin — used to render the git clone URL for this host. */
+  origin?: string;
+};
+
+export function HomePage({ origin = "" }: HomePageProps) {
   return (
     <div className="space-y-12 pt-8 sm:pt-12">
       <section className="animate-slide-up opacity-0" style={{ animationDelay: "0ms" }}>
@@ -26,7 +31,7 @@ export function HomePage() {
           <div>
             <span className="select-none text-zinc-500">$ </span>
             <span className="text-zinc-800 dark:text-zinc-100">
-              git clone https://git.limic.dev/rachel/git-on-cloudflare
+              git clone {origin}/rachel/git-on-cloudflare
             </span>
           </div>
         </div>
@@ -35,9 +40,7 @@ export function HomePage() {
       <section className="animate-slide-up opacity-0" style={{ animationDelay: "120ms" }}>
         <dl className="grid gap-x-12 gap-y-6 sm:grid-cols-2">
           <a
-            href="https://git.limic.dev/rachel/git-on-cloudflare"
-            target="_blank"
-            rel="noreferrer"
+            href="/rachel/git-on-cloudflare"
             className="group block rounded-xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/50 p-4 no-underline transition-colors hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-sm"
           >
             <dt className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-accent-500 dark:group-hover:text-accent-400">

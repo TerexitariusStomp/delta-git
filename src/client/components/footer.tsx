@@ -15,9 +15,7 @@ export function Footer() {
           on Cloudflare
         </a>
         <a
-          href="https://git.limic.dev/rachel/git-on-cloudflare"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/rachel/git-on-cloudflare"
           className="text-xs text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-accent-600 dark:decoration-zinc-700 dark:hover:text-accent-400"
         >
           Source code

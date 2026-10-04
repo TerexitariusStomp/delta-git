@@ -126,7 +126,10 @@ export function metric(
   opts?: { scope?: string; detail?: string; value?: number; index?: string }
 ): void {
   try {
-    env.ANALYTICS?.writeDataPoint({
+    // The binding is optional — absent until the account opts in to
+    // Analytics Engine (see the commented binding in wrangler.jsonc).
+    const ae = (env as { ANALYTICS?: AnalyticsEngineDataset }).ANALYTICS;
+    ae?.writeDataPoint({
       blobs: [event, opts?.scope ?? "", (opts?.detail ?? "").slice(0, 200)],
       doubles: [1, opts?.value ?? 0],
       indexes: [(opts?.index ?? "").slice(0, 90)],

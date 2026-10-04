@@ -50,7 +50,7 @@ app.get("/", async (c) => {
   return renderUiDocumentResponse(
     c.env,
     "home",
-    {},
+    { origin: new URL(c.req.url).origin },
     { failureBody: "Failed to render page\n", viewer }
   );
 });

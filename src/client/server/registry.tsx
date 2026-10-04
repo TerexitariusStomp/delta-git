@@ -9,7 +9,7 @@ import { BlobPage, type BlobPageProps } from "@/client/pages/BlobPage";
 import { CommitPage, type CommitPageProps } from "@/client/pages/CommitPage";
 import { CommitsPage, type CommitsPageProps } from "@/client/pages/CommitsPage";
 import { ErrorPage, type ErrorPageProps } from "@/client/pages/ErrorPage";
-import { HomePage } from "@/client/pages/HomePage";
+import { HomePage, type HomePageProps } from "@/client/pages/HomePage";
 import { IdeasPage, type IdeasPageProps } from "@/client/pages/IdeasPage";
 import { LeaderboardPage, type LeaderboardPageProps } from "@/client/pages/LeaderboardPage";
 import { NotFoundPage } from "@/client/pages/NotFoundPage";
@@ -35,7 +35,7 @@ const views: Record<string, ViewDefinition> = {
     kind: "document",
     title: "git-on-cloudflare",
     clientEntrypoints: [clientEntrypoints.shell],
-    render: () => <HomePage />,
+    render: renderWithProps((props: HomePageProps) => <HomePage {...props} />),
   },
   "404": {
     kind: "document",
