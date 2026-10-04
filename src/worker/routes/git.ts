@@ -27,6 +27,7 @@ import type { Db } from "@/worker/db/d1/client";
 import type { Logger } from "@/worker/common/logger";
 import { touchRepositoryUpdatedAt } from "@/worker/db/d1/dal/repositories";
 import { workerExecutionContext, type AppContext, type AppRouter } from "./hono";
+import { gitCorsPreflight, withGitCors } from "./cors";
 
 type GitService = "git-upload-pack" | "git-receive-pack";
 type PatTouchOp = "read" | "write";
@@ -442,13 +443,22 @@ export function registerGitRoutes(router: AppRouter) {
       return new Response("Missing or unsupported service\n", { status: 400 });
     }
     const resolved = await resolveGitRouteForRequest(c, owner, repo, service, true);
-    if (resolved.kind === "response") return resolved.response;
+    if (resolved.kind === "response") return withGitCors(c.req.raw, resolved.response);
     const route = resolved.route;
     const authorized = await authorizeGitRouteForRequest(c, route, service, true, "read");
-    if (authorized.kind === "response") return authorized.response;
+    if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
     const { cacheCtx } = authorized;
-    return await capabilityAdvertisement(c.env, service, route.doName, cacheCtx);
+    return withGitCors(
+      c.req.raw,
+      await capabilityAdvertisement(c.env, service, route.doName, cacheCtx)
+    );
   });
+
+  // Browser git clients (isomorphic-git in the PWA working copy) issue CORS
+  // preflights before speaking smart HTTP; answer them on every git endpoint.
+  router.options(`/:owner/:repo/info/refs`, (c) => gitCorsPreflight(c.req.raw));
+  router.options(`/:owner/:repo/git-upload-pack`, (c) => gitCorsPreflight(c.req.raw));
+  router.options(`/:owner/:repo/git-receive-pack`, (c) => gitCorsPreflight(c.req.raw));
 
   router.post(`/:owner/:repo/git-upload-pack`, async (c) => {
     const owner = c.req.param("owner");
@@ -464,8 +474,11 @@ export function registerGitRoutes(router: AppRouter) {
       false,
       "read"
     );
-    if (authorized.kind === "response") return authorized.response;
-    return handleUploadPackPOST(c.env, route, c.req.raw, authorized.cacheCtx);
+    if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
+    return withGitCors(
+      c.req.raw,
+      await handleUploadPackPOST(c.env, route, c.req.raw, authorized.cacheCtx)
+    );
   });
 
   router.post(`/:owner/:repo/git-receive-pack`, async (c) => {
@@ -482,8 +495,8 @@ export function registerGitRoutes(router: AppRouter) {
       false,
       "write"
     );
-    if (authorized.kind === "response") return authorized.response;
-    return await handleReceivePackPOST(
+    if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
+    const res = await handleReceivePackPOST(
       c.env,
       route,
       c.req.raw,
@@ -492,5 +505,6 @@ export function registerGitRoutes(router: AppRouter) {
       c.var.logFor({ service: "ReceiveAcl", repoId: route.doName }),
       authorized.actor
     );
+    return withGitCors(c.req.raw, res);
   });
 }
