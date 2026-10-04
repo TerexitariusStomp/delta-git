@@ -174,7 +174,13 @@ describe("streaming compaction", () => {
 
       const stateAfterRequest = await getDebugState(owner, repo, seededRepo.cookieHeader);
       expect(stateAfterRequest.compaction?.queued).toBe(true);
-      expect(sendSpy).toHaveBeenCalledTimes(1);
+      // The admin send carries `repoId`; a compaction alarm firing in the
+      // same window sends `{kind:"compaction", doId}` without one, so filter
+      // rather than count raw calls.
+      const adminSends = sendSpy.mock.calls.filter(
+        ([msg]) => (msg as { repoId?: string }).repoId === repoId
+      );
+      expect(adminSends).toHaveLength(1);
     } finally {
       sendSpy.mockRestore();
     }

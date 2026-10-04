@@ -136,9 +136,11 @@ export async function runOvernightPass(
       continue;
     }
 
+    // Object reads + merge go through the repo DO by name — `msg.repoId` is
+    // the doName, `msg.doId` is only for R2 prefixes and stub-by-id lookups.
     const applied = await applyUnifiedPatch({
       env,
-      repoId: msg.doId,
+      repoId: msg.repoId ?? msg.doId,
       baseCommitOid: main.oid,
       patchText: patch,
       message: `overnight: ${idea.title}`,
@@ -180,7 +182,7 @@ export async function runOvernightPass(
     // --- verify (merge through normal adjudication) ----------------------
     const merge = await attemptMerge({
       env,
-      repoId: msg.doId,
+      repoId: msg.repoId ?? msg.doId,
       stub,
       intentId: accepted.intent.id,
       actor,

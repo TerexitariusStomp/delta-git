@@ -78,7 +78,7 @@
     {
       "binding": "DB",
       "database_name": "git-on-cloudflare",
-      "database_id": "1fd98d8b-92b8-4a12-852a-e218ce362149",
+      "database_id": "651a76f1-4a63-4cc6-9b2d-90e97e5b02a1",
       "migrations_dir": "drizzle/d1"
     }
   ],

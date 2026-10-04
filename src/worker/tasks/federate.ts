@@ -9,7 +9,7 @@ import { parseTree, isTreeMode } from "@/worker/merge/tree";
 import { readCommit } from "@/worker/merge/engine";
 import { repoDidFor } from "@/worker/agent/dids";
 import { createDb } from "@/worker/db/d1/client";
-import { findRepositoryById } from "@/worker/db/d1/dal";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal";
 import { eq } from "drizzle-orm";
 import { namespaces, repositories } from "@/worker/db/d1/schema";
 
@@ -49,17 +49,29 @@ export interface FederateOutcome {
 
 function parseAdvertisedRefs(buf: Uint8Array): Map<string, string> {
   const refs = new Map<string, string>();
-  // Pkt-line stream: first line carries capabilities after a NUL.
+  // Smart-HTTP v0 advert: `# service=` header pkt, a separator flush, then
+  // the ref list terminated by a final flush. The first flush is a
+  // separator, not end-of-stream — stopping there yields an empty map and
+  // every push degenerates to a full-history send.
   let i = 0;
+  let sawSeparator = false;
   while (i + 4 <= buf.length) {
     const len = parseInt(td.decode(buf.subarray(i, i + 4)), 16);
-    if (len === 0 || !Number.isFinite(len)) break;
+    if (len === 0 || !Number.isFinite(len)) {
+      if (len === 0 && !sawSeparator) {
+        sawSeparator = true;
+        i += 4;
+        continue;
+      }
+      break;
+    }
     const line = td.decode(buf.subarray(i + 4, i + len));
+    i += len;
+    if (line.startsWith("#")) continue;
     const nul = line.indexOf("\0");
     const payload = (nul >= 0 ? line.slice(0, nul) : line).trimEnd();
     const m = /^([0-9a-f]{40}) (.+)$/.exec(payload);
     if (m) refs.set(m[2], m[1]);
-    i += len;
   }
   return refs;
 }
@@ -68,7 +80,11 @@ function parseAdvertisedRefs(buf: Uint8Array): Map<string, string> {
 // Object collection — commits/trees/blobs the remote is missing
 // ---------------------------------------------------------------------------
 
-async function ancestorSet(env: Env, doId: string, seed: string | undefined): Promise<Set<string>> {
+async function ancestorSet(
+  env: Env,
+  doName: string,
+  seed: string | undefined
+): Promise<Set<string>> {
   const seen = new Set<string>();
   if (!seed) return seen;
   const queue = [seed];
@@ -76,7 +92,7 @@ async function ancestorSet(env: Env, doId: string, seed: string | undefined): Pr
     const cur = queue.shift()!;
     if (seen.has(cur)) continue;
     seen.add(cur);
-    const commit = await readCommit(env, doId, cur, undefined);
+    const commit = await readCommit(env, doName, cur, undefined);
     if (!commit) break;
     for (const parent of commit.parents) if (!seen.has(parent)) queue.push(parent);
   }
@@ -85,7 +101,7 @@ async function ancestorSet(env: Env, doId: string, seed: string | undefined): Pr
 
 async function collectTreeObjects(
   env: Env,
-  doId: string,
+  doName: string,
   treeOid: string,
   out: { type: "tree" | "blob"; payload: Uint8Array }[],
   cap: number
@@ -93,14 +109,14 @@ async function collectTreeObjects(
   const stack = [treeOid];
   while (stack.length > 0) {
     const oid = stack.pop()!;
-    const obj = await readObject(env, doId, oid, undefined);
+    const obj = await readObject(env, doName, oid, undefined);
     if (!obj) return false;
     if (obj.type === "tree") {
       out.push({ type: "tree", payload: obj.payload });
       for (const entry of parseTree(obj.payload).values()) {
         if (isTreeMode(entry.mode)) stack.push(entry.oid);
         else {
-          const blob = await readObject(env, doId, entry.oid, undefined);
+          const blob = await readObject(env, doName, entry.oid, undefined);
           if (!blob || blob.type !== "blob") return false;
           out.push({ type: "blob", payload: blob.payload });
         }
@@ -116,17 +132,22 @@ async function collectTreeObjects(
 /**
  * Collect the objects reachable from `sha` that are not reachable from any
  * of the remote's known tips. Bounded; returns undefined when the walk
- * exceeds caps (mirror then falls back to a full clone on the remote side).
+ * exceeds caps or an object on the path is unreadable — a partial set would
+ * produce a pack the remote rejects with `missing-objects`, so we fail the
+ * task and let the queue retry instead.
+ *
+ * `doName` must be the repo DO *name* (`owner/repo`), not the hex DO id:
+ * `readObject`/`readCommit` resolve the stub via `idFromName`.
  */
 async function collectPushObjects(
   env: Env,
-  doId: string,
+  doName: string,
   sha: string,
   remoteTips: Set<string>
 ): Promise<{ type: "commit" | "tree" | "blob"; payload: Uint8Array }[] | undefined> {
   const excluded = new Set<string>();
   for (const tip of remoteTips) {
-    for (const a of await ancestorSet(env, doId, tip)) excluded.add(a);
+    for (const a of await ancestorSet(env, doName, tip)) excluded.add(a);
     if (excluded.size > 4096) break;
   }
   const commits: string[] = [];
@@ -136,8 +157,8 @@ async function collectPushObjects(
     const cur = queue.shift()!;
     if (seen.has(cur) || excluded.has(cur)) continue;
     seen.add(cur);
-    const commit = await readCommit(env, doId, cur, undefined);
-    if (!commit) continue;
+    const commit = await readCommit(env, doName, cur, undefined);
+    if (!commit) return undefined;
     commits.push(cur);
     for (const p of commit.parents) if (!seen.has(p) && !excluded.has(p)) queue.push(p);
   }
@@ -145,14 +166,14 @@ async function collectPushObjects(
   const objs: { type: "commit" | "tree" | "blob"; payload: Uint8Array }[] = [];
   const pushedTrees = new Set<string>();
   for (const oid of commits) {
-    const obj = await readObject(env, doId, oid, undefined);
-    if (!obj || obj.type !== "commit") continue;
+    const obj = await readObject(env, doName, oid, undefined);
+    if (!obj || obj.type !== "commit") return undefined;
     objs.push({ type: "commit", payload: obj.payload });
     const tree = parseCommitText(td.decode(obj.payload)).tree;
     if (!tree || pushedTrees.has(tree)) continue;
     pushedTrees.add(tree);
     const treeObjs: { type: "tree" | "blob"; payload: Uint8Array }[] = [];
-    const ok = await collectTreeObjects(env, doId, tree, treeObjs, WALK_CAP_OBJECTS);
+    const ok = await collectTreeObjects(env, doName, tree, treeObjs, WALK_CAP_OBJECTS);
     if (!ok) return undefined;
     objs.push(...treeObjs);
     if (objs.length > WALK_CAP_OBJECTS) return undefined;
@@ -183,24 +204,44 @@ function concatBytes(...parts: Uint8Array[]): Uint8Array {
 
 const ZERO_OID = "0".repeat(40);
 
+/** Split `https://user:pass@host/path` → clean base + Basic auth header.
+ * Mirror credentials live in the target URL, never logged or stored apart. */
+function splitRemoteAuth(url: string): { base: string; auth?: string } {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.username) return { base: url.replace(/\/$/, "") };
+    const creds = `${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password)}`;
+    parsed.username = "";
+    parsed.password = "";
+    return {
+      base: parsed.toString().replace(/\/$/, ""),
+      auth: `Basic ${btoa(creds)}`,
+    };
+  } catch {
+    return { base: url.replace(/\/$/, "") };
+  }
+}
+
 async function pushRefToRemote(
   env: Env,
-  doId: string,
+  doName: string,
   url: string,
   ref: string,
-  sha: string
+  sha: string,
+  fetchImpl: typeof fetch = fetch
 ): Promise<{ ok: boolean; detail: string }> {
-  const base = url.replace(/\/$/, "");
-  const advRes = await fetch(`${base}/info/refs?service=git-receive-pack`);
+  const { base, auth } = splitRemoteAuth(url);
+  const headers: Record<string, string> = auth ? { Authorization: auth } : {};
+  const advRes = await fetchImpl(`${base}/info/refs?service=git-receive-pack`, { headers });
   if (!advRes.ok) return { ok: false, detail: `info/refs http ${advRes.status}` };
   const adv = parseAdvertisedRefs(new Uint8Array(await advRes.arrayBuffer()));
   const remoteTip = adv.get(ref);
   if (remoteTip === sha) return { ok: true, detail: "up-to-date" };
 
   const remoteTips = new Set(adv.values());
-  const objs = await collectPushObjects(env, doId, sha, remoteTips);
+  const objs = await collectPushObjects(env, doName, sha, remoteTips);
   if (!objs) {
-    return { ok: false, detail: "object-walk-exceeded-cap" };
+    return { ok: false, detail: "object-collection-failed" };
   }
 
   const commands = pkt(`${remoteTip ?? ZERO_OID} ${sha} ${ref}\0 report-status`);
@@ -208,13 +249,14 @@ async function pushRefToRemote(
   const pack = await buildPackV2(objs.map((o) => ({ type: o.type, payload: o.payload })));
   const body = concatBytes(commands, flush, pack);
 
-  const res = await fetch(`${base}/git-receive-pack`, {
+  const res = await fetchImpl(`${base}/git-receive-pack`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-git-receive-pack-request" },
+    headers: { ...headers, "Content-Type": "application/x-git-receive-pack-request" },
     body: body as unknown as BodyInit,
   });
   if (!res.ok) return { ok: false, detail: `receive-pack http ${res.status}` };
-  const text = await res.text();
+  // report-status is pkt-line framed binary — decode bytes, don't .text() it.
+  const text = td.decode(new Uint8Array(await res.arrayBuffer()));
   if (text.includes("unpack ok") && text.includes(`ok ${ref}`)) {
     return { ok: true, detail: `pushed ${objs.length} objects` };
   }
@@ -274,18 +316,26 @@ export async function enqueueFederatePush(
   });
 }
 
+/** Injectable seam for worker tests — the queue path always uses global fetch. */
+export interface FederateDeps {
+  fetch?: typeof fetch;
+}
+
 export async function runFederateTask(
   env: Env,
-  msg: FederateQueueMessage
+  msg: FederateQueueMessage,
+  deps: FederateDeps = {}
 ): Promise<FederateOutcome> {
   const log = createLogger(env.LOG_LEVEL, { service: "Federate", repoId: msg.repoId });
 
   // Resolve repo identity + configured mirrors. Private repos never mirror.
+  // `msg.repoId` is the repo DO name (all enqueue sites pass it), so resolve
+  // by `do_name`, not primary key.
   let targets: FederateTarget[] = msg.targets?.map((url) => ({ name: url, url })) ?? [];
   let repoDid: string | undefined;
   if (msg.repoId) {
     const db = createDb(env.DB);
-    const repo = await findRepositoryById(db, msg.repoId);
+    const repo = await findRepositoryByDoName(db, msg.repoId);
     if (repo && repo.visibility !== "public") {
       return { retry: false, detail: "private-repo" };
     }
@@ -328,7 +378,17 @@ export async function runFederateTask(
   for (const target of targets.slice(0, 8)) {
     try {
       if (target.url.startsWith("https://") || target.url.startsWith("http://")) {
-        const r = await pushRefToRemote(env, msg.doId, target.url, msg.ref, msg.sha);
+        // Object reads go through the repo DO by *name* — `msg.repoId` is the
+        // doName; `msg.doId` is the DO's hex id and idFromName() would route
+        // object reads to a different, empty DO.
+        const r = await pushRefToRemote(
+          env,
+          msg.repoId ?? msg.doId,
+          target.url,
+          msg.ref,
+          msg.sha,
+          deps.fetch
+        );
         results.push(`${target.name}:${r.ok ? "ok" : "fail"}(${r.detail})`);
         if (!r.ok) retry = true;
       } else {
@@ -350,3 +410,6 @@ export async function runFederateTask(
   log.info("federate:done", { ref: msg.ref, sha: msg.sha, results });
   return { retry, detail: results.join(", ").slice(0, 480) };
 }
+
+// Test seam — exercised by test/federate.worker.test.ts.
+export const __test = { collectPushObjects, parseAdvertisedRefs };
