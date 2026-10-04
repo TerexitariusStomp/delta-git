@@ -5,6 +5,7 @@ import type { PackCatalogRow } from "@/worker/do/repo/db/schema";
 import type { ReceiveStatus } from "@/worker/git/operations/validation";
 
 import { clientAbortedResponse, createLogger, getRepoStub } from "@/worker/common";
+import { canDivergeStatuses } from "@/worker/do/repo/catalog/diverge";
 import {
   MAX_SIMULTANEOUS_CONNECTIONS,
   SubrequestLimiter,
@@ -156,6 +157,8 @@ function createSidebandReceiveResponse(args: {
   packStream: ReadableStream<Uint8Array>;
   bytesConsumed: number;
   onRepoStateChanged?: RepoStateChangeHandler | undefined;
+  /** Pusher identity recorded on divergent merge intents. */
+  actor?: string | undefined;
 }): Response {
   const responseStream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -187,6 +190,7 @@ function createSidebandReceiveResponse(args: {
           limiter: args.limiter,
           countSubrequest: (op, n = 1) => countReceiveSubrequest(args.cacheCtx, args.log, op, n),
           onProgress,
+          actor: args.actor,
         });
 
         scheduleRepoStateChange(args.ctx, args.onRepoStateChanged, {
@@ -238,6 +242,7 @@ export async function handleStreamingReceivePackPOST(
   ctx: ExecutionContext,
   options?: {
     onRepoStateChanged?: RepoStateChangeHandler | undefined;
+    actor?: string | undefined;
   }
 ): Promise<Response> {
   const stub = getRepoStub(env, repoId);
@@ -294,7 +299,10 @@ export async function handleStreamingReceivePackPOST(
     }
 
     const preflightStatuses = validateReceiveCommands(begin.refs, parsedRequest.commands);
-    if (!preflightStatuses.every((status) => status.ok)) {
+    if (
+      !preflightStatuses.every((status) => status.ok) &&
+      !canDivergeStatuses(parsedRequest.commands, preflightStatuses)
+    ) {
       countReceiveSubrequest(cacheCtx, log, "do:abort-receive");
       await stub.abortReceive(begin.lease.token).catch(() => {});
       log.warn("receive:ref-conflict", {
@@ -327,6 +335,7 @@ export async function handleStreamingReceivePackPOST(
         packStream,
         bytesConsumed,
         onRepoStateChanged: options?.onRepoStateChanged,
+        actor: options?.actor,
       });
     }
 
@@ -346,6 +355,7 @@ export async function handleStreamingReceivePackPOST(
       cacheCtx,
       limiter,
       countSubrequest: (op, n = 1) => countReceiveSubrequest(cacheCtx, log, op, n),
+      actor: options?.actor,
     });
 
     scheduleRepoStateChange(ctx, options?.onRepoStateChanged, {

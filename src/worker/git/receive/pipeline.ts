@@ -1,7 +1,7 @@
 import type { CacheContext } from "@/worker/cache";
 import type { Logger } from "@/worker/common/logger";
 import type { RepoDurableObject } from "@/worker/do";
-import type { PackCatalogRow } from "@/worker/do/repo/db/schema";
+import type { MergeIntentRow, PackCatalogRow } from "@/worker/do/repo/db/schema";
 import type { ReceiveCommand, ReceiveStatus } from "@/worker/git/operations/validation";
 
 import { SubrequestLimiter } from "@/worker/git/operations/limits";
@@ -22,6 +22,8 @@ export type ReceivePipelineResult = {
   empty: boolean;
   packKey?: string;
   packBytes?: number;
+  /** Merge intents minted when the push was accepted as divergent. */
+  deltaIntents?: MergeIntentRow[];
 };
 
 export class ReceivePipelineHttpError extends Error {
@@ -162,6 +164,8 @@ type ExecuteReceivePipelineArgs = {
   activeCatalog: PackCatalogRow[];
   commands: ReceiveCommand[];
   log: Logger;
+  /** Pusher identity recorded on divergent merge intents. */
+  actor?: string;
   cacheCtx: CacheContext;
   limiter: SubrequestLimiter;
   countSubrequest(op: string, n?: number): void;
@@ -177,6 +181,7 @@ function buildReceiveResult(args: {
   empty: boolean;
   packKey?: string;
   packBytes?: number;
+  deltaIntents?: MergeIntentRow[];
 }): ReceivePipelineResult {
   return {
     reportStatusBody: buildReceiveReportStatus({
@@ -189,6 +194,7 @@ function buildReceiveResult(args: {
     empty: args.empty,
     packKey: args.packKey,
     packBytes: args.packBytes,
+    deltaIntents: args.deltaIntents,
   };
 }
 
@@ -308,6 +314,7 @@ export async function executeReceivePipeline(
     const finalize = await args.stub.finalizeReceive({
       token: args.leaseToken,
       commands: args.commands,
+      actor: args.actor,
       stagedPack,
     });
 
@@ -370,6 +377,7 @@ export async function executeReceivePipeline(
       empty: finalize.empty,
       packKey: stagedPack?.packKey,
       packBytes: stagedPack?.packBytes,
+      deltaIntents: finalize.deltaIntents,
     });
   } catch (error) {
     args.countSubrequest("do:abort-receive");

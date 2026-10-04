@@ -28,6 +28,28 @@ import {
   getRepoActivitySnapshot,
 } from "./catalog";
 import { getRefs, setRefs, resolveHead, setHead, getHeadAndRefs } from "./refs";
+import {
+  castMergeVoteState,
+  claimMergeIntentState,
+  commitMergeState,
+  getMergeIntentState,
+  listMergeIntentsState,
+  listMergeVotesState,
+  listOpLogState,
+  markMergeAdjudicatingState,
+} from "./catalog/merge";
+import {
+  acceptPatchCommitState,
+  addWebhookSubState,
+  getCommitStatusesState,
+  listRepoSecretCiphertextsState,
+  listRepoSecretsMetaState,
+  listWebhookSubsState,
+  listWorkIntentsState,
+  putRepoSecretState,
+  setCommitStatusState,
+} from "./catalog/agentApi";
+import type { CommitStatusRow, WebhookSubRow } from "./db/schema";
 import { handleIdleAndMaintenance } from "./maintenance";
 import {
   debugState,
@@ -181,6 +203,7 @@ export class RepoDurableObject extends DurableObject {
   public async finalizeReceive(args: {
     token: string;
     commands: Array<{ oldOid: string; newOid: string; ref: string }>;
+    actor?: string;
     stagedPack?:
       | {
           packKey: string;
@@ -196,6 +219,7 @@ export class RepoDurableObject extends DurableObject {
       env: this.env,
       token: args.token,
       commands: args.commands,
+      actor: args.actor,
       stagedPack: args.stagedPack,
       logger: this.logger,
     });
@@ -282,6 +306,158 @@ export class RepoDurableObject extends DurableObject {
   public async debugCheckOid(oid: string): Promise<DebugOidCheck> {
     await this.ensureAccessAndAlarm();
     return await debugCheckOid(this.ctx, this.env, oid);
+  }
+
+  // -------------------------------------------------------------------------
+  // delta-git agent layer RPCs
+  // -------------------------------------------------------------------------
+
+  public async listMergeIntents(statuses: string[]) {
+    await this.ensureAccessAndAlarm();
+    return await listMergeIntentsState(this.ctx, statuses);
+  }
+
+  public async getMergeIntent(id: string) {
+    await this.ensureAccessAndAlarm();
+    return await getMergeIntentState(this.ctx, id);
+  }
+
+  public async claimMergeIntent(id: string) {
+    await this.ensureAccessAndAlarm();
+    return await claimMergeIntentState(this.ctx, id);
+  }
+
+  public async listMergeVotes(intentId: string) {
+    await this.ensureAccessAndAlarm();
+    return await listMergeVotesState(this.ctx, intentId);
+  }
+
+  public async listOpLog(sinceSeq: number) {
+    await this.ensureAccessAndAlarm();
+    return await listOpLogState(this.ctx, sinceSeq);
+  }
+
+  public async commitMerge(args: {
+    intentId: string;
+    expectedBaseOid: string;
+    mergeOid: string;
+    stagedPack: {
+      packKey: string;
+      packBytes: number;
+      idxBytes: number;
+      objectCount: number;
+    };
+    actor: string;
+    method: "auto" | "adjudicated";
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await commitMergeState({
+      ctx: this.ctx,
+      env: this.env,
+      intentId: args.intentId,
+      expectedBaseOid: args.expectedBaseOid,
+      mergeOid: args.mergeOid,
+      stagedPack: args.stagedPack,
+      actor: args.actor,
+      method: args.method,
+      logger: this.logger,
+    });
+  }
+
+  public async markMergeAdjudicating(args: {
+    intentId: string;
+    conflicts: string[];
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await markMergeAdjudicatingState({
+      ctx: this.ctx,
+      intentId: args.intentId,
+      conflicts: args.conflicts,
+      actor: args.actor,
+    });
+  }
+
+  public async castMergeVote(args: {
+    intentId: string;
+    voterDid: string;
+    resolutionDigest: string;
+    rationale?: string;
+    signature: string;
+    quorumK: number;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await castMergeVoteState({
+      ctx: this.ctx,
+      intentId: args.intentId,
+      voterDid: args.voterDid,
+      resolutionDigest: args.resolutionDigest,
+      rationale: args.rationale,
+      signature: args.signature,
+      quorumK: args.quorumK,
+    });
+  }
+
+  public async acceptPatchCommit(args: {
+    targetRef: string;
+    newOid: string;
+    actor: string;
+    kind: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await acceptPatchCommitState({
+      ctx: this.ctx,
+      targetRef: args.targetRef,
+      newOid: args.newOid,
+      actor: args.actor,
+      kind: args.kind,
+    });
+  }
+
+  public async setCommitStatus(args: { row: CommitStatusRow; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await setCommitStatusState({ ctx: this.ctx, row: args.row, actor: args.actor });
+  }
+
+  public async getCommitStatuses(sha: string) {
+    await this.ensureAccessAndAlarm();
+    return await getCommitStatusesState(this.ctx, sha);
+  }
+
+  public async addWebhookSub(args: { row: WebhookSubRow; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await addWebhookSubState({ ctx: this.ctx, row: args.row, actor: args.actor });
+  }
+
+  public async listWebhookSubs() {
+    await this.ensureAccessAndAlarm();
+    return await listWebhookSubsState(this.ctx);
+  }
+
+  public async putRepoSecret(args: { name: string; ciphertext: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await putRepoSecretState({
+      ctx: this.ctx,
+      name: args.name,
+      ciphertext: args.ciphertext,
+      actor: args.actor,
+    });
+  }
+
+  public async listRepoSecretMeta() {
+    await this.ensureAccessAndAlarm();
+    return await listRepoSecretsMetaState(this.ctx);
+  }
+
+  /** Deploy-time binding injection only; never exposed over HTTP. */
+  public async listRepoSecretCiphertexts() {
+    await this.ensureAccessAndAlarm();
+    return await listRepoSecretCiphertextsState(this.ctx);
+  }
+
+  public async listWorkIntents() {
+    await this.ensureAccessAndAlarm();
+    return await listWorkIntentsState(this.ctx);
   }
 
   private prefix() {

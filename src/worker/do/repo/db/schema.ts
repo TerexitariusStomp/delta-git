@@ -31,3 +31,177 @@ export const packCatalog = sqliteTable(
 );
 
 export type PackCatalogRow = typeof packCatalog.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// delta-git agent layer
+// ---------------------------------------------------------------------------
+// These tables are per-repository state: they live in this repo's Durable
+// Object SQLite so merge/adjudication rows are strongly consistent with the
+// refs that produced them. Global cross-repo identity (agents, reputation)
+// lives in the worker D1 database instead.
+
+export const mergeIntents = sqliteTable(
+  "merge_intents",
+  {
+    id: text("id").notNull(),
+    // Ref the pushed commits diverged from (e.g. refs/heads/main).
+    targetRef: text("target_ref").notNull(),
+    // Commit currently at targetRef when the intent was minted.
+    baseOid: text("base_oid").notNull(),
+    // The delta ref that captured the pushed work (refs/delta/<id>).
+    deltaRef: text("delta_ref").notNull(),
+    deltaOid: text("delta_oid").notNull(),
+    // Agent DID (or PAT subject) that pushed the divergent work.
+    actor: text("actor").notNull(),
+    status: text("status").notNull(),
+    // Comma-joined conflicted paths once a merge attempt ran.
+    conflicts: text("conflicts"),
+    resultOid: text("result_oid"),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    resolvedAt: integer("resolved_at"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "merge_intents_pk" }),
+    index("idx_merge_intents_status_expiry").on(t.status, t.expiresAt),
+    index("idx_merge_intents_target_status").on(t.targetRef, t.status),
+    check(
+      "chk_merge_intents_status",
+      sql`"status" IN ('open','merging','adjudicating','merged','conflict','expired','rejected')`
+    ),
+  ]
+);
+
+export type MergeIntentRow = typeof mergeIntents.$inferSelect;
+
+export const mergeVotes = sqliteTable(
+  "merge_votes",
+  {
+    intentId: text("intent_id").notNull(),
+    // Which quorum seat this vote occupies (1..k).
+    seat: integer("seat").notNull(),
+    voterDid: text("voter_did").notNull(),
+    // Canonical JSON digest of the resolution the voter proposes.
+    resolutionDigest: text("resolution_digest").notNull(),
+    rationale: text("rationale"),
+    signature: text("signature").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.intentId, t.seat], name: "merge_votes_pk" }),
+    index("idx_merge_votes_intent_digest").on(t.intentId, t.resolutionDigest),
+    check("chk_merge_votes_seat", sql`"seat" >= 1`),
+  ]
+);
+
+export type MergeVoteRow = typeof mergeVotes.$inferSelect;
+
+// Append-only, hash-chained operation log. Every mutation the agent layer
+// performs (push accepted as delta, merge attempt, adjudication verdict,
+// rep change, status write) lands one row here so external observers can
+// replay the repository's full history of coordination events.
+export const opLog = sqliteTable(
+  "op_log",
+  {
+    seq: integer("seq").notNull(),
+    // sha256(prev_hash || canonical payload) — the chain link.
+    hash: text("hash").notNull(),
+    prevHash: text("prev_hash").notNull(),
+    kind: text("kind").notNull(),
+    actor: text("actor"),
+    // Canonical JSON payload for the event.
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.seq], name: "op_log_pk" }),
+    index("idx_op_log_kind_created").on(t.kind, t.createdAt),
+    check("chk_op_log_seq", sql`"seq" >= 0`),
+  ]
+);
+
+export type OpLogRow = typeof opLog.$inferSelect;
+
+export const workIntents = sqliteTable(
+  "work_intents",
+  {
+    id: text("id").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    createdBy: text("created_by").notNull(),
+    status: text("status").notNull(),
+    claimedBy: text("claimed_by"),
+    claimExpiresAt: integer("claim_expires_at"),
+    createdAt: integer("created_at").notNull(),
+    closedAt: integer("closed_at"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "work_intents_pk" }),
+    index("idx_work_intents_status").on(t.status),
+    check("chk_work_intents_status", sql`"status" IN ('open','claimed','closed')`),
+  ]
+);
+
+export type WorkIntentRow = typeof workIntents.$inferSelect;
+
+export const commitStatus = sqliteTable(
+  "commit_status",
+  {
+    sha: text("sha").notNull(),
+    context: text("context").notNull(),
+    state: text("state").notNull(),
+    description: text("description"),
+    targetUrl: text("target_url"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.sha, t.context], name: "commit_status_pk" }),
+    check(
+      "chk_commit_status_state",
+      sql`"state" IN ('pending','success','failure','error')`
+    ),
+  ]
+);
+
+export type CommitStatusRow = typeof commitStatus.$inferSelect;
+
+export const webhookSubs = sqliteTable(
+  "webhook_subs",
+  {
+    id: text("id").notNull(),
+    url: text("url").notNull(),
+    // Comma-joined event kinds, e.g. "push,merge,adjudication".
+    events: text("events").notNull(),
+    secret: text("secret"),
+    createdBy: text("created_by").notNull(),
+    active: integer("active").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "webhook_subs_pk" }),
+    index("idx_webhook_subs_active").on(t.active),
+    check("chk_webhook_subs_active", sql`"active" IN (0,1)`),
+  ]
+);
+
+export type WebhookSubRow = typeof webhookSubs.$inferSelect;
+
+// Repository secrets follow the Cloudflare `wrangler secret` contract:
+// write-only over the API, never readable back, injected as secret_text
+// bindings at deploy time. Only the AES-GCM ciphertext is stored here;
+// the KEK lives in the worker secret DG_KEK.
+export const repoSecrets = sqliteTable(
+  "repo_secrets",
+  {
+    name: text("name").notNull(),
+    // base64(nonce || ciphertext) of the AES-GCM encrypted value.
+    ciphertext: text("ciphertext").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.name], name: "repo_secrets_pk" })]
+);
+
+export type RepoSecretRow = typeof repoSecrets.$inferSelect;

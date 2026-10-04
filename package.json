@@ -26,6 +26,8 @@
     "@cloudflare/vite-plugin": "^1.36.4",
     "@cloudflare/vitest-pool-workers": "^0.16.4",
     "@tailwindcss/vite": "^4.3.0",
+    "@types/diff": "^7.0.2",
+    "@types/mime": "^3.0.4",
     "@types/node": "^25.7.0",
     "@types/pako": "^2.0.4",
     "@types/react": "^19.2.14",
@@ -41,6 +43,9 @@
     "wrangler": "^4.90.1"
   },
   "dependencies": {
+    "@octokit/openapi-types": "^29.0.1",
+    "deepmerge": "^4.3.1",
+    "diff": "^9.0.0",
     "domhandler": "^6.0.1",
     "drizzle-orm": "^0.45.1",
     "highlight.js": "^11.11.1",
@@ -48,10 +53,14 @@
     "htmlparser2": "^12.0.0",
     "lucide-react": "^1.7.0",
     "marked": "^18.0.3",
+    "mime": "^4.1.0",
+    "node-diff3": "^3.2.1",
     "openid-client": "^6.8.4",
+    "p-limit": "^7.3.3",
     "pako": "^2.1.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "standardwebhooks": "^1.1.1",
     "zod": "^4.4.3"
   }
 }

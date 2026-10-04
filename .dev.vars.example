@@ -23,3 +23,11 @@ TESSERA_OIDC_ISSUER=http://localhost:5174
 # never commit a real production value to wrangler.jsonc.vars.
 TESSERA_OIDC_CLIENT_ID=local-goc
 TESSERA_OIDC_CLIENT_SECRET=local-goc-dev-secret-change-me
+
+# delta-git key encryption key for repo secrets (AES-256-GCM, 32-byte hex).
+# Production: `wrangler secret put DG_KEK`.
+DG_KEK=0000000000000000000000000000000000000000000000000000000000000001
+
+# Cloudflare API token for the deploy-on-commit lane (workers+pages edit).
+# Production: `wrangler secret put CF_API_TOKEN`.
+CF_API_TOKEN=local-placeholder

@@ -1,3 +1,4 @@
+export * from "./agents";
 export * from "./users";
 export * from "./namespaces";
 export * from "./namespaceMemberships";

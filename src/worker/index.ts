@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { registerGitRoutes } from "./routes/git";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerAgentRoutes } from "./routes/agent";
 import { registerUiRoutes } from "./routes/ui";
 import { registerAuthRoutes } from "./routes/auth";
 import { requestServicesMiddleware, type AppBindings, type AppContext } from "./routes/hono";
@@ -17,6 +18,8 @@ registerGitRoutes(app);
 registerAdminRoutes(app);
 // Register Auth routes BEFORE UI to avoid /:owner shadowing /auth
 registerAuthRoutes(app);
+// delta-git agent API under /api/* — registered before UI for the same reason
+registerAgentRoutes(app);
 
 app.get("/", async (c) => {
   const viewer = await loadViewer(c);

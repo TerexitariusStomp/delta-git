@@ -53,12 +53,27 @@ export const RepositoryDeleteMessageSchema = z.object({
 
 export type RepositoryDeleteMessage = z.infer<typeof RepositoryDeleteMessageSchema>;
 
+export const WebhookQueueMessageSchema = z.object({
+  kind: z.literal("webhook"),
+  doId: z.string(),
+  repoId: z.string().optional(),
+  url: z.string(),
+  secret: z.string().nullable().optional(),
+  event: z.object({
+    kind: z.string(),
+    payload: z.record(z.string(), z.unknown()),
+  }),
+});
+
+export type WebhookQueueMessage = z.infer<typeof WebhookQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
   PackRefBackfillQueueMessageSchema,
   RouteCacheSyncMessageSchema,
   RepositoryDeleteMessageSchema,
+  WebhookQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;

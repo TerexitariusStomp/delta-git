@@ -205,9 +205,11 @@ async function handleReceivePackPOST(
   request: Request,
   ctx: ExecutionContext,
   db: Db,
-  log: Logger
+  log: Logger,
+  actor?: string
 ) {
   return await handleStreamingReceivePackPOST(env, route.doName, request, ctx, {
+    actor,
     onRepoStateChanged: async ({ changed }) => {
       if (!changed) return;
       try {
@@ -378,7 +380,7 @@ async function gateGitPush(
 }
 
 type GitAuthorizationResult =
-  | { kind: "ok"; cacheCtx: CacheContext }
+  | { kind: "ok"; cacheCtx: CacheContext; actor?: string }
   | { kind: "response"; response: Response };
 
 async function authorizeGitRouteForRequest(
@@ -419,7 +421,11 @@ async function authorizeGitRouteForRequest(
     );
   }
 
-  return { kind: "ok", cacheCtx };
+  return {
+    kind: "ok",
+    cacheCtx,
+    actor: auth.kind === "pat" ? auth.verified.userId : undefined,
+  };
 }
 
 /**
@@ -483,7 +489,8 @@ export function registerGitRoutes(router: AppRouter) {
       c.req.raw,
       workerExecutionContext(c),
       c.var.db,
-      c.var.logFor({ service: "ReceiveAcl", repoId: route.doName })
+      c.var.logFor({ service: "ReceiveAcl", repoId: route.doName }),
+      authorized.actor
     );
   });
 }
