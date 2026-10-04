@@ -1,0 +1,4 @@
+CREATE TABLE meta (
+  k TEXT PRIMARY KEY,
+  v TEXT NOT NULL
+);

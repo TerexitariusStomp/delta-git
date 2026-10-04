@@ -1,0 +1,26 @@
+{
+  "name": "wpcloud",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Free-tier only: no DOs, no Queues, no paid CPU.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "wpcloud", "database_id": "REPLACE-ME", "migrations_dir": "d1/migrations" }
+  ],
+  "r2_buckets": [
+    { "binding": "ARTIFACTS", "bucket_name": "wpcloud-artifacts" }
+  ],
+  "vars": {
+    "SITE_HOST_SUFFIX": "pages.dev",
+    "USDC_CHAIN": "base",
+    "USDC_CONTRACT": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "USDC_RPC": "https://mainnet.base.org",
+    "USDC_CONFIRMATIONS": "3"
+  },
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "triggers": {
+    // free tier: 5 cron triggers
+    "crons": ["*/5 * * * *"]
+  },
+  "routes": []
+}
