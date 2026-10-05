@@ -14,9 +14,7 @@ import { issueToken } from "./auth";
 // The dg_token is short-lived and single-purpose (aud-bound). Revocation is
 // exp-bound only — the forge's did_sessions jti check doesn't extend here.
 
-// Unmatched /auth/* must return a Response — itty-router resolves undefined
-// for misses, which the Workers runtime turns into a 500.
-export const sso = Router().all("*", () => new Response("not found", { status: 404 }));
+export const sso = Router();
 
 const te = new TextEncoder();
 
@@ -70,3 +68,8 @@ sso.get("/auth/callback", async (req, env: Env) => {
 <script>localStorage.setItem("wpc_token", ${JSON.stringify(wpcToken)}); location.replace("/");</script>
 <body>signed in — redirecting…</body>`, { headers: { "content-type": "text/html" } });
 });
+
+// Unmatched /auth/* must return a Response — itty-router resolves undefined
+// for misses, which the Workers runtime turns into a 500. Registered last so
+// the real routes above still match first.
+sso.all("*", () => new Response("not found", { status: 404 }));
