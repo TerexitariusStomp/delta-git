@@ -43,7 +43,11 @@
     "wrangler": "4.140.0"
   },
   "dependencies": {
+    "@atcute/identity": "^2.0.2",
+    "@atcute/identity-resolver": "^2.0.2",
+    "@atcute/lexicons": "^2.1.1",
     "@atcute/multibase": "^1.2.5",
+    "@atcute/oauth-node-client": "^2.0.1",
     "@noble/curves": "^2.4.0",
     "@octokit/openapi-types": "^29.0.1",
     "@primer/octicons-react": "19.38.0",

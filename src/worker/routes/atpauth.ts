@@ -5,7 +5,7 @@ import { consumeChallenge, issueChallenge } from "@/worker/agent/atpauth/challen
 import { resolveDid, resolveHandle } from "@/worker/agent/atpauth/pds";
 import { signDidSession, signHs256Jwt, verifyDidSession } from "@/worker/agent/atpauth/jwt";
 import { canonicalJson, utf8, verifyKeySignature } from "@/worker/agent/atpauth/verify";
-import { completeOAuth, startOAuth, takeOAuthState } from "@/worker/agent/atpauth/oauth";
+import { completeOAuth, startOAuth } from "@/worker/agent/atpauth/oauth";
 import { decodeKeyMultibase } from "@/worker/agent/atpauth/didkey";
 import {
   clearDidSessionCookie,
@@ -333,21 +333,19 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
   });
 
   router.get("/auth/oauth/callback", async (c) => {
-    const code = c.req.query("code");
-    const stateNonce = c.req.query("state");
-    const iss = c.req.query("iss");
-    if (!code || !stateNonce || !iss) {
-      return c.redirect(`/auth?error=invalid_request`);
-    }
-    const state = await takeOAuthState(c.env.ROUTES, stateNonce);
-    if (!state || state.issuer !== iss) {
-      return c.redirect(`/auth?error=invalid_state`);
-    }
     const origin = new URL(c.req.url).origin;
-    const result = await completeOAuth({ origin, code, state });
+    const result = await completeOAuth({
+      env: c.env,
+      kv: c.env.ROUTES,
+      origin,
+      params: new URL(c.req.url).searchParams,
+    });
     if (!result.ok) {
       metric(c.env, "auth.did", { scope: "oauth-token-failed", index: result.error });
-      return c.redirect(`/auth?error=oauth_token`);
+      // OAuthCallbackError invalid_request covers missing params, unknown
+      // state, and issuer mismatch — the codes this route surfaced before.
+      const code = result.error === "oauth-invalid_request" ? "invalid_request" : "oauth_token";
+      return c.redirect(`/auth?error=${code}`);
     }
     const resolved = await resolveDid(c.env, result.did);
     const established = await establishDidSession(c, result.did, resolved?.handle);
@@ -359,7 +357,7 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
     // SSO handoff: the start request carried an allowlisted return_to — issue
     // a short-lived dg_token (aud="wpcloud", signed with the shared
     // DG_SESSION_SECRET) and bounce the browser to the app's callback.
-    if (state.returnTo) {
+    if (result.returnTo) {
       if (!c.env.DG_SESSION_SECRET) {
         return c.redirect(`/auth?error=sso_unconfigured`);
       }
@@ -371,9 +369,9 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
         iat,
         exp: iat + 300,
       });
-      const sep = state.returnTo.includes("?") ? "&" : "?";
+      const sep = result.returnTo.includes("?") ? "&" : "?";
       metric(c.env, "auth.did", { scope: "oauth-sso-handoff", index: result.did });
-      return c.redirect(`${state.returnTo}${sep}dg_token=${dgToken}`);
+      return c.redirect(`${result.returnTo}${sep}dg_token=${dgToken}`);
     }
     return c.redirect("/auth/account");
   });

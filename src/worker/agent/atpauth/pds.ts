@@ -1,10 +1,22 @@
+import { isDid } from "@atcute/lexicons/syntax";
+import type { DidDocument } from "@atcute/identity";
+import {
+  CompositeDidDocumentResolver,
+  PlcDidDocumentResolver,
+  WebDidDocumentResolver,
+  XrpcDidDocumentResolver,
+  XrpcHandleResolver,
+  type DidDocumentResolver,
+} from "@atcute/identity-resolver";
+
 import { decodeKeyMultibase, type DecodedDidKey } from "./didkey";
 
-// atproto DID/handle resolution (vendored from widespread auth pds.ts).
+// atproto DID/handle resolution (vendored from widespread auth pds.ts;
+// fetch plumbing delegated to @atcute/identity-resolver).
 //
 // We intentionally call the *public* identity XRPCs on a PDS — the same
 // path bsky.app uses — rather than depending on plc.directory directly:
-//   com.atproto.identity.resolveDid    → DID document
+//   com.atproto.identity.resolveDid    → DID document (fallback resolver)
 //   com.atproto.identity.resolveHandle → did for a handle
 //
 // Loopback PDS hosts are allowed in dev (localhost tests run a fixture PDS).
@@ -16,54 +28,58 @@ export interface ResolvedDid {
   keys: DecodedDidKey[];
 }
 
-interface DidDocVerificationMethod {
-  publicKeyMultibase?: string;
-}
+export type DidDoc = DidDocument;
 
-interface DidDocService {
-  id?: string;
-  type?: string;
-  serviceEndpoint?: string;
-}
-
-export interface DidDoc {
-  id?: string;
-  alsoKnownAs?: string[];
-  verificationMethod?: DidDocVerificationMethod[];
-  service?: DidDocService[];
+/** PDS base used for identity XRPCs (fixture-overridable via ATP_PDS_URL). */
+export function pdsBase(env: Env): string {
+  return (env.ATP_PDS_URL || "https://bsky.social").replace(/\/$/, "");
 }
 
 /**
- * Fetch a DID document from its authoritative source — no auth required:
- *   did:plc → plc.directory   did:web → /.well-known/did.json
- * Falls back to the PDS resolveDid XRPC for other methods (some PDSes
- * answer it unauthenticated; bsky.social gates it, which is why the
- * canonical sources come first).
+ * DID document resolvers in preference order: the method's canonical
+ * source (plc.directory, did:web well-known) first, then the configured
+ * PDS's resolveDid XRPC as a catch-all — some PDSes answer it
+ * unauthenticated and it covers methods the canonical pair doesn't.
+ */
+export function createDidDocumentResolver(env: Env): DidDocumentResolver {
+  // Widened to the generic resolver interface — the composite only accepts
+  // `did:plc:`/`did:web:` inputs, and we fall through to the PDS resolver
+  // for every other method.
+  const canonical: DidDocumentResolver = new CompositeDidDocumentResolver({
+    methods: {
+      plc: new PlcDidDocumentResolver(),
+      web: new WebDidDocumentResolver(),
+    },
+  });
+  const pds = new XrpcDidDocumentResolver({ serviceUrl: pdsBase(env) });
+  return {
+    async resolve(did, options) {
+      let lastErr: unknown;
+      for (const resolver of [canonical, pds] as const) {
+        try {
+          return await resolver.resolve(did, options);
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      throw lastErr;
+    },
+  };
+}
+
+/**
+ * Fetch a DID document from its authoritative source — no auth required.
+ * Canonical method sources are tried first, then the PDS resolveDid XRPC.
+ * The returned document's `id` must match the requested DID.
  */
 export async function resolveDidDocument(env: Env, did: string): Promise<DidDoc | undefined> {
-  const candidates: string[] = [];
-  if (did.startsWith("did:plc:")) {
-    candidates.push(`https://plc.directory/${encodeURIComponent(did)}`);
-  } else if (did.startsWith("did:web:")) {
-    const host = did.slice("did:web:".length).replace(/%3A/g, ":");
-    const [domain, ...path] = host.split(":");
-    if (domain && /^[a-zA-Z0-9.-]+(:\d+)?$/.test(domain)) {
-      const pathPart = path.length > 0 ? `/${path.join("/")}` : "";
-      candidates.push(`https://${domain}${pathPart}/.well-known/did.json`);
-    }
+  if (!isDid(did)) return undefined;
+  try {
+    const doc = await createDidDocumentResolver(env).resolve(did);
+    return doc.id === did ? doc : undefined;
+  } catch {
+    return undefined;
   }
-  const base = (env.ATP_PDS_URL || "https://bsky.social").replace(/\/$/, "");
-  candidates.push(`${base}/xrpc/com.atproto.identity.resolveDid?did=${encodeURIComponent(did)}`);
-  for (const url of candidates) {
-    const res = await fetch(url, { headers: { Accept: "application/json" } }).catch(
-      () => undefined
-    );
-    if (!res?.ok) continue;
-    const doc = (await res.json().catch(() => undefined)) as DidDoc | undefined;
-    // Guard: the returned document must be for the DID we asked about.
-    if (doc?.id === did) return doc;
-  }
-  return undefined;
 }
 
 /** DID doc → #atproto_pds service endpoint (used for OAuth discovery). */
@@ -72,13 +88,11 @@ export async function resolvePdsEndpoint(env: Env, did: string): Promise<string 
   if (!doc) return undefined;
   const svc = doc.service?.find((s) => s.id === "#atproto_pds" || s.id?.endsWith("#atproto_pds"));
   const endpoint = svc?.serviceEndpoint;
-  return endpoint && /^https:\/\//.test(endpoint) ? endpoint.replace(/\/$/, "") : undefined;
-}
-
-async function xrpc(env: Env, method: string, params: Record<string, string>): Promise<Response> {
-  const base = (env.ATP_PDS_URL || "https://bsky.social").replace(/\/$/, "");
-  const qs = new URLSearchParams(params).toString();
-  return await fetch(`${base}/xrpc/${method}?${qs}`);
+  // serviceEndpoint can be a map/array per the DID spec; we only consume the
+  // plain URL form.
+  return typeof endpoint === "string" && /^https:\/\//.test(endpoint)
+    ? endpoint.replace(/\/$/, "")
+    : undefined;
 }
 
 /** Resolve a DID to its document keys. For did:key the key is in the DID. */
@@ -98,10 +112,12 @@ export async function resolveDid(env: Env, did: string): Promise<ResolvedDid | u
 
 /** Resolve an atproto handle to a DID (handle → PDS resolveHandle). */
 export async function resolveHandle(env: Env, handle: string): Promise<string | undefined> {
-  const res = await xrpc(env, "com.atproto.identity.resolveHandle", { handle }).catch(
-    () => undefined
-  );
-  if (!res?.ok) return undefined;
-  const body = (await res.json().catch(() => undefined)) as { did?: string } | undefined;
-  return body?.did;
+  try {
+    const resolver = new XrpcHandleResolver({ serviceUrl: pdsBase(env) });
+    // The PDS validates the handle — we pass through whatever the caller
+    // supplied (fixture handles in dev may not contain a dot).
+    return await resolver.resolve(handle as `${string}.${string}`);
+  } catch {
+    return undefined;
+  }
 }
