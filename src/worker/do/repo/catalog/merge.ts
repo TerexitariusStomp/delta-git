@@ -17,6 +17,7 @@ import {
 } from "../db";
 import { getDb, listActivePackCatalog, upsertPackCatalogRow } from "../db";
 import { appendOpLogEntry } from "./oplog";
+import { deltaRefFor } from "./diverge";
 import { asTypedStorage } from "../repoState";
 import { bumpPacksetVersion, DEFAULT_HEAD, ensureRepoMetadataDefaults } from "./shared";
 import { catalogNeedsCompaction, scheduleCompactionWake } from "./compaction/plan";
@@ -394,6 +395,135 @@ export async function markMergeUpToDateState(args: {
   return {
     status: "ok",
     intent: { ...intent, status: "merged", resultOid: intent.deltaOid, resolvedAt: now },
+  };
+}
+
+export type RejectMergeIntentResult =
+  | { status: "rejected"; intent: MergeIntentRow }
+  | { status: "not_rejectable"; state: string }
+  | { status: "not_found" };
+
+/**
+ * User-driven close of a merge intent (the gitness facade's PR close). Only
+ * unclaimed intents are rejectable: `merging`/`adjudicating` rows hold a
+ * lease owned by the engine/quorum, and terminal rows are already settled.
+ * `conflict` stays closeable — a conflicted intent is still open work the
+ * author may abandon.
+ */
+export async function rejectMergeIntentState(args: {
+  ctx: DurableObjectState;
+  intentId: string;
+  actor: string;
+}): Promise<RejectMergeIntentResult> {
+  const db = getDb(args.ctx.storage);
+  const intent = await getMergeIntent(db, args.intentId);
+  if (!intent) return { status: "not_found" };
+  if (intent.status !== "open" && intent.status !== "conflict") {
+    return { status: "not_rejectable", state: intent.status };
+  }
+  const now = Date.now();
+  await updateMergeIntent(db, intent.id, { status: "rejected", resolvedAt: now });
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "merge.reject",
+      actor: args.actor,
+      payload: { intentId: intent.id, targetRef: intent.targetRef, deltaOid: intent.deltaOid },
+    },
+    now
+  );
+  return {
+    status: "rejected",
+    intent: { ...intent, status: "rejected", resolvedAt: now },
+  };
+}
+
+export type AdvanceIntentDeltaResult =
+  | { status: "advanced"; intent: MergeIntentRow }
+  | { status: "not_advancable"; state: string }
+  | { status: "not_found" };
+
+/**
+ * Move an open intent's delta tip forward — the "push to PR source" write.
+ * The caller stages the new tip's objects first (stagedPack registers them
+ * in the catalog here), then the delta ref and intent point at the new tip
+ * in one transaction. Only unclaimed intents advance; a leased intent is
+ * owned by the engine/quorum and must resolve first.
+ */
+export async function advanceMergeIntentDeltaState(args: {
+  ctx: DurableObjectState;
+  env: Env;
+  intentId: string;
+  newOid: string;
+  actor: string;
+  stagedPack?: StagedMergePack;
+}): Promise<AdvanceIntentDeltaResult> {
+  const store = asTypedStorage<RepoStateSchema>(args.ctx.storage);
+  await ensureRepoMetadataDefaults(store);
+  const db = getDb(args.ctx.storage);
+  const intent = await getMergeIntent(db, args.intentId);
+  if (!intent) return { status: "not_found" };
+  if (intent.status !== "open" && intent.status !== "conflict") {
+    return { status: "not_advancable", state: intent.status };
+  }
+
+  const now = Date.now();
+  if (args.stagedPack) {
+    const nextPackSeq = (await store.get("nextPackSeq")) || 1;
+    await upsertPackCatalogRow(db, {
+      packKey: args.stagedPack.packKey,
+      kind: "receive",
+      state: "active",
+      tier: 0,
+      seqLo: nextPackSeq,
+      seqHi: nextPackSeq,
+      objectCount: args.stagedPack.objectCount,
+      packBytes: args.stagedPack.packBytes,
+      idxBytes: args.stagedPack.idxBytes,
+      createdAt: now,
+      supersededBy: null,
+    });
+    await store.put("nextPackSeq", nextPackSeq + 1);
+    await bumpPacksetVersion(store);
+    const activeCatalog = await listActivePackCatalog(db);
+    if (catalogNeedsCompaction(activeCatalog)) {
+      await store.put("compactionWantedAt", Date.now());
+      await scheduleCompactionWake(args.ctx, args.env);
+    }
+  }
+
+  const deltaRef = deltaRefFor(intent.targetRef, args.newOid);
+  const currentRefs = (await store.get("refs")) || [];
+  if (!currentRefs.some((ref) => ref.name === deltaRef)) {
+    await store.put("refs", [...currentRefs, { name: deltaRef, oid: args.newOid }]);
+    await store.put("refsVersion", ((await store.get("refsVersion")) || 0) + 1);
+  }
+  await updateMergeIntent(db, intent.id, {
+    deltaRef,
+    deltaOid: args.newOid,
+    // An advanced tip re-opens a conflicted intent — the push may carry the
+    // resolution.
+    status: "open",
+    conflicts: null,
+  });
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "merge.delta_advance",
+      actor: args.actor,
+      payload: {
+        intentId: intent.id,
+        targetRef: intent.targetRef,
+        deltaRef,
+        previousOid: intent.deltaOid,
+        deltaOid: args.newOid,
+      },
+    },
+    now
+  );
+  return {
+    status: "advanced",
+    intent: { ...intent, deltaRef, deltaOid: args.newOid, status: "open", conflicts: null },
   };
 }
 

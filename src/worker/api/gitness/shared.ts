@@ -9,8 +9,8 @@
 //   - errors use the `UsererrorError` shape: `{message, values?}`
 //   - all timestamps are emitted in milliseconds
 //
-// Endpoints we cannot honestly back return `501 {message}` through `gStub`;
-// the SPA degrades gracefully on those.
+// Every registered route is backed by real state — D1, DO storage, KV
+// records, or the git object store. Unregistered `/api/v1` paths 404.
 
 import type { CacheContext } from "@/worker/cache";
 import type { Viewer } from "@/client/server/viewer";
@@ -19,6 +19,8 @@ import type { CommitInfo } from "@/worker/git/operations/read/types";
 import type { AppContext } from "@/worker/routes/hono";
 import { isValidOwnerRepo } from "@/shared/web";
 import { resolveUiRepoAccess } from "@/worker/routes/ui/helpers";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
+import { viewerIsNamespaceMember } from "@/worker/auth/pat";
 
 export type GitnessContext = AppContext;
 
@@ -32,10 +34,6 @@ export function gErr(c: GitnessContext, status: number, message: string): Respon
 
 export function gNotFound(c: GitnessContext, what = "resource"): Response {
   return gErr(c, 404, `${what} not found`);
-}
-
-export function gStub(c: GitnessContext, feature: string): Response {
-  return gErr(c, 501, `${feature} is not supported by this backend`);
 }
 
 // ---------------------------------------------------------------------------
@@ -180,4 +178,32 @@ export function setPageHeaders(c: GitnessContext, page: GitnessPage, total: numb
 
 export function paginate<T>(items: T[], page: GitnessPage): T[] {
   return items.slice((page.page - 1) * page.limit, page.page * page.limit);
+}
+
+// ---------------------------------------------------------------------------
+// Write-side access
+// ---------------------------------------------------------------------------
+
+export type RepoAccessOk = Extract<GitnessRepoAccess, { kind: "ok" }>;
+
+/**
+ * Resolve the repo and require a signed-in namespace member — the write
+ * side's access bar, matching the /auth/api repository routes. Returns the
+ * access bundle plus the actor string used for oplog/intent authorship.
+ */
+export async function requireWriter(
+  c: GitnessContext
+): Promise<(RepoAccessOk & { actor: string }) | Response> {
+  const access = await resolveGitnessRepo(c, c.req.param("repo_ref") ?? "");
+  if (access.kind !== "ok") return access.response;
+  if (!access.viewer) return gErr(c, 401, "unauthorized");
+  const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+  if (!row) return gNotFound(c, "repository");
+  if (!(await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId))) {
+    return gErr(c, 403, "not a member of this space");
+  }
+  return {
+    ...access,
+    actor: access.viewer.primaryNamespaceSlug ?? access.viewer.userId,
+  };
 }

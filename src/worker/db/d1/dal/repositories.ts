@@ -184,3 +184,42 @@ export async function updateRepositoryVisibility(
     current: visibility,
   };
 }
+
+/**
+ * Rename a repository's slug within its namespace. The (namespaceId, slug)
+ * unique constraint means a collision resolves to a no-op — callers detect
+ * it by re-reading the row. Route-cache sync must run afterwards so the old
+ * slug stops resolving.
+ */
+export async function updateRepositorySlug(
+  db: Db,
+  repositoryId: string,
+  slug: string,
+  now: number
+): Promise<boolean> {
+  const rows = await db
+    .update(repositories)
+    .set({ slug, updatedAt: now })
+    .where(eq(repositories.id, repositoryId))
+    .returning({ id: repositories.id });
+  return rows.length === 1;
+}
+
+/**
+ * Move a repository to a different namespace ("transfer" in forge terms).
+ * The caller verifies membership in both namespaces; the route-cache sync
+ * afterwards re-registers the path under the new owner slug.
+ */
+export async function updateRepositoryNamespace(
+  db: Db,
+  repositoryId: string,
+  namespaceId: string,
+  now: number
+): Promise<boolean> {
+  const rows = await db
+    .update(repositories)
+    .set({ namespaceId, updatedAt: now })
+    .where(eq(repositories.id, repositoryId))
+    .returning({ id: repositories.id });
+  return rows.length === 1;
+}

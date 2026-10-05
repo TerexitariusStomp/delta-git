@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 
 import type { Db } from "@/worker/db/d1/client";
 import {
@@ -83,4 +83,65 @@ export async function findMembership(
     )
     .limit(1);
   return rows[0];
+}
+
+/**
+ * Every member of a namespace, joined to the namespace each user personally
+ * owns (createdBy) — that slug is the principal uid surfaced to clients.
+ * Users without a personal namespace fall back to their raw user id.
+ */
+export async function listMembershipsForNamespace(
+  db: Db,
+  namespaceId: string
+): Promise<{ userId: string; createdAt: number }[]> {
+  const rows = await db
+    .select({ userId: namespaceMemberships.userId, createdAt: namespaceMemberships.createdAt })
+    .from(namespaceMemberships)
+    .where(eq(namespaceMemberships.namespaceId, namespaceId));
+  return rows;
+}
+
+export async function deleteMembership(
+  db: Db,
+  namespaceId: string,
+  userId: string
+): Promise<boolean> {
+  const rows = await db
+    .delete(namespaceMemberships)
+    .where(
+      and(
+        eq(namespaceMemberships.namespaceId, namespaceId),
+        eq(namespaceMemberships.userId, userId)
+      )
+    )
+    .returning({ userId: namespaceMemberships.userId });
+  return rows.length > 0;
+}
+
+/**
+ * Delete a namespace row outright. Callers must ensure it owns no
+ * repositories first — the cascade would take memberships with it, which is
+ * intended, but orphaned repositories are not.
+ */
+export async function deleteNamespaceRow(db: Db, namespaceId: string): Promise<boolean> {
+  const rows = await db.delete(namespaces).where(eq(namespaces.id, namespaceId)).returning({
+    id: namespaces.id,
+  });
+  return rows.length > 0;
+}
+
+/**
+ * Slug-prefix search for principal lookup — gitness principals are users,
+ * and a user's uid is the namespace they personally own.
+ */
+export async function searchNamespacesBySlug(
+  db: Db,
+  pattern: string,
+  limit = 20
+): Promise<NamespaceRow[]> {
+  return await db
+    .select()
+    .from(namespaces)
+    .where(like(namespaces.slug, `${pattern}%`))
+    .limit(limit);
 }

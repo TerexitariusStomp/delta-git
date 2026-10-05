@@ -14,11 +14,14 @@ import {
   insertMergeIntent,
   insertMergeVote,
   insertWebhookSub,
+  updateWebhookSub,
+  deleteWebhookSub,
   insertWorkIntent,
   listActiveWebhookSubs,
   listCommitStatuses,
   listMergeVotes,
   listOpenWorkIntents,
+  listRecentCommitStatuses,
   listRepoSecretMeta,
   listWorkIntentsByKind,
   tallyMergeVotes,
@@ -26,6 +29,7 @@ import {
   upsertCommitStatus,
   upsertPackCatalogRow,
   upsertRepoSecret,
+  deleteRepoSecret,
   listRepoSecretCiphertexts,
 } from "../db";
 import { appendOpLogEntry } from "./oplog";
@@ -161,6 +165,13 @@ export async function getCommitStatusesState(
   return await listCommitStatuses(getDb(ctx.storage), sha);
 }
 
+export async function listRecentCommitStatusesState(
+  ctx: DurableObjectState,
+  limit = 50
+): Promise<CommitStatusRow[]> {
+  return await listRecentCommitStatuses(getDb(ctx.storage), limit);
+}
+
 export async function addWebhookSubState(args: {
   ctx: DurableObjectState;
   row: WebhookSubRow;
@@ -177,6 +188,39 @@ export async function addWebhookSubState(args: {
     },
     Date.now()
   );
+}
+
+export async function updateWebhookSubState(args: {
+  ctx: DurableObjectState;
+  id: string;
+  patch: { url?: string; events?: string; secret?: string | null; active?: boolean };
+  actor: string;
+}): Promise<{ status: "updated" | "not_found" }> {
+  const db = getDb(args.ctx.storage);
+  const updated = await updateWebhookSub(db, args.id, args.patch);
+  if (!updated) return { status: "not_found" };
+  await appendOpLogEntry(
+    db,
+    { kind: "webhook.update", actor: args.actor, payload: { id: args.id } },
+    Date.now()
+  );
+  return { status: "updated" };
+}
+
+export async function deleteWebhookSubState(args: {
+  ctx: DurableObjectState;
+  id: string;
+  actor: string;
+}): Promise<{ status: "deleted" | "not_found" }> {
+  const db = getDb(args.ctx.storage);
+  const deleted = await deleteWebhookSub(db, args.id);
+  if (!deleted) return { status: "not_found" };
+  await appendOpLogEntry(
+    db,
+    { kind: "webhook.delete", actor: args.actor, payload: { id: args.id } },
+    Date.now()
+  );
+  return { status: "deleted" };
 }
 
 export async function listWebhookSubsState(ctx: DurableObjectState): Promise<WebhookSubRow[]> {
@@ -207,6 +251,26 @@ export async function putRepoSecretState(args: {
     },
     now
   );
+}
+
+export async function deleteRepoSecretState(args: {
+  ctx: DurableObjectState;
+  name: string;
+  actor: string;
+}): Promise<{ status: "deleted" | "not_found" }> {
+  const db = getDb(args.ctx.storage);
+  const removed = await deleteRepoSecret(db, args.name);
+  if (!removed) return { status: "not_found" };
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "secret.delete",
+      actor: args.actor,
+      payload: { name: args.name },
+    },
+    Date.now()
+  );
+  return { status: "deleted" };
 }
 
 export async function listRepoSecretsMetaState(

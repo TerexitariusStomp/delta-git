@@ -199,12 +199,38 @@ interface FirehoseLedger {
   lastDeliveredAt?: number;
 }
 
+/** Durable per-delivery record — what the gitness webhook-executions UI reads. */
+export interface FirehoseDelivery {
+  id: string;
+  url: string;
+  kind: string;
+  status: number;
+  ok: boolean;
+  error?: string;
+  startedAt: number;
+  finishedAt: number;
+  /** Original event payload as JSON (capped) — retrigger replays it verbatim. */
+  payloadJson?: string;
+}
+
+const DELIVERY_PREFIX = "whdel:";
+const DELIVERY_LIMIT = 500;
+
 export class FirehoseAgent extends AgentRuntime {
   readonly role = "firehose";
+
+  /** Delivery history for a single subscriber URL, newest first. */
+  async webhookDeliveries(url: string, limit = 50): Promise<FirehoseDelivery[]> {
+    const all = await this.ctx.storage.list<FirehoseDelivery>({
+      prefix: `${DELIVERY_PREFIX}${url}:`,
+    });
+    return [...all.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
+  }
 
   async process(kind: string, body: unknown): Promise<QueueTaskResult> {
     if (kind !== "webhook") return { action: "ack", detail: `ignored:${kind}` };
     const msg = body as WebhookQueueMessage;
+    const startedAt = Date.now();
     const result = await deliverWebhook({
       url: msg.url,
       kind: msg.event.kind,
@@ -223,6 +249,29 @@ export class FirehoseAgent extends AgentRuntime {
     }
     ledgers[msg.url] = ledger;
     await this.setMemory(ledgers);
+
+    // Durable per-attempt record — executions UI + failure forensics.
+    const payloadText = JSON.stringify(msg.event.payload ?? {});
+    const delivery: FirehoseDelivery = {
+      id: `${startedAt}:${crypto.randomUUID().slice(0, 8)}`,
+      url: msg.url,
+      kind: msg.event.kind,
+      status: result.status,
+      ok: result.ok,
+      error: result.ok ? undefined : `status=${result.status}`,
+      startedAt,
+      finishedAt: Date.now(),
+      payloadJson: payloadText.length <= 8192 ? payloadText : undefined,
+    };
+    await this.ctx.storage.put(`${DELIVERY_PREFIX}${msg.url}:${delivery.id}`, delivery);
+    // Cap the per-URL log — drop the oldest beyond the limit.
+    const stored = await this.ctx.storage.list<FirehoseDelivery>({
+      prefix: `${DELIVERY_PREFIX}${msg.url}:`,
+    });
+    if (stored.size > DELIVERY_LIMIT) {
+      const keys = [...stored.keys()].sort().slice(0, stored.size - DELIVERY_LIMIT);
+      await this.ctx.storage.delete(keys);
+    }
 
     if (!result.ok) {
       // Let the queue retry; the ledger keeps the failure visible.

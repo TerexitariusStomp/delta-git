@@ -29,6 +29,7 @@ import {
 } from "./catalog";
 import { getRefs, setRefs, resolveHead, setHead, getHeadAndRefs } from "./refs";
 import {
+  advanceMergeIntentDeltaState,
   castMergeVoteState,
   claimMergeIntentState,
   commitMergeState,
@@ -39,6 +40,7 @@ import {
   markMergeAdjudicatingState,
   markMergeUpToDateState,
   releaseMergeIntentState,
+  rejectMergeIntentState,
 } from "./catalog/merge";
 import {
   advanceMatchPhasesState,
@@ -63,9 +65,13 @@ import {
   claimWorkIntentState,
   closeWorkIntentState,
   createWorkIntentState,
+  deleteRepoSecretState,
   getCommitStatusesState,
   getWorkIntentState,
+  updateWebhookSubState,
+  deleteWebhookSubState,
   importPackState,
+  listRecentCommitStatusesState,
   listRepoSecretCiphertextsState,
   listRepoSecretsMetaState,
   listWebhookSubsState,
@@ -457,6 +463,37 @@ export class RepoDurableObject extends DurableObject {
     });
   }
 
+  public async advanceMergeIntentDelta(args: {
+    intentId: string;
+    newOid: string;
+    actor: string;
+    stagedPack?: {
+      packKey: string;
+      packBytes: number;
+      idxBytes: number;
+      objectCount: number;
+    };
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await advanceMergeIntentDeltaState({
+      ctx: this.ctx,
+      env: this.env,
+      intentId: args.intentId,
+      newOid: args.newOid,
+      actor: args.actor,
+      stagedPack: args.stagedPack,
+    });
+  }
+
+  public async rejectMergeIntent(args: { id: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await rejectMergeIntentState({
+      ctx: this.ctx,
+      intentId: args.id,
+      actor: args.actor,
+    });
+  }
+
   public async releaseMergeIntent(args: { id: string; reason: string; actor: string }) {
     await this.ensureAccessAndAlarm();
     return await releaseMergeIntentState({
@@ -510,9 +547,28 @@ export class RepoDurableObject extends DurableObject {
     return await getCommitStatusesState(this.ctx, sha);
   }
 
+  public async listRecentCommitStatuses(limit = 50) {
+    await this.ensureAccessAndAlarm();
+    return await listRecentCommitStatusesState(this.ctx, limit);
+  }
+
   public async addWebhookSub(args: { row: WebhookSubRow; actor: string }) {
     await this.ensureAccessAndAlarm();
     return await addWebhookSubState({ ctx: this.ctx, row: args.row, actor: args.actor });
+  }
+
+  public async updateWebhookSub(args: {
+    id: string;
+    patch: { url?: string; events?: string; secret?: string | null; active?: boolean };
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await updateWebhookSubState({ ctx: this.ctx, ...args });
+  }
+
+  public async deleteWebhookSub(args: { id: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteWebhookSubState({ ctx: this.ctx, ...args });
   }
 
   public async listWebhookSubs() {
@@ -528,6 +584,11 @@ export class RepoDurableObject extends DurableObject {
       ciphertext: args.ciphertext,
       actor: args.actor,
     });
+  }
+
+  public async deleteRepoSecret(args: { name: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteRepoSecretState({ ctx: this.ctx, ...args });
   }
 
   public async listRepoSecretMeta() {

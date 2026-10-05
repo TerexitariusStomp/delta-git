@@ -24,3 +24,13 @@ export async function insertUserIfNew(db: Db, row: NewUserRow): Promise<UserRow 
   const inserted = await db.insert(users).values(row).onConflictDoNothing().returning();
   return inserted[0];
 }
+
+/**
+ * Delete a user row outright. Callers must ensure every namespace the user
+ * owns is already removed — the cascade would take memberships and tokens
+ * with it, which is intended, but orphaned namespaces are not.
+ */
+export async function deleteUserRow(db: Db, id: string): Promise<boolean> {
+  const rows = await db.delete(users).where(eq(users.id, id)).returning({ id: users.id });
+  return rows.length > 0;
+}

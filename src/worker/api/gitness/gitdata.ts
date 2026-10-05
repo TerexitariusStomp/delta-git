@@ -27,9 +27,26 @@ import {
   isSymlinkMode,
 } from "@/worker/git/operations/read";
 import type { TreeEntry } from "@/worker/git/operations/read/types";
-import { mergeDryRun, findMergeBase } from "@/worker/merge/engine";
+import { attemptMerge, mergeDryRun, findMergeBase } from "@/worker/merge/engine";
+import { writeServerPack } from "@/worker/merge/packWriter";
+import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
+import { isValidRef } from "@/shared/web";
 import { getRepoStub } from "@/worker/common";
-import { gErr, gNotFound, gStub, resolveGitnessRepo, toGitnessCommit } from "./shared";
+import { commitFileActions, type CommitFilesRequest } from "./commitFiles";
+import { buildZip, collectArchiveEntries, computeBlame, computeLanguages } from "./archival";
+import { readRepoRules, ruleBlocksRef } from "./stores";
+import {
+  gErr,
+  gNotFound,
+  numericId,
+  pageParams,
+  paginate,
+  parseRepoRef,
+  requireWriter,
+  resolveGitnessRepo,
+  setPageHeaders,
+  toGitnessCommit,
+} from "./shared";
 
 // Bounds: object reads are DO/R2 RPCs behind a per-request subrequest budget.
 const MAX_DIFF_ENTRIES = 300;
@@ -187,7 +204,7 @@ async function commitTreeOf(
   return c?.tree;
 }
 
-async function diffCommitsText(
+export async function diffCommitsText(
   env: Env,
   repoId: string,
   baseOid: string | undefined,
@@ -645,20 +662,573 @@ export function registerGitnessGitdata(router: AppRouter) {
     });
   });
 
-  router.get("/api/v1/repos/:repo_ref{.+}/languages", async (c) => c.json({}));
+  // Language histogram: real byte-ish counts (blob entries per extension)
+  // walked over the HEAD tree — bounded like /paths.
+  router.get("/api/v1/repos/:repo_ref{.+}/languages", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const ref = c.req.query("git_ref") || "main";
+    const head = await mustResolveRef(c.env, access.route.doName, ref, access.cacheCtx);
+    if (head.kind === "error") return c.json({});
+    const tree = await commitTreeOf(c.env, access.route.doName, head.oid, access.cacheCtx);
+    if (!tree) return c.json({});
+    return c.json(await computeLanguages(c.env, access.route.doName, tree, access.cacheCtx));
+  });
 
-  // Blame needs a line-attribution walk we do not have; honest 501.
-  router.get("/api/v1/repos/:repo_ref{.+}/blame/:path{.+}", async (c) => gStub(c, "blame"));
+  // First-parent line-attribution blame — the real walk, bounded by
+  // MAX_BLAME_REVS/MAX_BLAME_LINES in archival.ts.
+  router.get("/api/v1/repos/:repo_ref{.+}/blame/:path{.+}", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const ref = c.req.query("git_ref") || "main";
+    const head = await mustResolveRef(c.env, access.route.doName, ref, access.cacheCtx);
+    if (head.kind === "error") return head.response;
+    const path = c.req.param("path").replace(/^\/+|\/+$/g, "");
+    const lines = await computeBlame(c.env, access.route.doName, head.oid, path, access.cacheCtx);
+    if (!lines) return gNotFound(c, "path");
+    return c.json({
+      lines: lines.map((l) => ({
+        number: l.line,
+        commit: {
+          sha: l.commit,
+          author: { identity: { name: l.author } },
+        },
+        content: l.content,
+      })),
+    });
+  });
 
-  // Git writes via API (branch/tag creation, file commits) are not exposed —
-  // our write path is git push + merge intents by design.
-  for (const [method, p] of [
-    ["post", "/api/v1/repos/:repo_ref{.+}/branches"],
-    ["delete", "/api/v1/repos/:repo_ref{.+}/branches/:branch_name"],
-    ["post", "/api/v1/repos/:repo_ref{.+}/tags"],
-    ["delete", "/api/v1/repos/:repo_ref{.+}/tags/:tag_name"],
-    ["post", "/api/v1/repos/:repo_ref{.+}/commits"],
-  ] as const) {
-    router[method](p, async (c) => gStub(c, "git write via API"));
-  }
+  // --- activity / checks / default branch -------------------------------------
+
+  // Repo activity feed ← the DO op-log (push/merge/status events). Gitness's
+  // EnumRepoActivityType only models branch events, so every entry maps to a
+  // branch update carrying the op payload.
+  router.get("/api/v1/repos/:repo_ref{.+}/activities", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const rows = await stub.listOpLog(0).catch(() => []);
+    const page = pageParams(c);
+    setPageHeaders(c, page, rows.length);
+    return c.json(
+      paginate(rows, page).map((row) => {
+        let data: unknown = row.payload;
+        try {
+          data = JSON.parse(row.payload);
+        } catch {
+          /* payload stays the raw string */
+        }
+        return {
+          repo_id: 0,
+          principal_id: numericId(row.actor ?? "system"),
+          timestamp: row.createdAt,
+          type: "branch-updated",
+          payload: { kind: row.kind, actor: row.actor, data },
+        };
+      })
+    );
+  });
+
+  // Commit statuses surface as gitness checks — the agent layer already
+  // writes them for adjudication results.
+  router.get("/api/v1/repos/:repo_ref{.+}/checks/commits/:commit_sha", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const rows = await stub.getCommitStatuses(c.req.param("commit_sha")).catch(() => []);
+    const STATUS: Record<string, string> = {
+      success: "success",
+      failure: "failure",
+      error: "error",
+      pending: "pending",
+    };
+    return c.json(
+      rows.map((r, i) => ({
+        id: i + 1,
+        identifier: r.context,
+        status: STATUS[r.state] ?? "pending",
+        summary: r.description ?? "",
+        link: r.targetUrl ?? "",
+        created: r.createdAt,
+        updated: r.createdAt,
+        ended: r.state === "pending" ? undefined : r.createdAt,
+      }))
+    );
+  });
+
+  // Default branch = HEAD target on the DO.
+  router.post("/api/v1/repos/:repo_ref{.+}/default-branch", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as { name?: string } | null;
+    if (!body?.name) return gErr(c, 400, "name required");
+    const target = `refs/heads/${body.name.replace(/^refs\/heads\//, "")}`;
+    const stub = getRepoStub(c.env, gate.route.doName);
+    const { refs } = await stub.getHeadAndRefs();
+    if (!refs.some((r) => r.name === target)) return gNotFound(c, "branch");
+    await stub.setHead({ target });
+    return c.json({ name: body.name });
+  });
+
+  // Path details for the file viewer header (mode/size for a single entry).
+  router.get("/api/v1/repos/:repo_ref{.+}/path-details", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const ref = c.req.query("git_ref") || "main";
+    const path = (c.req.query("path") ?? "").replace(/^\/+|\/+$/g, "");
+    const result = await readPath(c.env, access.route.doName, ref, path, access.cacheCtx).catch(
+      () => null
+    );
+    if (!result) return gNotFound(c, "path");
+    return c.json({
+      name: path.split("/").pop() ?? "",
+      path,
+      sha: result.type === "blob" ? result.oid : undefined,
+      type: result.type === "blob" ? "file" : "dir",
+      size: result.type === "blob" ? (result.size ?? result.content.length) : undefined,
+    });
+  });
+
+  // Archive download: gitness asks for `{ref}.{format}`. Tar redirects to
+  // the existing SSR archive lane; zip is built here as a real stored-entry
+  // archive over the ref's tree.
+  router.get("/api/v1/repos/:repo_ref{.+}/archive/:ref{.+}", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const spec = c.req.param("ref");
+    const m = spec.match(/^(.*)\.(tar|zip)$/);
+    if (!m) return gErr(c, 400, "format required (tar or zip)");
+    const parsed = parseRepoRef(c.req.param("repo_ref"))!;
+    if (m[2] === "tar") {
+      return c.redirect(`/${parsed.owner}/${parsed.repo}/-/archive/${m[1]}.tar`);
+    }
+    const head = await mustResolveRef(c.env, access.route.doName, m[1], access.cacheCtx);
+    if (head.kind === "error") return head.response;
+    const tree = await commitTreeOf(c.env, access.route.doName, head.oid, access.cacheCtx);
+    if (!tree) return gNotFound(c, "ref");
+    const root = `${parsed.repo}-${head.oid.slice(0, 8)}`;
+    const entries: { name: string; data: Uint8Array }[] = [];
+    await collectArchiveEntries(c.env, access.route.doName, tree, root, access.cacheCtx, entries, {
+      count: 0,
+    });
+    const zip = buildZip(entries);
+    return new Response(zip.slice().buffer, {
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${root}.zip"`,
+      },
+    });
+  });
+
+  // --- webhooks --------------------------------------------------------------
+  //
+  // DO webhook_subs ↔ gitness webhooks. Our trigger vocabulary is coarser
+  // (push/merge/adjudication rather than per-object events) — gitness
+  // triggers map onto those kinds best-effort, stored verbatim in `events`.
+
+  const GWH_TO_DG: Record<string, string> = {
+    branch_created: "push",
+    branch_updated: "push",
+    branch_deleted: "push",
+    tag_created: "push",
+    tag_updated: "push",
+    tag_deleted: "push",
+    pullreq_created: "merge",
+    pullreq_merged: "merge",
+    pullreq_updated: "adjudication",
+    pullreq_review_submitted: "adjudication",
+  };
+  const DG_TO_GWH: Record<string, string> = {
+    push: "branch_updated",
+    "push.patch": "branch_updated",
+    "push.web": "branch_updated",
+    merge: "pullreq_merged",
+    adjudication: "pullreq_updated",
+  };
+
+  router.get("/api/v1/repos/:repo_ref{.+}/webhooks", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const subs = await stub.listWebhookSubs().catch(() => []);
+    return c.json(
+      subs.map((s) => ({
+        id: numericId(s.id),
+        identifier: s.id,
+        url: s.url,
+        enabled: s.active === 1,
+        triggers: s.events.split(",").map((e) => DG_TO_GWH[e.trim()] ?? "branch_updated"),
+        created: s.createdAt,
+        updated: s.createdAt,
+        created_by: numericId(s.createdBy),
+      }))
+    );
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/webhooks", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as {
+      identifier?: string;
+      url?: string;
+      secret?: string;
+      enabled?: boolean;
+      triggers?: string[] | null;
+    } | null;
+    if (!body?.url || !/^https:\/\//.test(body.url)) return gErr(c, 400, "https url required");
+    const stub = getRepoStub(c.env, gate.route.doName);
+    const id = body.identifier?.trim() || `wh-${crypto.randomUUID().slice(0, 8)}`;
+    const events =
+      body.triggers && body.triggers.length > 0
+        ? [...new Set(body.triggers.map((t) => GWH_TO_DG[t]).filter(Boolean))].join(",")
+        : "push";
+    await stub.addWebhookSub({
+      row: {
+        id,
+        url: body.url,
+        events,
+        secret: body.secret ?? null,
+        createdBy: gate.actor,
+        active: body.enabled === false ? 0 : 1,
+        createdAt: Date.now(),
+      },
+      actor: gate.actor,
+    });
+    return c.json({
+      id: numericId(id),
+      identifier: id,
+      url: body.url,
+      enabled: body.enabled !== false,
+      triggers: (body.triggers ?? ["branch_updated"]).filter(Boolean),
+    });
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/webhooks/:id", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const subs = await stub.listWebhookSubs().catch(() => []);
+    const want = c.req.param("id");
+    const s = subs.find((x) => x.id === want || String(numericId(x.id)) === want);
+    if (!s) return gNotFound(c, "webhook");
+    return c.json({
+      id: numericId(s.id),
+      identifier: s.id,
+      url: s.url,
+      enabled: s.active === 1,
+      triggers: s.events.split(",").map((e) => DG_TO_GWH[e.trim()] ?? "branch_updated"),
+      created: s.createdAt,
+      updated: s.createdAt,
+    });
+  });
+
+  router.patch("/api/v1/repos/:repo_ref{.+}/webhooks/:id", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as {
+      url?: string;
+      enabled?: boolean;
+      secret?: string;
+      triggers?: string[];
+    } | null;
+    if (body?.url && !/^https:\/\//.test(body.url)) return gErr(c, 400, "https url required");
+    const stub = getRepoStub(c.env, gate.route.doName);
+    const subs = await stub.listWebhookSubs().catch(() => []);
+    const want = c.req.param("id");
+    const s = subs.find((x) => x.id === want || String(numericId(x.id)) === want);
+    if (!s) return gNotFound(c, "webhook");
+    const result = await stub.updateWebhookSub({
+      id: s.id,
+      patch: {
+        url: body?.url,
+        active: body?.enabled,
+        secret: body?.secret,
+        events:
+          body?.triggers && body.triggers.length > 0
+            ? [...new Set(body.triggers.map((t) => GWH_TO_DG[t]).filter(Boolean))].join(",")
+            : undefined,
+      },
+      actor: gate.actor,
+    });
+    if (result.status !== "updated") return gNotFound(c, "webhook");
+    return c.json({
+      id: numericId(s.id),
+      identifier: s.id,
+      url: body?.url ?? s.url,
+      enabled: body?.enabled ?? s.active === 1,
+    });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/webhooks/:id", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const stub = getRepoStub(c.env, gate.route.doName);
+    const subs = await stub.listWebhookSubs().catch(() => []);
+    const want = c.req.param("id");
+    const s = subs.find((x) => x.id === want || String(numericId(x.id)) === want);
+    if (!s) return gNotFound(c, "webhook");
+    const result = await stub.deleteWebhookSub({ id: s.id, actor: gate.actor });
+    if (result.status !== "deleted") return gNotFound(c, "webhook");
+    return c.json({ deleted: true });
+  });
+
+  // Executions = the FirehoseAgent's durable per-URL delivery log — real
+  // attempts with status/timing, newest first.
+  router.get("/api/v1/repos/:repo_ref{.+}/webhooks/:id/executions", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const subs = await stub.listWebhookSubs().catch(() => []);
+    const want = c.req.param("id");
+    const s = subs.find((x) => x.id === want || String(numericId(x.id)) === want);
+    if (!s) return gNotFound(c, "webhook");
+    const agent = c.env.FIREHOSE_DO.get(c.env.FIREHOSE_DO.idFromName("firehose"));
+    const deliveries = await agent.webhookDeliveries(s.url, 50).catch(() => []);
+    return c.json(
+      deliveries.map((d, i) => ({
+        id: i + 1,
+        webhook_id: numericId(s.id),
+        trigger_type: d.kind,
+        delivery_status: d.ok ? "success" : "failed",
+        status_code: d.status,
+        error: d.error,
+        created: d.startedAt,
+        updated: d.finishedAt,
+        duration: d.finishedAt - d.startedAt,
+      }))
+    );
+  });
+
+  // Retrigger re-enqueues the recorded delivery verbatim — the queue retry
+  // path is the same one live deliveries ride.
+  router.post("/api/v1/repos/:repo_ref{.+}/webhooks/:id/executions/:exec/retrigger", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const stub = getRepoStub(c.env, gate.route.doName);
+    const subs = await stub.listWebhookSubs().catch(() => []);
+    const want = c.req.param("id");
+    const s = subs.find((x) => x.id === want || String(numericId(x.id)) === want);
+    if (!s) return gNotFound(c, "webhook");
+    const agent = c.env.FIREHOSE_DO.get(c.env.FIREHOSE_DO.idFromName("firehose"));
+    const deliveries = await agent.webhookDeliveries(s.url, 50).catch(() => []);
+    const d = deliveries[parseInt(c.req.param("exec"), 10) - 1];
+    if (!d?.payloadJson) return gNotFound(c, "execution");
+    await c.env.REPO_TASKS_QUEUE.send({
+      kind: "webhook",
+      doId: stub.id.toString(),
+      repoId: gate.route.doName,
+      url: s.url,
+      secret: s.secret,
+      event: { kind: d.kind, payload: JSON.parse(d.payloadJson) },
+    });
+    return c.json({ retriggered: true });
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/webhooks/:id/executions/:exec", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const subs = await stub.listWebhookSubs().catch(() => []);
+    const want = c.req.param("id");
+    const s = subs.find((x) => x.id === want || String(numericId(x.id)) === want);
+    if (!s) return gNotFound(c, "webhook");
+    const agent = c.env.FIREHOSE_DO.get(c.env.FIREHOSE_DO.idFromName("firehose"));
+    const deliveries = await agent.webhookDeliveries(s.url, 50).catch(() => []);
+    const d = deliveries[parseInt(c.req.param("exec"), 10) - 1];
+    if (!d) return gNotFound(c, "execution");
+    return c.json({
+      id: parseInt(c.req.param("exec"), 10),
+      webhook_id: numericId(s.id),
+      trigger_type: d.kind,
+      delivery_status: d.ok ? "success" : "failed",
+      status_code: d.status,
+      error: d.error,
+      created: d.startedAt,
+      updated: d.finishedAt,
+    });
+  });
+
+  // --- git writes -----------------------------------------------------------
+  //
+  // Branch/tag create/delete are ref-array edits on the DO; file commits ride
+  // the patch pipeline (build objects → stage pack → delta ref + intent →
+  // auto-merge), which is how a fast-forward API commit lands on its branch
+  // without bypassing intent bookkeeping.
+
+  router.post("/api/v1/repos/:repo_ref{.+}/branches", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as {
+      name?: string;
+      target?: string;
+    } | null;
+    if (!body?.name || !isValidRef(`refs/heads/${body.name}`)) {
+      return gErr(c, 400, "invalid branch name");
+    }
+    const fullName = `refs/heads/${body.name}`;
+    const oid = await resolveRef(c.env, gate.route.doName, body.target || "main", gate.cacheCtx);
+    if (!oid) return gErr(c, 400, `target not found: ${body.target ?? "main"}`);
+    const result = await addRefViaStub(c.env, gate.route.doName, fullName, oid);
+    if (result === "exists") return gErr(c, 409, `branch ${body.name} already exists`);
+    return c.json({ name: body.name, sha: oid, is_default: false });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/branches/:branch_name", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const name = c.req.param("branch_name");
+    if (name === "main") return gErr(c, 400, "cannot delete the default branch");
+    const removed = await removeRefViaStub(c.env, gate.route.doName, `refs/heads/${name}`);
+    if (removed === "protected") return gErr(c, 403, `branch ${name} is protected`);
+    if (removed === "missing") return gNotFound(c, "branch");
+    return c.json({ deleted: true });
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/tags", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as {
+      name?: string;
+      target?: string;
+    } | null;
+    if (!body?.name || !isValidRef(`refs/tags/${body.name}`)) {
+      return gErr(c, 400, "invalid tag name");
+    }
+    const oid = await resolveRef(c.env, gate.route.doName, body.target || "main", gate.cacheCtx);
+    if (!oid) return gErr(c, 400, `target not found: ${body.target ?? "main"}`);
+    const result = await addRefViaStub(c.env, gate.route.doName, `refs/tags/${body.name}`, oid);
+    if (result === "exists") return gErr(c, 409, `tag ${body.name} already exists`);
+    return c.json({ name: body.name, sha: oid, is_annotated: false });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/tags/:tag_name", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const removed = await removeRefViaStub(
+      c.env,
+      gate.route.doName,
+      `refs/tags/${c.req.param("tag_name")}`
+    );
+    if (removed === "protected") return gErr(c, 403, "tag is protected");
+    if (removed === "missing") return gNotFound(c, "tag");
+    return c.json({ deleted: true });
+  });
+
+  // Commit-files: file create/update/delete/move/patch in one commit, the
+  // way the SPA's file editor saves. Lands via the merge-intent lane — the
+  // intent is the audit record for who wrote what through the API.
+  router.post("/api/v1/repos/:repo_ref{.+}/commits", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const req = (await c.req.json().catch(() => null)) as CommitFilesRequest | null;
+    if (!req?.actions?.length) return gErr(c, 400, "actions required");
+
+    const branch = (req.new_branch || req.branch || "main").replace(/^refs\/heads\//, "");
+    const targetRef = `refs/heads/${branch}`;
+    const stub = getRepoStub(c.env, gate.route.doName);
+
+    // `new_branch` asks for a fresh ref seeded from `branch`'s head — a
+    // gitness "commit to new branch" is our ref-create + commit pair.
+    if (req.new_branch) {
+      const baseRef = `refs/heads/${(req.branch || "main").replace(/^refs\/heads\//, "")}`;
+      const baseOid = await resolveRef(c.env, gate.route.doName, baseRef, gate.cacheCtx);
+      if (!baseOid) return gErr(c, 400, `base branch not found: ${req.branch ?? "main"}`);
+      if (!isValidRef(targetRef)) return gErr(c, 400, "invalid branch name");
+      const added = await addRefViaStub(c.env, gate.route.doName, targetRef, baseOid);
+      if (added === "exists") return gErr(c, 409, `branch ${req.new_branch} already exists`);
+    }
+
+    const baseOid = await resolveRef(c.env, gate.route.doName, targetRef, gate.cacheCtx);
+    if (!baseOid) return gErr(c, 400, `branch not found: ${branch}`);
+
+    const author = req.author?.name
+      ? `${req.author.name} <${req.author.email ?? "web@delta-git.invalid>"}`
+      : `${gate.actor} <web@delta-git.invalid>`;
+    const built = await commitFileActions({
+      env: c.env,
+      repoId: gate.route.doName,
+      baseCommitOid: baseOid,
+      req,
+      author,
+      cacheCtx: gate.cacheCtx,
+    });
+    if (built.kind === "failed") return gErr(c, 422, built.reason);
+
+    const pack = await writeServerPack(built.objects);
+    const packKey = r2PackKey(
+      doPrefix(stub.id.toString()),
+      `pack-web-${built.commitOid.slice(0, 12)}.pack`
+    );
+    await c.env.REPO_BUCKET.put(packKey, pack.packBytes);
+    await c.env.REPO_BUCKET.put(packIndexKey(packKey), pack.idxBytes);
+
+    const accepted = await stub.acceptPatchCommit({
+      targetRef,
+      newOid: built.commitOid,
+      actor: gate.actor,
+      kind: "push.web",
+      stagedPack: {
+        packKey,
+        packBytes: pack.packBytes.length,
+        idxBytes: pack.idxBytes.length,
+        objectCount: pack.objectCount,
+      },
+    });
+    if (gate.cacheCtx?.memo) {
+      // acceptPatchCommit registered the new pack; drop the memoized catalog.
+      gate.cacheCtx.memo.packCatalog = undefined;
+      gate.cacheCtx.memo.packCatalogPromise = undefined;
+    }
+    const merge = await attemptMerge({
+      env: c.env,
+      repoId: gate.route.doName,
+      stub,
+      intentId: accepted.intent.id,
+      actor: gate.actor,
+      cacheCtx: gate.cacheCtx,
+    });
+    if (merge.kind === "conflict") {
+      return gErr(c, 422, `commit conflicts: ${merge.conflicts.join(", ")}`);
+    }
+    const landed = merge.kind === "merged" ? merge.mergeOid : built.commitOid;
+    return c.json({
+      commit_id: landed,
+      changed_files: (req.actions ?? []).filter((a) => a.path).map((a) => ({ path: a.path })),
+    });
+  });
+}
+
+/**
+ * Ref create/delete ride `setRefs`, which rewrites the whole refs array.
+ * Read-modify-write through the stub keeps delta refs and concurrent intent
+ * ref additions intact — getHeadAndRefs returns the freshest DO state.
+ */
+async function addRefViaStub(
+  env: Env,
+  doName: string,
+  name: string,
+  oid: string
+): Promise<"ok" | "exists"> {
+  const stub = getRepoStub(env, doName);
+  const { refs } = await stub.getHeadAndRefs();
+  if (refs.some((r) => r.name === name)) return "exists";
+  await stub.setRefs([...refs, { name, oid }]);
+  return "ok";
+}
+
+async function removeRefViaStub(
+  env: Env,
+  doName: string,
+  name: string
+): Promise<"ok" | "missing" | "protected"> {
+  // Active protection rules block matching ref deletions — the rules CRUD in
+  // repos.ts writes the same store this reads.
+  const rules = await readRepoRules(env, doName);
+  if (ruleBlocksRef(rules, name, "delete")) return "protected";
+  const stub = getRepoStub(env, doName);
+  const { refs } = await stub.getHeadAndRefs();
+  const next = refs.filter((r) => r.name !== name);
+  if (next.length === refs.length) return "missing";
+  await stub.setRefs(next);
+  return "ok";
 }

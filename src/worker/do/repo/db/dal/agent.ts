@@ -298,6 +298,14 @@ export async function listCommitStatuses(
     .orderBy(desc(commitStatus.createdAt));
 }
 
+/** Most recent statuses across all commits — the checks/recent feed. */
+export async function listRecentCommitStatuses(
+  db: DrizzleSqliteDODatabase,
+  limit = 50
+): Promise<CommitStatusRow[]> {
+  return await db.select().from(commitStatus).orderBy(desc(commitStatus.createdAt)).limit(limit);
+}
+
 // ---------------------------------------------------------------------------
 // Webhook subscriptions
 // ---------------------------------------------------------------------------
@@ -324,6 +332,32 @@ export async function setWebhookSubActive(
     .where(eq(webhookSubs.id, id));
 }
 
+export async function updateWebhookSub(
+  db: DrizzleSqliteDODatabase,
+  id: string,
+  patch: { url?: string; events?: string; secret?: string | null; active?: boolean }
+): Promise<boolean> {
+  const rows = await db
+    .update(webhookSubs)
+    .set({
+      ...(patch.url !== undefined ? { url: patch.url } : {}),
+      ...(patch.events !== undefined ? { events: patch.events } : {}),
+      ...(patch.secret !== undefined ? { secret: patch.secret } : {}),
+      ...(patch.active !== undefined ? { active: patch.active ? 1 : 0 } : {}),
+    })
+    .where(eq(webhookSubs.id, id))
+    .returning({ id: webhookSubs.id });
+  return rows.length === 1;
+}
+
+export async function deleteWebhookSub(db: DrizzleSqliteDODatabase, id: string): Promise<boolean> {
+  const rows = await db
+    .delete(webhookSubs)
+    .where(eq(webhookSubs.id, id))
+    .returning({ id: webhookSubs.id });
+  return rows.length === 1;
+}
+
 // ---------------------------------------------------------------------------
 // Repo secrets (write-only contract; ciphertext only)
 // ---------------------------------------------------------------------------
@@ -343,6 +377,17 @@ export async function upsertRepoSecret(
         updatedAt: row.updatedAt,
       },
     });
+}
+
+export async function deleteRepoSecret(
+  db: DrizzleSqliteDODatabase,
+  name: string
+): Promise<boolean> {
+  const rows = await db
+    .delete(repoSecrets)
+    .where(eq(repoSecrets.name, name))
+    .returning({ name: repoSecrets.name });
+  return rows.length === 1;
 }
 
 export async function listRepoSecretMeta(
