@@ -164,4 +164,33 @@ describe("dashboards + insights", () => {
     expect(body.security_tests_week).toBe(1);
     expect(body.security_findings_week).toBe(3);
   });
+
+  it("verifies the op-log chain and returns a signed checkpoint", async () => {
+    const res = await workerExports.default.fetch(
+      `https://example.com/api/${owner}/${repo}/dg/oplog/verify`,
+      { headers: { Authorization: seeded.pushAuthHeader } }
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      valid: boolean;
+      tip_hash: string | null;
+      entries: number;
+      checkpoint_signature: string;
+    };
+    expect(body.valid).toBe(true);
+    expect(body.checkpoint_signature).toMatch(/^hmac-sha256:[0-9a-f]{64}$/);
+  });
+
+  it("captures a space disaster-recovery snapshot", async () => {
+    const res = await req(`/api/v1/spaces/${owner}/dr-snapshot`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      counts: { repositories: number };
+      repositories: { repo: string; do_name: string }[];
+    };
+    expect(body.counts.repositories).toBeGreaterThan(0);
+    expect(body.repositories.some((r) => r.repo === repo)).toBe(true);
+  });
 });

@@ -515,6 +515,70 @@ export function registerAgentRoutes(router: AppRouter): void {
     });
   });
 
+  // GET /dg/oplog/verify — replays the hash chain and returns a signed
+  // checkpoint. The checkpoint (tip hash + seq + timestamp) is HMAC'd with
+  // the worker KEK so a forge-issued checkpoint is attributable to this
+  // deployment; external verifiers recompute the chain themselves from
+  // /dg/oplog or /dg/export and compare tip hashes.
+  router.get("/api/:owner/:repo/dg/oplog/verify", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const rows = await stub.listOpLog(-1);
+
+    const encoder = new TextEncoder();
+    const hex = (buf: ArrayBuffer) =>
+      [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    let brokenAt: number | null = null;
+    let expectedPrev = "genesis";
+    for (const row of rows) {
+      const canonical = JSON.stringify({
+        seq: row.seq,
+        kind: row.kind,
+        actor: row.actor,
+        payload: JSON.parse(row.payload),
+        createdAt: row.createdAt,
+      });
+      const computed = hex(
+        await crypto.subtle.digest("SHA-256", encoder.encode(expectedPrev + canonical))
+      );
+      if (row.prevHash !== expectedPrev || row.hash !== computed) {
+        brokenAt = row.seq;
+        break;
+      }
+      expectedPrev = row.hash;
+    }
+
+    const tip = rows.length > 0 ? rows[rows.length - 1]! : null;
+    const checkpoint = {
+      repo: `${route.routeNamespaceSlug}/${route.routeRepoSlug}`,
+      tip_hash: tip?.hash ?? null,
+      tip_seq: tip?.seq ?? -1,
+      entries: rows.length,
+      valid: brokenAt === null,
+      checked_at: Date.now(),
+    };
+    const kek = (c.env as { DG_KEK?: string }).DG_KEK ?? "insecure-dev-kek";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(kek) as BufferSource,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(JSON.stringify(checkpoint)) as BufferSource
+    );
+    return json(c, {
+      ...checkpoint,
+      broken_at_seq: brokenAt,
+      checkpoint_signature: `hmac-sha256:${hex(sig)}`,
+    });
+  });
+
   router.get("/api/:owner/:repo/dg/events", async (c) => {
     const route = await resolveRepo(c);
     if (!route) return bad(c, "not-found", 404);

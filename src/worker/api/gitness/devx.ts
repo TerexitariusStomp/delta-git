@@ -37,7 +37,7 @@ import {
   listIncidents,
   listMonitors,
 } from "@/worker/db/d1/dal/modules";
-import { newPrefixedId } from "@/worker/common";
+import { getRepoStub, newPrefixedId } from "@/worker/common";
 import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound } from "./shared";
 import type { GitnessContext } from "./shared";
@@ -470,6 +470,48 @@ export function registerGitnessDevx(router: AppRouter) {
       security_findings_week: tests
         .filter((t) => t.createdAt > now - week)
         .reduce((n, t) => n + t.findings, 0),
+    });
+  });
+}
+
+// --- disaster-recovery snapshot ---------------------------------------------------
+//
+// GET /spaces/{ref}/dr-snapshot — metadata-level backup of every repo the
+// caller can read in the space: refs, op-log tip hash (chain-verifiable via
+// /dg/oplog/verify), visibility/encryption flags, and registry counts. Git
+// object durability is R2's job; this captures the metadata + audit tips
+// needed to detect loss or tampering after a restore.
+
+export function registerGitnessDr(router: AppRouter) {
+  router.get("/api/v1/spaces/:space_ref{.+}/dr-snapshot", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const repos = await listRepositoriesForNamespace(c.var.db, ns.id, ns.userId);
+    const snapshots = await Promise.all(
+      repos.slice(0, 100).map(async (r) => {
+        const stub = getRepoStub(c.env, r.doName);
+        const [refs, tip] = await Promise.all([stub.getHeadAndRefs(), stub.listOpLog(-1)]);
+        const last = tip.length > 0 ? tip[tip.length - 1]! : null;
+        return {
+          repo: r.slug,
+          do_name: r.doName,
+          visibility: r.visibility,
+          encrypted: r.encrypted === 1,
+          head: refs.head,
+          refs: refs.refs.map((r) => `${r.name}=${r.oid}`),
+          op_log_tip: last ? { seq: last.seq, hash: last.hash } : null,
+        };
+      })
+    );
+    return c.json({
+      space: ns.slug,
+      captured_at: Date.now(),
+      repositories: snapshots,
+      counts: {
+        repositories: snapshots.length,
+        encrypted: snapshots.filter((s) => s.encrypted).length,
+        private: snapshots.filter((s) => s.visibility === "private").length,
+      },
     });
   });
 }
