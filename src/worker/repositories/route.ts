@@ -21,6 +21,10 @@ export type RepositoryRoute = {
   repositoryId: string;
   doName: string;
   visibility: RepositoryVisibility;
+  // Strict-E2E flag from the canonical D1 row. When true the server stores
+  // ciphertext only — smart-HTTP object endpoints must refuse and content
+  // flows through the opaque `enc/` chunk surface instead.
+  encrypted: boolean;
   // Storage backend discriminator. "artifacts" repos keep the DO for
   // coordination but serve git data plane from the Artifacts remote.
   backend: RepositoryBackend;
@@ -78,6 +82,7 @@ export async function resolveRepositoryRoute(
           repositoryId: repository.id,
           doName: repository.doName,
           visibility: repository.visibility,
+          encrypted: repository.encrypted === 1,
           backend: repository.backend,
           artifactsName: repository.artifactsName,
           artifactsRemote: repository.artifactsRemote,
@@ -130,6 +135,7 @@ export async function resolveRepositoryRoute(
     repositoryId: repository.id,
     doName: repository.doName,
     visibility: repository.visibility,
+    encrypted: repository.encrypted === 1,
     backend: repository.backend,
     artifactsName: repository.artifactsName,
     artifactsRemote: repository.artifactsRemote,

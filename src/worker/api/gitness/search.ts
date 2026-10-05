@@ -11,9 +11,9 @@
 // (Orama-indexed, HEAD-keyed KV cache), and results are produced by a line
 // scan — grep semantics, not fuzzy guessing. `lang:`/`case:`/`enable_regex`
 // in the gitness query syntax are honored. Private repos search fine here —
-// read access is enforced by resolveGitnessRepo; when Wave-1e E2E lands,
-// encrypted repos will need a client-side search lane and this route should
-// refuse them (see route.visibility checks added then).
+// read access is enforced by resolveGitnessRepo. Strict-E2E encrypted repos
+// carry no server-side plaintext: repo-scoped endpoints refuse them and the
+// space fan-out skips them (the custody worker owns their search lane).
 
 import type { AppRouter } from "@/worker/routes/hono";
 import { loadViewer } from "@/worker/auth/session";
@@ -246,6 +246,9 @@ export function registerGitnessSearch(router: AppRouter) {
       if (fileMatches.length >= limit) break;
       const access = await resolveGitnessRepo(c, ref);
       if (access.kind !== "ok") continue;
+      // Strict-E2E repos carry no server-side plaintext — skip them in the
+      // space fan-out rather than returning misleading empties.
+      if (access.route.encrypted) continue;
       const built = await repoSearchDocs(c.env, access.route.doName, access.cacheCtx).catch(
         (err) => {
           log.warn("search:docs-load-failed", {
@@ -284,6 +287,9 @@ export function registerGitnessSearch(router: AppRouter) {
   router.post("/api/v1/repos/:repo_ref{.+}/semantic/search", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
+    if (access.route.encrypted) {
+      return gErr(c, 400, "repo is end-to-end encrypted — search runs client-side");
+    }
     const body = (await c.req.json().catch(() => null)) as { query?: string } | null;
     const query = (body?.query ?? "").trim();
     if (!query) return c.json([]);
@@ -331,6 +337,9 @@ export function registerGitnessSearch(router: AppRouter) {
   router.post("/api/v1/repos/:repo_ref{.+}/ask", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
+    if (access.route.encrypted) {
+      return gErr(c, 400, "repo is end-to-end encrypted — ask runs client-side");
+    }
     const body = (await c.req.json().catch(() => null)) as { query?: string } | null;
     const query = (body?.query ?? "").trim();
     if (!query) return gErr(c, 400, "query required");

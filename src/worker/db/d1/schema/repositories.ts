@@ -37,6 +37,12 @@ export const repositories = sqliteTable(
     // federation relay. See docs/federation.md.
     mirrorTargets: text("mirror_targets"),
     visibility: text("visibility").notNull().$type<RepositoryVisibility>(),
+    // Strict-E2E flag: when 1 the server stores only ciphertext — opaque
+    // encrypted chunks under R2 `enc/` and a wrapped repo key per member.
+    // Smart-HTTP object endpoints are refused; browsing/merge run in the
+    // client custody worker which holds the unwrapped key. Only meaningful
+    // alongside visibility='private'.
+    encrypted: integer("encrypted").notNull().default(0),
     // One-line GitHub-style repository description shown in the repo header
     // and About sidebar. NULL until the owner sets one on the admin page.
     description: text("description"),

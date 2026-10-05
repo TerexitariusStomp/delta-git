@@ -155,6 +155,7 @@ export function toGitnessRepo(
     git_url: `${origin}/${path}.git`,
     git_ssh_url: "",
     is_public: row.visibility === "public",
+    is_encrypted: row.encrypted === 1,
     is_empty: extra?.isEmpty,
     num_open_pulls: extra?.openPulls,
     num_merged_pulls: extra?.mergedPulls,
@@ -226,7 +227,7 @@ export function registerGitnessRepos(router: AppRouter) {
     viewer: { userId: string },
     nsSlug: string,
     slug: string,
-    opts: { description?: string; isPublic?: boolean }
+    opts: { description?: string; isPublic?: boolean; encrypted?: boolean }
   ): Promise<{ row: RepositoryRow } | { error: Response }> {
     const nsValidation = validateSlugForRoute(normalizeIdentifier(nsSlug));
     const slugValidation = validateSlugForRoute(normalizeIdentifier(slug));
@@ -248,6 +249,8 @@ export function registerGitnessRepos(router: AppRouter) {
       slug: slugValidation.slug,
       doName,
       visibility: opts.isPublic === false ? "private" : "public",
+      // Strict-E2E is only meaningful on private repos.
+      encrypted: opts.isPublic === false && opts.encrypted === true ? 1 : 0,
       description: opts.description || null,
       backend: "do",
       artifactsName: null,
@@ -276,12 +279,15 @@ export function registerGitnessRepos(router: AppRouter) {
       identifier?: string;
       description?: string;
       is_public?: boolean;
+      // delta-git extension: strict-E2E ciphertext storage (private only).
+      encrypted?: boolean;
       parent_ref?: string;
     } | null;
     const nsSlug = (body?.parent_ref ?? "").split("/").filter(Boolean)[0] ?? "";
     const result = await insertRepo(c, viewer, nsSlug, body?.identifier ?? "", {
       description: body?.description,
       isPublic: body?.is_public,
+      encrypted: body?.encrypted,
     });
     if ("error" in result) return result.error;
     return c.json(toGitnessRepo(result.row, nsSlug.split("/").filter(Boolean)[0] ?? nsSlug));

@@ -1,0 +1,1 @@
+ALTER TABLE `repositories` ADD `encrypted` integer DEFAULT 0 NOT NULL;

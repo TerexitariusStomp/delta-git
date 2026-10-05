@@ -181,3 +181,54 @@ export function secretsKillswitch(wipe = false): Promise<{
 }> {
   return call('secretsKillswitch', { wipe })
 }
+
+// ---------------------------------------------------------------------------
+// E2E private-repo key custody — repo AES keys wrapped per member inside the
+// worker; the server only ever stores wrapped ciphertext.
+// ---------------------------------------------------------------------------
+
+export interface WrappedRepoKey {
+  v: 1
+  from: JsonWebKey
+  iv: string
+  ct: string
+}
+
+/** Public JWK of this device's wrap key — publish via PUT /user/wrapkey. */
+export function getWrapPubJwk(): Promise<JsonWebKey> {
+  return call<JsonWebKey>('getWrapPubJwk')
+}
+
+/** Generate a fresh repo AES key, hold it in worker memory, return the
+ *  wrapped copy to store server-side for this member. */
+export function repoKeyInit(repoId: string): Promise<{ wrapped: WrappedRepoKey }> {
+  return call('repoKeyInit', { repoId })
+}
+
+/** Unlock a repo key from this member's server-stored wrapped copy. */
+export function repoKeyUnwrap(repoId: string, wrapped: WrappedRepoKey): Promise<{ ok: boolean }> {
+  return call('repoKeyUnwrap', { repoId, wrapped })
+}
+
+/** Produce another member's wrapped copy of the unlocked repo key —
+ *  memberJwk comes from GET /users/{uid}/wrapkey. */
+export function repoKeyWrapFor(
+  repoId: string,
+  memberJwk: JsonWebKey
+): Promise<{ wrapped: WrappedRepoKey }> {
+  return call('repoKeyWrapFor', { repoId, memberJwk })
+}
+
+/** AES-GCM encrypt/decrypt with the unlocked repo key (base64url in/out;
+ *  wire format is iv || ciphertext). */
+export function repoEncrypt(repoId: string, data: string): Promise<{ data: string }> {
+  return call('repoEncrypt', { repoId, data })
+}
+export function repoDecrypt(repoId: string, data: string): Promise<{ data: string }> {
+  return call('repoDecrypt', { repoId, data })
+}
+
+/** Drop the unlocked repo key from worker memory (logout / scope switch). */
+export function repoKeyForget(repoId: string): Promise<{ ok: boolean }> {
+  return call('repoKeyForget', { repoId })
+}

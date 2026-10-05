@@ -34,6 +34,13 @@ interface CustodyRequest {
     | 'invokeSecret'
     | 'secretsAudit'
     | 'secretsKillswitch'
+    | 'getWrapPubJwk'
+    | 'repoKeyInit'
+    | 'repoKeyUnwrap'
+    | 'repoKeyWrapFor'
+    | 'repoEncrypt'
+    | 'repoDecrypt'
+    | 'repoKeyForget'
   args?: Record<string, unknown>
 }
 
@@ -179,6 +186,12 @@ function b64decode(s: string): Uint8Array {
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
   return out
+}
+
+// Accepts both standard and base64url alphabets — the repo-key lane emits
+// base64url while legacy blobs are standard b64.
+function b64decodeAny(s: string): Uint8Array {
+  return b64decode(s.replace(/-/g, '+').replace(/_/g, '/'))
 }
 
 async function wrapState(state: BrokerState): Promise<WrappedBlob> {
@@ -330,6 +343,185 @@ async function dispatchSecret(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Repo-key lane — E2E-encrypted private repos.
+//
+// A per-member non-extractable P-256 ECDH key ("wrap key") wraps the repo's
+// AES-256-GCM content key. Wrapped blobs are `{v,from,iv,ct}` where `from`
+// is the *wrapper's* public JWK so the recipient can derive the shared
+// secret with their own private key. The raw repo key lives only in this
+// worker's memory — the server stores ciphertext.
+// ---------------------------------------------------------------------------
+
+const WRAP_KEY_ID = 'repoWrapKey'
+const REPO_AES: AesKeyAlgorithm = { name: 'AES-GCM', length: 256 }
+
+interface WrappedRepoKey {
+  v: 1
+  from: JsonWebKey
+  iv: string
+  ct: string
+}
+
+let wrapPair: CryptoKeyPair | null = null
+// Raw repo key bytes held in worker memory only — needed to re-wrap for
+// other members. Never persisted; unwraps are re-fetched per session.
+const repoKeys = new Map<string, Uint8Array>()
+
+async function getOrCreateWrapPair(): Promise<CryptoKeyPair> {
+  if (wrapPair) return wrapPair
+  const stored = (await idb('readonly', STORE, (s) => s.get(WRAP_KEY_ID)).catch(
+    () => undefined
+  )) as CryptoKeyPair | undefined
+  if (stored?.publicKey && stored?.privateKey) {
+    wrapPair = stored
+    return stored
+  }
+  const kp = (await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false, // private non-extractable; public half stays exportable
+    ['deriveBits']
+  )) as CryptoKeyPair
+  await idb('readwrite', STORE, (s) => s.put(kp, WRAP_KEY_ID)).catch(() => {})
+  wrapPair = kp
+  return kp
+}
+
+async function getWrapPubJwk(): Promise<JsonWebKey> {
+  const kp = await getOrCreateWrapPair()
+  const jwk = await crypto.subtle.exportKey('jwk', kp.publicKey)
+  return { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y }
+}
+
+/** ECDH(priv, peerPub) -> HKDF -> AES-256-GCM wrap key. `from` records the
+ *  wrapper's public half so the peer can re-derive on unwrap. */
+async function wrapKeyFor(jwk: JsonWebKey, raw: Uint8Array): Promise<WrappedRepoKey> {
+  const pair = await getOrCreateWrapPair()
+  const peer = await crypto.subtle.importKey(
+    'jwk',
+    { ...jwk, ext: true } as JsonWebKey,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    []
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: peer },
+    pair.privateKey,
+    256
+  )
+  const hkdf = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey'])
+  const aes = await crypto.subtle.deriveKey(
+    { name: 'HKDF', salt: te.encode('dg-repo-key-wrap'), info: te.encode('v1'), hash: 'SHA-256' },
+    hkdf,
+    REPO_AES,
+    false,
+    ['wrapKey', 'unwrapKey']
+  )
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, raw as BufferSource)
+  const from = await getWrapPubJwk()
+  return { v: 1, from, iv: base64url(iv), ct: base64url(new Uint8Array(ct)) }
+}
+
+async function unwrapRepoKey(blob: WrappedRepoKey): Promise<Uint8Array> {
+  const pair = await getOrCreateWrapPair()
+  const peer = await crypto.subtle.importKey(
+    'jwk',
+    { ...blob.from, ext: true } as JsonWebKey,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    []
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: peer },
+    pair.privateKey,
+    256
+  )
+  const hkdf = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey'])
+  const aes = await crypto.subtle.deriveKey(
+    { name: 'HKDF', salt: te.encode('dg-repo-key-wrap'), info: te.encode('v1'), hash: 'SHA-256' },
+    hkdf,
+    REPO_AES,
+    false,
+    ['wrapKey', 'unwrapKey']
+  )
+  const pt = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: b64decodeAny(blob.iv) as BufferSource },
+    aes,
+    b64decodeAny(blob.ct) as BufferSource
+  )
+  return new Uint8Array(pt)
+}
+
+async function repoAesKey(repoId: string): Promise<CryptoKey> {
+  const raw = repoKeys.get(repoId)
+  if (!raw) throw new Error('repo key not unlocked')
+  return crypto.subtle.importKey('raw', raw as BufferSource, REPO_AES, false, [
+    'encrypt',
+    'decrypt',
+  ])
+}
+
+async function dispatchRepoKey(method: string, args: Record<string, unknown>): Promise<unknown> {
+  switch (method) {
+    case 'getWrapPubJwk':
+      return getWrapPubJwk()
+    case 'repoKeyInit': {
+      const repoId = String(args?.repoId ?? '')
+      if (!repoId) throw new Error('repoId required')
+      const raw = crypto.getRandomValues(new Uint8Array(32))
+      repoKeys.set(repoId, raw)
+      const own = await getWrapPubJwk()
+      return { wrapped: await wrapKeyFor(own, raw) }
+    }
+    case 'repoKeyUnwrap': {
+      const repoId = String(args?.repoId ?? '')
+      const raw = await unwrapRepoKey(args?.wrapped as WrappedRepoKey)
+      repoKeys.set(repoId, raw)
+      return { ok: true }
+    }
+    case 'repoKeyWrapFor': {
+      const repoId = String(args?.repoId ?? '')
+      const raw = repoKeys.get(repoId)
+      if (!raw) throw new Error('repo key not unlocked')
+      return { wrapped: await wrapKeyFor(args?.memberJwk as JsonWebKey, raw) }
+    }
+    case 'repoEncrypt': {
+      const repoId = String(args?.repoId ?? '')
+      const key = await repoAesKey(repoId)
+      const iv = crypto.getRandomValues(new Uint8Array(12))
+      const ct = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        b64decodeAny(String(args?.data ?? '')) as BufferSource
+      )
+      // wire format: iv || ciphertext
+      const out = new Uint8Array(12 + ct.byteLength)
+      out.set(iv, 0)
+      out.set(new Uint8Array(ct), 12)
+      return { data: base64url(out) }
+    }
+    case 'repoDecrypt': {
+      const repoId = String(args?.repoId ?? '')
+      const key = await repoAesKey(repoId)
+      const buf = b64decodeAny(String(args?.data ?? ''))
+      if (buf.length < 13) throw new Error('ciphertext too short')
+      const pt = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: buf.slice(0, 12) as BufferSource },
+        key,
+        buf.slice(12) as BufferSource
+      )
+      return { data: base64url(new Uint8Array(pt)) }
+    }
+    case 'repoKeyForget': {
+      repoKeys.delete(String(args?.repoId ?? ''))
+      return { ok: true }
+    }
+    default:
+      throw new Error(`unknown repo-key method: ${method}`)
+  }
+}
+
 self.onmessage = async (event: MessageEvent<CustodyRequest>) => {
   const { id, method, args } = event.data
   try {
@@ -337,6 +529,8 @@ self.onmessage = async (event: MessageEvent<CustodyRequest>) => {
     if (method === 'getDpopJwk') result = await getDpopJwk()
     else if (method === 'signDpop') result = await signDpop(args?.url as string, args?.method as string)
     else if (method === 'clearDpopKey') result = await clearDpopKey()
+    else if (method === 'getWrapPubJwk' || method.startsWith('repo'))
+      result = await dispatchRepoKey(method, args ?? {})
     else result = await dispatchSecret(method, args ?? {})
     ;(self as unknown as Worker).postMessage({ id, ok: true, result })
   } catch (err) {

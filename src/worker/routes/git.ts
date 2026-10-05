@@ -57,6 +57,20 @@ function forbidden(message = "Forbidden\n"): Response {
   });
 }
 
+// Strict-E2E repos carry no plaintext objects server-side — the smart-HTTP
+// surface has nothing to serve. Point clients at the encrypted chunk plane
+// (`/api/v1/repos/{ref}/objects/*`) via the dg remote helper instead.
+function encryptedRepoRefusal(route: { encrypted: boolean }): Response | null {
+  if (!route.encrypted) return null;
+  return new Response("This repository is end-to-end encrypted; use the dg:// remote helper\n", {
+    status: 403,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 function gitNotFound(): Response {
   return new Response("Not found\n", {
     status: 404,
@@ -468,6 +482,8 @@ export function registerGitRoutes(router: AppRouter) {
     const resolved = await resolveGitRouteForRequest(c, owner, repo, service, true);
     if (resolved.kind === "response") return withGitCors(c.req.raw, resolved.response);
     const route = resolved.route;
+    const encRefusal = encryptedRepoRefusal(route);
+    if (encRefusal) return withGitCors(c.req.raw, encRefusal);
     const authorized = await authorizeGitRouteForRequest(c, route, service, true, "read");
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
     const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
@@ -492,6 +508,8 @@ export function registerGitRoutes(router: AppRouter) {
     const resolved = await resolveGitRouteForRequest(c, owner, repo, "git-upload-pack", false);
     if (resolved.kind === "response") return resolved.response;
     const route = resolved.route;
+    const encRefusal = encryptedRepoRefusal(route);
+    if (encRefusal) return withGitCors(c.req.raw, encRefusal);
     const authorized = await authorizeGitRouteForRequest(
       c,
       route,
@@ -515,6 +533,8 @@ export function registerGitRoutes(router: AppRouter) {
     const resolved = await resolveGitRouteForRequest(c, owner, repo, "git-receive-pack", false);
     if (resolved.kind === "response") return resolved.response;
     const route = resolved.route;
+    const encRefusal = encryptedRepoRefusal(route);
+    if (encRefusal) return withGitCors(c.req.raw, encRefusal);
     const authorized = await authorizeGitRouteForRequest(
       c,
       route,
