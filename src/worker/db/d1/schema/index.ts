@@ -10,3 +10,4 @@ export * from "./patNamespaceGrants";
 export * from "./patRepoGrants";
 export * from "./reputation";
 export * from "./rbac";
+export * from "./scanRuns";

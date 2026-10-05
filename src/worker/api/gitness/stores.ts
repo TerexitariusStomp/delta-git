@@ -406,11 +406,22 @@ export async function writeSecrets(env: Env, scopeKey: string, secrets: SecretRe
   await env.ROUTES.put(`gsecrets:${scopeKey}`, JSON.stringify(secrets));
 }
 
+// Repo push-scan policy — driven by the vendored security form's
+// `vulnerability_scanning_mode` (detect/block/disabled). "report" records
+// client-side scan attestations without gating; "require" refuses receive
+// finalization when a pushed head has no pass/warn attestation; "off"
+// disables both.
+export type PushScanPolicy = "report" | "require" | "off";
+
 export interface SecuritySettings {
-  /** Reject pushes whose packs trip the secret scanner. */
+  /** Include secret detectors in the client-side push scan suite. */
   secret_scanning?: boolean;
   /** Block force-pushes / history rewrites on receive. */
   force_push_blocked?: boolean;
+  /** Client-side push scan enforcement level — see PushScanPolicy. */
+  push_scan?: PushScanPolicy;
+  /** Vendored `principal_committer_match` — stored, not yet enforced. */
+  committer_match?: boolean;
 }
 
 export async function readSecuritySettings(env: Env, doName: string): Promise<SecuritySettings> {

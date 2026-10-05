@@ -49,7 +49,6 @@ async function req(
 const get = (p: string, c?: string) => req("GET", p, { cookie: c });
 const post = (p: string, b: unknown, c?: string) => req("POST", p, { body: b, cookie: c });
 const patch = (p: string, b: unknown, c?: string) => req("PATCH", p, { body: b, cookie: c });
-const del = (p: string, c?: string) => req("DELETE", p, { cookie: c });
 
 beforeAll(async () => {
   await ensureD1Migrations(env);

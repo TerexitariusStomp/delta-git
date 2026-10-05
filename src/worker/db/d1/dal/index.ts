@@ -5,3 +5,4 @@ export * from "./identities";
 export * from "./repositories";
 export * from "./tokens";
 export * from "./reputation";
+export * from "./scanRuns";

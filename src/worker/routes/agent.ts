@@ -11,7 +11,7 @@ import type {
 
 import { z } from "zod";
 
-import { getRepoStub } from "@/worker/common";
+import { getRepoStub, newPrefixedId } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
@@ -39,8 +39,11 @@ import {
   readRepoExecutionLogs,
   readRepoExecutions,
   readRepoPipelines,
+  readSecuritySettings,
   updateRepoExecution,
 } from "@/worker/api/gitness/stores";
+import { listScanRunsForRepo, upsertScanRun } from "@/worker/db/d1/dal/scanRuns";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { ensureArtifactsPushSubscription } from "@/worker/tasks/artifactsSubscriptions";
 import {
@@ -1953,5 +1956,110 @@ export function registerAgentRoutes(router: AppRouter): void {
       status: updated.status,
     });
     return json(c, { ok: true, status: updated.status });
+  });
+
+  // --- push-scan attestations -------------------------------------------------
+  //
+  // Client-side scanning is the enforcement model: dgit/pre-push runs
+  // gitleaks+trufflehog+trivy+semgrep on the pusher's machine *before* upload
+  // and attests the outcome here. The server stores the attestation keyed by
+  // head oid so a `require` repo policy can refuse un-attested pushes and the
+  // audit trail records who claimed to scan what.
+
+  const scanAttestBody = z.object({
+    heads: z
+      .array(
+        z.object({
+          ref: z.string().min(1),
+          oid: z.string().regex(/^[0-9a-f]{40}$/i),
+        })
+      )
+      .min(1)
+      .max(64),
+    status: z.enum(["pass", "warn", "fail", "skipped"]),
+    tools: z
+      .array(
+        z.object({
+          tool: z.string().max(32),
+          version: z.string().max(64).optional(),
+          status: z.enum(["pass", "warn", "fail", "skipped", "missing"]),
+          findings: z.number().int().nonnegative().optional(),
+          duration_ms: z.number().int().nonnegative().optional(),
+        })
+      )
+      .max(16),
+    duration_ms: z.number().int().nonnegative().optional(),
+  });
+
+  router.post("/api/:owner/:repo/dg/scan-attest", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "repo-not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = parseJsonBody(body, scanAttestBody);
+    if (!parsed) return bad(c, "invalid-body");
+
+    const repoRow = await findRepositoryByDoName(c.var.db, route.doName);
+    if (!repoRow) return bad(c, "repo-not-found", 404);
+    const settings = await readSecuritySettings(c.env, route.doName);
+    if (settings.push_scan === "off") {
+      return json(c, { recorded: false, policy: "off" });
+    }
+
+    const now = Date.now();
+    for (const head of parsed.heads) {
+      await upsertScanRun(c.var.db, {
+        id: newPrefixedId("scan"),
+        repositoryId: repoRow.id,
+        headOid: head.oid.toLowerCase(),
+        actor: principal.actor,
+        status: parsed.status,
+        tools: JSON.stringify(parsed.tools),
+        durationMs: parsed.duration_ms ?? null,
+        ranAt: now,
+      });
+    }
+    c.var.logFor({ service: "PushScan" }).info("scan:attested", {
+      repoId: route.doName,
+      actor: principal.actor,
+      heads: parsed.heads.length,
+      status: parsed.status,
+    });
+    return json(c, {
+      recorded: true,
+      policy: settings.push_scan === "require" ? "require" : "report",
+      heads: parsed.heads.length,
+    });
+  });
+
+  // The pre-push hook / dgit push reads this before scanning: which suite the
+  // repo wants and whether pushes are gated on a prior attestation.
+  router.get("/api/:owner/:repo/dg/scan-policy", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "repo-not-found", 404);
+    const settings = await readSecuritySettings(c.env, route.doName);
+    return json(c, {
+      push_scan: settings.push_scan ?? "report",
+      secret_scanning: settings.secret_scanning !== false,
+    });
+  });
+
+  router.get("/api/:owner/:repo/dg/scans", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "repo-not-found", 404);
+    const repoRow = await findRepositoryByDoName(c.var.db, route.doName);
+    if (!repoRow) return bad(c, "repo-not-found", 404);
+    const rows = await listScanRunsForRepo(c.var.db, repoRow.id, 50);
+    return json(c, {
+      scans: rows.map((row) => ({
+        head_oid: row.headOid,
+        actor: row.actor,
+        status: row.status,
+        tools: JSON.parse(row.tools) as unknown[],
+        duration_ms: row.durationMs,
+        ran_at: row.ranAt,
+      })),
+    });
   });
 }

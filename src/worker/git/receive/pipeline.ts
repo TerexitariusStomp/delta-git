@@ -11,6 +11,10 @@ import {
   scanPack,
 } from "@/worker/git/pack/indexer";
 import { doPrefix, r2PackKey } from "@/worker/keys";
+import { createDb } from "@/worker/db/d1/client";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
+import { findScanRunForHead, scanStatusSatisfiesPolicy } from "@/worker/db/d1/dal/scanRuns";
+import { readSecuritySettings } from "@/worker/api/gitness/stores";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
 import { enqueuePipelineTrigger } from "@/worker/tasks/pipeline";
 import { enqueueKnowledgeRefresh } from "@/worker/tasks/knowledge";
@@ -214,6 +218,56 @@ export async function executeReceivePipeline(
 
   try {
     const hasNonDelete = args.commands.some((command) => !/^0{40}$/i.test(command.newOid));
+
+    // Push-scan gate: when the repo's security policy is "require", every new
+    // head must carry a prior pass/warn scan attestation (see dg/scan-attest).
+    // Attestations arrive before the push, keyed by head oid — a missing or
+    // failed attestation rejects the whole receive before the pack is staged.
+    if (hasNonDelete) {
+      const scanPolicy = (await readSecuritySettings(args.env, args.repoId)).push_scan;
+      if (scanPolicy === "require") {
+        const db = createDb(args.env.DB);
+        const repoRow = await findRepositoryByDoName(db, args.repoId);
+        const missing: string[] = [];
+        for (const command of args.commands) {
+          if (/^0{40}$/i.test(command.newOid)) continue;
+          const run = repoRow
+            ? await findScanRunForHead(db, repoRow.id, command.newOid.toLowerCase())
+            : undefined;
+          if (!run || !scanStatusSatisfiesPolicy(run.status)) missing.push(command.ref);
+        }
+        if (missing.length > 0) {
+          args.log.warn("receive:scan-required", {
+            repoId: args.repoId,
+            missingCount: missing.length,
+          });
+          await abortReceiveLease({
+            stub: args.stub,
+            leaseToken: args.leaseToken,
+            log: args.log,
+            reason: "scan-required",
+            attempt: "inline",
+          });
+          const message =
+            "push scan required: run `dgit push` (or install `dgit hooks`) so the " +
+            "client-side scanner attests these heads, or ask an admin to relax " +
+            "the repo's scanning policy";
+          return buildReceiveResult({
+            unpackOk: false,
+            unpackMessage: message,
+            commands: args.commands,
+            statuses: args.commands.map((command) => ({
+              ref: command.ref,
+              ok: false,
+              message,
+            })),
+            changed: false,
+            empty: false,
+          });
+        }
+      }
+    }
+
     let stagedPack:
       | {
           packKey: string;
@@ -336,11 +390,13 @@ export async function executeReceivePipeline(
             repoId: args.repoId,
             bytes: stagedPack.packBytes + stagedPack.idxBytes,
           });
-          await cleanupStagedPack({
+          await cleanupFailedReceive({
+            ctx: args.ctx,
+            stub: args.stub,
+            leaseToken: args.leaseToken,
             stagedUpload,
             log: args.log,
             reason: "quota-exceeded",
-            attempt: "inline",
           });
           return buildReceiveResult({
             unpackOk: false,

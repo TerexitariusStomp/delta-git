@@ -772,12 +772,21 @@ export function registerGitnessRepos(router: AppRouter) {
     return c.json({});
   });
 
+  // Vendored contract: GET/PATCH exchange the SPA's flat security shape.
+  // `vulnerability_scanning_mode` is the push-scan policy: "block" requires a
+  // client-side scan attestation per pushed head, "detect" records without
+  // gating, "disabled" turns the feature off. Scans run on the pusher's
+  // machine (dgit CLI / pre-push hook) — the server never sees the content
+  // beyond the attestation.
   router.get("/api/v1/repos/:repo_ref{.+}/settings/security", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
     const s = await readSecuritySettings(c.env, access.route.doName);
     return c.json({
-      secret_scanning: { enabled: s.secret_scanning !== false },
+      secret_scanning_enabled: s.secret_scanning !== false,
+      principal_committer_match: s.committer_match === true,
+      vulnerability_scanning_mode:
+        s.push_scan === "require" ? "block" : s.push_scan === "off" ? "disabled" : "detect",
       force_push: { blocked: s.force_push_blocked === true },
     });
   });
@@ -786,18 +795,36 @@ export function registerGitnessRepos(router: AppRouter) {
     const gate = await requireWriter(c);
     if (gate instanceof Response) return gate;
     const body = (await c.req.json().catch(() => null)) as {
-      secret_scanning?: { enabled?: boolean };
+      secret_scanning_enabled?: boolean;
+      principal_committer_match?: boolean;
+      vulnerability_scanning_mode?: string;
       force_push?: { blocked?: boolean };
     } | null;
     const s = await readSecuritySettings(c.env, gate.route.doName);
-    if (body?.secret_scanning?.enabled !== undefined) {
-      s.secret_scanning = body.secret_scanning.enabled;
+    if (body?.secret_scanning_enabled !== undefined) {
+      s.secret_scanning = body.secret_scanning_enabled;
+    }
+    if (body?.principal_committer_match !== undefined) {
+      s.committer_match = body.principal_committer_match;
+    }
+    if (body?.vulnerability_scanning_mode !== undefined) {
+      s.push_scan =
+        body.vulnerability_scanning_mode === "block"
+          ? "require"
+          : body.vulnerability_scanning_mode === "disabled"
+            ? "off"
+            : "report";
     }
     if (body?.force_push?.blocked !== undefined) {
       s.force_push_blocked = body.force_push.blocked;
     }
     await writeSecuritySettings(c.env, gate.route.doName, s);
-    return c.json({});
+    return c.json({
+      secret_scanning_enabled: s.secret_scanning !== false,
+      principal_committer_match: s.committer_match === true,
+      vulnerability_scanning_mode:
+        s.push_scan === "require" ? "block" : s.push_scan === "off" ? "disabled" : "detect",
+    });
   });
 
   // --- labels ------------------------------------------------------------------
