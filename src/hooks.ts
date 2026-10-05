@@ -59,15 +59,17 @@ hooks.post("/api/hooks/deploy", async (req, env: Env) => {
 
   const { repo, ref, oid } = event.data;
   const branch = branchOfRef(ref);
+  // source = git:<repo>@<ref>[#<prefix>] — LIKE match covers the prefix suffix.
   const sites = await env.DB.prepare(
-    "SELECT id, owner_did, preview_host, manifest_sha FROM sites WHERE source=?"
-  ).bind(`git:${repo}@${branch}`).all<{ id: string; owner_did: string; preview_host: string; manifest_sha: string | null }>();
+    "SELECT id, owner_did, preview_host, manifest_sha, source FROM sites WHERE source LIKE ?"
+  ).bind(`git:${repo}@${branch}%`).all<{ id: string; owner_did: string; preview_host: string; manifest_sha: string | null; source: string }>();
 
   const results = [];
   for (const site of sites.results) {
     // Idempotent: if this site is already on the pushed commit, skip.
     if (site.manifest_sha === oid) { results.push({ id: site.id, skipped: "already-current" }); continue; }
-    const out = await deployFromGit(env, site, repo, branch, site.owner_did);
+    const prefix = /#(.+)$/.exec(site.source)?.[1];
+    const out = await deployFromGit(env, site, repo, branch, site.owner_did, prefix);
     results.push({ id: site.id, ...(out.ok ? { ok: true, sha: out.sha } : { ok: false, error: out.error }) });
   }
   return json({ ok: true, repo, ref, oid, sites: results });

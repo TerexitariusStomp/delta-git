@@ -187,8 +187,10 @@ export async function deployFromGit(
   await env.DB.batch([
     env.DB.prepare("INSERT OR IGNORE INTO manifests(site_id, sha, file_count, bytes_total, created_at) VALUES(?,?,?,?,unixepoch())")
       .bind(site.id, artifactSha, files.length, bytesTotal),
+    // source encodes repo@ref plus the deploy prefix so redeploys (webhook
+    // or forgeSync) reuse the same subtree — source = git:<repo>@<ref>[#<prefix>]
     env.DB.prepare("UPDATE sites SET manifest_sha=?, source=? WHERE id=?")
-      .bind(artifactSha, `git:${repo}@${ref}`, site.id),
+      .bind(artifactSha, `git:${repo}@${ref}${root ? `#${root}` : ""}`, site.id),
   ]);
 
   return { ok: true, sha: artifactSha, commit, files: files.length, url: previewUrl(env, site) };
@@ -207,16 +209,17 @@ export async function forgeSync(env: Env): Promise<void> {
   ).all<{ id: string; owner_did: string; preview_host: string; manifest_sha: string | null; source: string }>();
   for (const site of sites.results) {
     try {
-      const m = /^git:([\w.-]+\/[\w.-]+)@(.+)$/.exec(site.source);
+      // source = git:<repo>@<ref>[#<prefix>]
+      const m = /^git:([\w.-]+\/[\w.-]+)@([^#]+)(?:#(.+))?$/.exec(site.source);
       if (!m) continue;
-      const [, repo, ref] = m;
+      const [, repo, ref, prefix] = m;
       const headers: Record<string, string> = {};
       if (env.FORGE_PAT) headers.authorization = `Basic ${btoa(`${repo.split("/")[0]}:${env.FORGE_PAT}`)}`;
       const res = await env.FORGE.fetch(`${env.FORGE_URL}/${repo}/-/resolve/${encodeURIComponent(ref)}`, { headers });
       if (!res.ok) continue;
       const { commit } = (await res.json()) as { commit?: string };
       if (!commit || commit === site.manifest_sha) continue;
-      await deployFromGit(env, site, repo, ref, site.owner_did);
+      await deployFromGit(env, site, repo, ref, site.owner_did, prefix);
     } catch {
       // Per-site failure must not stall the sweep — next tick retries.
     }
