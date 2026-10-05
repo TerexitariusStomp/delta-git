@@ -26,9 +26,11 @@
 <body>
 <header>
   <h1>wp-cloud</h1>
+  <a href="/auth/delta-git"><button class="secondary" type="button">Sign in with delta-git</button></a>
   <button id="connect">Connect wallet</button>
   <button id="newSite" disabled>New site</button>
   <button id="publish" disabled>Publish</button>
+  <button id="deployGit" disabled>Deploy from delta-git</button>
   <button id="versions" class="secondary" disabled>Versions</button>
   <button id="compat" class="secondary" disabled>Compatibility</button>
   <span id="status"></span>
@@ -37,7 +39,7 @@
   <iframe id="wp" title="WordPress"></iframe>
   <aside>
     <h2>Site</h2>
-    <div class="card" id="siteCard">No site yet. Connect a wallet, then create a site.</div>
+    <div class="card" id="siteCard">No site yet. Sign in with delta-git or connect a wallet, then create a site.</div>
     <h2>Credits</h2>
     <div class="card"><span id="balance">—</span><br>
       <button id="topup" class="secondary" style="margin-top:.4rem">Top up USDC</button>

@@ -50,7 +50,7 @@ api.post("/api/sites", async (req, env: Env) => {
   await env.DB.prepare(
     "INSERT INTO sites(id, owner_did, lane, preview_host, lease_expires_at, sapi, php_version, db_engine, multisite, agent_token, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,unixepoch())"
   ).bind(siteId, did, lane, host, lease, v.sapi, v.php_version, v.db_engine, v.multisite, crypto.randomUUID()).run();
-  return json({ id: siteId, preview_host: host, lease_expires_at: lease, lane, variant: { sapi: v.sapi, php_version: v.php_version, db_engine: v.db_engine, multisite: !!v.multisite } });
+  return json({ id: siteId, preview_host: host, preview_url: previewUrl(env, { id: siteId, preview_host: host }), lease_expires_at: lease, lane, variant: { sapi: v.sapi, php_version: v.php_version, db_engine: v.db_engine, multisite: !!v.multisite } });
 });
 
 api.get("/api/sites/:id", async (req, env: Env) => {
@@ -63,6 +63,26 @@ api.get("/api/sites/:id", async (req, env: Env) => {
 });
 
 // ---- Publish ----
+// Direct artifact upload — the no-S3-credentials publish path. The browser
+// PUTs each file's raw bytes (?sha=&path=) straight through the worker into
+// the R2 binding; /presign remains available when R2 API creds are set.
+api.put("/api/sites/:id/upload", async (req, env: Env) => {
+  const did = await auth(req, env);
+  if (did instanceof Response) return did;
+  const site = await ownedSite(env, req.params!.id, did);
+  if (!site) return json({ error: "not found" }, 404);
+  const u = new URL(req.url);
+  const sha = u.searchParams.get("sha") ?? "";
+  const path = (u.searchParams.get("path") ?? "").replace(/^\/+/, "").replace(/\.\./g, "");
+  if (!sha || !path || !/^[\w./-]+$/.test(path)) return json({ error: "bad sha/path" }, 400);
+  const len = Number(req.headers.get("content-length") ?? "0");
+  if (len > 95 * 1024 * 1024) return json({ error: "file too large" }, 413);
+  const body = await req.arrayBuffer();
+  if (!body.byteLength) return json({ error: "empty body" }, 400);
+  await env.ARTIFACTS.put(`sites/${site.id}/artifacts/${sha}/${path}`, body);
+  return json({ ok: true, path, bytes: body.byteLength });
+});
+
 api.post("/api/sites/:id/presign", async (req, env: Env) => {
   const did = await auth(req, env);
   if (did instanceof Response) return did;
@@ -192,7 +212,7 @@ api.get("/api/compat/:slug", async (req, env: Env) => {
       .bind(site.id, body.sha, body.files.length, bytes),
     env.DB.prepare("UPDATE sites SET manifest_sha=? WHERE id=?").bind(body.sha, site.id),
   ]);
-  return json({ ok: true, sha: body.sha, url: `https://${site.preview_host}` });
+  return json({ ok: true, sha: body.sha, url: previewUrl(env, site) });
 });
 
 api.post("/api/sites/:id/rollback", async (req, env: Env) => {
@@ -278,6 +298,12 @@ function pickVariant(v?: { sapi?: string; php_version?: string; db_engine?: stri
     db_engine: ["mariadb", "mysql8"].includes(v?.db_engine ?? "") ? v!.db_engine! : "sqlite",
     multisite: v?.multisite ? 1 : 0,
   };
+}
+
+// Path-based preview on the app host is the portable form (workers.dev can't
+// route preview-{id}.* subdomains); subdomain form stays for custom suffixes.
+export function previewUrl(env: Env, site: { id: string; preview_host: string }): string {
+  return env.APP_HOST ? `https://${env.APP_HOST}/preview/${site.id}/` : `https://${site.preview_host}`;
 }
 
 async function ownedSite(env: Env, id: string, did: string) {

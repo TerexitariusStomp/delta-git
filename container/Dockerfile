@@ -17,10 +17,10 @@ COPY --from=php /usr/local/etc/php /usr/local/etc/php
 RUN curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
  && chmod +x /usr/local/bin/wp
 
-# rclone (uploads→R2 + backups), ttyd (browser shell), webhook (agent API) — raw binaries
+# rclone (uploads→R2 + backups), ttyd (browser shell), webhook (agent API) — binaries
 RUN curl -fsSL https://rclone.org/install.sh | bash \
  && curl -fsSL -o /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
- && curl -fsSL -o /usr/local/bin/webhook https://github.com/adnanh/webhook/releases/download/2.8.2/webhook-linux-amd64 \
+ && curl -fsSL https://github.com/adnanh/webhook/releases/download/2.8.2/webhook-linux-amd64.tar.gz | tar -xz --strip-components=1 -C /usr/local/bin webhook-linux-amd64/webhook \
  && chmod +x /usr/local/bin/ttyd /usr/local/bin/webhook
 
 # Adminer (single-file DB admin)
@@ -30,9 +30,11 @@ RUN curl -fsSL -o /srv/adminer.php https://github.com/vrana/adminer/releases/dow
 RUN mkdir -p /srv/site && cd /srv/site \
  && curl -fsSL https://wordpress.org/latest.tar.gz | tar -xz --strip-components=1 \
  && cd wp-content/plugins \
- && for p in sqlite-database-integration s3-uploads fluent-smtp sqlite-object-cache; do \
+ && for p in sqlite-database-integration fluent-smtp sqlite-object-cache; do \
       curl -fsSL -o /tmp/$p.zip https://downloads.wordpress.org/plugin/$p.latest-stable.zip && unzip -q /tmp/$p.zip; \
     done \
+ && curl -fsSL -o /tmp/s3-uploads.zip https://github.com/humanmade/S3-Uploads/archive/refs/tags/3.0.13.zip \
+ && unzip -q -d /tmp/s3u /tmp/s3-uploads.zip && mv /tmp/s3u/S3-Uploads-3.0.13 s3-uploads \
  && mkdir -p /srv/site/wp-content/mu-plugins \
  && cp sqlite-database-integration/db.copy /srv/site/wp-content/db.php \
  && sed -e "s|{SQLITE_IMPLEMENTATION_FOLDER_PATH}|/srv/site/wp-content/plugins/sqlite-database-integration|" \

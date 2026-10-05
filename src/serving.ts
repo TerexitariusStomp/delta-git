@@ -12,7 +12,17 @@ export async function serveSite(req: Request, env: Env, ctx: ExecutionContext): 
   // on preview hosts and custom domains alike
   if (url.pathname === "/visitor-node.js" && env.ASSETS)
     return env.ASSETS.fetch(new Request(`${url.origin}/visitor-node.js`, req));
-  const site = await resolveSite(env, url.hostname);
+
+  // Path-based preview: /preview/{id}/rest — used on the app host where
+  // preview-{id}.{suffix} subdomains can't be routed (e.g. workers.dev).
+  const pv = url.pathname.match(/^\/preview\/([a-z0-9]+)(\/.*)?$/i);
+  let site: SiteRow | null;
+  if (pv) {
+    site = await siteById(env, pv[1]);
+    url.pathname = pv[2] ?? "/";
+  } else {
+    site = await resolveSite(env, url.hostname);
+  }
   if (!site) return new Response("site not found", { status: 404 });
   if (site.status !== "active") return topUpPage();
   if (site.lease_expires_at && site.lease_expires_at < Date.now() / 1000) return reclaimPage();
@@ -25,13 +35,16 @@ export async function serveSite(req: Request, env: Env, ctx: ExecutionContext): 
   return serveArtifact(req, env, ctx, site, url);
 }
 
+const SITE_COLS = "id, lane, status, manifest_sha, lease_expires_at, earn_enabled";
+
+function siteById(env: Env, id: string): Promise<SiteRow | null> {
+  return env.DB.prepare(`SELECT ${SITE_COLS} FROM sites WHERE id=?`).bind(id).first<SiteRow>();
+}
+
 async function resolveSite(env: Env, host: string): Promise<SiteRow | null> {
   const m = host.match(/^preview-([a-z0-9]+)\./i);
-  if (m) {
-    return env.DB.prepare("SELECT id, lane, status, manifest_sha, lease_expires_at, earn_enabled FROM sites WHERE id=?")
-      .bind(m[1]).first<SiteRow>();
-  }
-  return env.DB.prepare("SELECT id, lane, status, manifest_sha, lease_expires_at, earn_enabled FROM sites WHERE custom_domain=?")
+  if (m) return siteById(env, m[1]);
+  return env.DB.prepare(`SELECT ${SITE_COLS} FROM sites WHERE custom_domain=?`)
     .bind(host.toLowerCase()).first<SiteRow>();
 }
 

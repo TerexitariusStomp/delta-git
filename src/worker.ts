@@ -6,6 +6,9 @@ import { serveSite } from "./serving";
 import { rateLimit } from "./ratelimit";
 import { supportAnswer, statusPage } from "./support";
 import { earn } from "./earn";
+import { deploygit } from "./deploygit";
+import { hooks } from "./hooks";
+import { sso } from "./sso";
 import { consumeBatch } from "./queue";
 import { scanUsdc, reapLeases, retainManifests, healthCheck, debitPlans } from "./cron";
 import { TenantDO } from "./do/tenant";
@@ -13,7 +16,7 @@ import type { Env, MessageBatch } from "./env";
 
 export { TenantDO };
 
-const ROUTERS = [admin, earn, registrar, importer, api]; // first match wins
+const ROUTERS = [admin, earn, registrar, importer, api, deploygit, hooks]; // first match wins
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -35,10 +38,16 @@ export default {
       return new Response('{"error":"not found"}', { status: 404, headers: { "content-type": "application/json" } });
     }
     if (url.pathname === "/healthz") return new Response("ok");
+    if (url.pathname.startsWith("/auth/")) return sso.fetch(req, env, ctx);
 
     const host = url.hostname;
-    if (host.endsWith("pages.dev") || host === "localhost" || host === "127.0.0.1")
+    const isAppHost = host === env.APP_HOST || host.endsWith("pages.dev") || host === "localhost" || host === "127.0.0.1";
+    if (isAppHost) {
+      // workers.dev can't route preview-{id}.* subdomains — path-based previews
+      // are the portable fallback (custom-domain suffixes still serve by host).
+      if (url.pathname.startsWith("/preview/")) return serveSite(req, env, ctx);
       return env.ASSETS ? env.ASSETS.fetch(req) : new Response("wp-cloud", { status: 200 });
+    }
     return serveSite(req, env, ctx);
   },
 

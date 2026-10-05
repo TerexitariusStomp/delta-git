@@ -43,12 +43,35 @@ async function refresh() {
 // ---------- Site creation ----------
 $("newSite").onclick = async () => {
   site = await call("/api/sites", { method: "POST", body: "{}" });
-  log(`site ${site.id} → ${site.preview_host}`);
-  $("siteCard").innerHTML = `id <code>${site.id}</code><br>preview <code>${site.preview_host}</code>`;
+  const url = site.preview_url ?? `https://${site.preview_host}`;
+  log(`site ${site.id} → ${url}`);
+  $("siteCard").innerHTML = `id <code>${site.id}</code><br>preview <a href="${url}" target="_blank">${url}</a>`;
   $("publish").disabled = false;
+  $("deployGit").disabled = false;
   $("versions").disabled = false;
   $("compat").disabled = false;
   bootWp();
+};
+
+// ---------- Deploy from delta-git (forge → site, no browser upload) ----------
+$("deployGit").onclick = async () => {
+  if (!site) return;
+  const repo = prompt("delta-git repo to deploy (owner/slug):", "rooted-finance/wpcloud-demo");
+  if (!repo) return;
+  const ref = prompt("branch/ref:", "main") || "main";
+  status("deploying from delta-git…");
+  try {
+    const res = await call(`/api/sites/${site.id}/deploy-git`, {
+      method: "POST",
+      body: JSON.stringify({ repo, ref }),
+    });
+    status("live");
+    log(`deployed ${repo}@${ref} → ${res.url} (${res.files} files)`);
+    $("siteCard").innerHTML = `id <code>${site.id}</code><br><a href="${res.url}" target="_blank">${res.url}</a><br>source <code>${repo}@${ref}</code> — pushes redeploy automatically`;
+  } catch (e) {
+    status("deploy failed");
+    log(`deploy-git failed: ${e.message}`);
+  }
 };
 
 const BLUEPRINT = {
@@ -119,12 +142,28 @@ $("publish").onclick = async () => {
   const sha = await sha256Hex(new TextEncoder().encode(files.map((f) => `${f.path}:${f.bytes.length}:${f.sha}`).sort().join("\n")));
   log(`manifest ${sha.slice(0, 12)} — ${files.length} files`);
   status("getting upload URLs…");
-  const { urls } = await call(`/api/sites/${site.id}/presign`, {
-    method: "POST",
-    body: JSON.stringify({ sha, files: files.map((f) => ({ path: f.path })) }),
-  });
+  // Prefer direct-to-R2 presigned PUTs when the deployment has R2 API creds;
+  // fall back to streaming each file through the worker (always available).
+  let urls = null;
+  try {
+    ({ urls } = await call(`/api/sites/${site.id}/presign`, {
+      method: "POST",
+      body: JSON.stringify({ sha, files: files.map((f) => ({ path: f.path })) }),
+    }));
+    if (Object.values(urls).some((u) => !u || !String(u).includes("X-Amz"))) urls = null;
+  } catch { urls = null; }
   status("uploading…");
-  await Promise.all(files.map((f) => fetch(urls[f.path], { method: "PUT", body: f.bytes })));
+  if (urls) {
+    await Promise.all(files.map((f) => fetch(urls[f.path], { method: "PUT", body: f.bytes })));
+  } else {
+    await Promise.all(files.map((f) =>
+      fetch(`/api/sites/${site.id}/upload?sha=${sha}&path=${encodeURIComponent(f.path)}`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream" },
+        body: f.bytes,
+      }).then((r) => { if (!r.ok) throw new Error(`upload ${f.path}: ${r.status}`); })
+    ));
+  }
   status("committing…");
   const res = await call(`/api/sites/${site.id}/publish`, {
     method: "POST",

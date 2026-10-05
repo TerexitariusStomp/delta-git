@@ -3,6 +3,8 @@ export interface Env {
   ARTIFACTS: R2Bucket;
   ASSETS?: Fetcher;
   SITE_HOST_SUFFIX: string;
+  APP_HOST?: string;            // e.g. wpcloud.delta-git.workers.dev — serves the app SPA + /preview/{id}/*
+  FORGE_URL?: string;           // delta-git base origin for deploy-git archive fetches
   USDC_CHAIN: string;
   USDC_CONTRACT: string;
   USDC_RPC: string;
@@ -19,6 +21,10 @@ export interface Env {
   // visitor-compute network (localchimera coordinator)
   COORDINATOR_URL?: string;
   DISPATCH_AUTH_TOKEN?: string;
+  // delta-git integration
+  DG_SESSION_SECRET?: string;   // shared with the forge — verifies dg_token sign-in handoffs
+  DEPLOY_HOOK_SECRET?: string;  // verifies delta-git webhook signatures (svix v1 scheme)
+  FORGE_PAT?: string;           // optional basic-auth token for private repo archive fetches
   // paid-tier bindings (env.paid)
   TENANT?: DurableObjectNamespace;
   PROVISION?: Queue;
