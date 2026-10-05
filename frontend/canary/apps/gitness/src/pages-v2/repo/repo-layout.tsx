@@ -110,7 +110,8 @@ const RepoLayout = () => {
                 intents: routes.toRepoIntents({ spaceId, repoId }),
                 ideas: routes.toRepoIdeas({ spaceId, repoId }),
                 arena: routes.toRepoArena({ spaceId, repoId }),
-                agents: routes.toRepoAgents({ spaceId, repoId })
+                agents: routes.toRepoAgents({ spaceId, repoId }),
+                knowledge: routes.toRepoKnowledge({ spaceId, repoId })
               }}
             />
           </SubHeaderWrapper>

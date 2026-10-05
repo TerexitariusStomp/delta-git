@@ -24,7 +24,7 @@ interface RepoSubheaderProps {
   commitsPath?: string
   isRepoEmpty?: boolean
   /** delta-git surfaces — absolute paths to repo-scoped delta views. */
-  deltaPaths?: { intents?: string; ideas?: string; arena?: string; agents?: string }
+  deltaPaths?: { intents?: string; ideas?: string; arena?: string; agents?: string; knowledge?: string }
 }
 
 export const RepoSubheader = ({
@@ -75,6 +75,11 @@ export const RepoSubheader = ({
           )}
           {deltaPaths?.agents && (
             <Tabs.Trigger value={deltaPaths.agents}>Agents</Tabs.Trigger>
+          )}
+          {deltaPaths?.knowledge && (
+            <Tabs.Trigger value={deltaPaths.knowledge} disabled={isRepoEmpty}>
+              Knowledge
+            </Tabs.Trigger>
           )}
           {showSearchTab && (
             <Tabs.Trigger value={RepoTabsKeys.SEARCH} disabled={isRepoEmpty}>

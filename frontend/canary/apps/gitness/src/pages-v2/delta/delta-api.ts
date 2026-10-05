@@ -239,3 +239,61 @@ export const useEnterArenaMatch = (spaceId: string, repoId: string, matchId: str
   useMutation(() =>
     dgFetch(`${dgPath(spaceId, repoId)}/matches/${matchId}/enter`, { method: 'POST', body: '{}' })
   )
+
+// --- repo knowledge base (/api/v1 knowledge plane) ---------------------------
+
+const kbPath = (repoRef: string) => `/api/v1/repos/${repoRef}/+/knowledge`
+
+export interface KbSymbol {
+  name: string
+  kind: string
+  line: number
+}
+
+export interface KbFile {
+  path: string
+  ext: string
+  symbols: KbSymbol[]
+  imports: string[]
+}
+
+export interface KbEdge {
+  from: string
+  to: string
+  kind: 'file' | 'package'
+}
+
+export interface RepoKnowledgeDoc {
+  head: string | null
+  headOid: string | null
+  generated: number
+  summary: string
+  moduleBlurbs: Record<string, string>
+  files: KbFile[]
+  edges: KbEdge[]
+  packages: string[]
+  entrypoints: string[]
+  glossary: { term: string; definition: string }[]
+  diagrams: { id: string; title: string; mermaid: string }[]
+  tours: { id: string; title: string; steps: { path: string; line?: number; note: string }[] }[]
+}
+
+export interface AskAnswer {
+  answer: string
+  citations: { path: string; repo: string }[]
+}
+
+const repoRef = (spaceId: string, repoId: string) => `${spaceId}/${repoId}`
+
+export const useRepoKnowledge = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'kb', spaceId, repoId], () =>
+    dgFetch<RepoKnowledgeDoc>(kbPath(repoRef(spaceId, repoId)))
+  )
+
+export const useAskRepo = (spaceId: string, repoId: string) =>
+  useMutation((query: string) =>
+    dgFetch<AskAnswer>(`/api/v1/repos/${repoRef(spaceId, repoId)}/+/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ query })
+    })
+  )

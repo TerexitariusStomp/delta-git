@@ -105,6 +105,7 @@ export enum RouteConstants {
   toRepoArena = 'toRepoArena',
   toRepoArenaMatch = 'toRepoArenaMatch',
   toRepoAgents = 'toRepoAgents',
+  toRepoKnowledge = 'toRepoKnowledge',
   toArena = 'toArena',
   toReputation = 'toReputation'
 }

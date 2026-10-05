@@ -21,6 +21,7 @@ import { CustomRouteObject, RouteConstants } from './framework/routing/types'
 import { MFERouteRenderer } from './MFERouteRenderer'
 import { CreateProject } from './pages-v2/create-project'
 import { DeltaArenaFeedPage, DeltaLeaderboardPage } from './pages-v2/delta/global-pages'
+import { RepoDeltaKnowledgePage } from './pages-v2/delta/knowledge-page'
 import { SecretsVaultPage } from './pages-v2/delta/secrets-vault-page'
 import {
   RepoDeltaAgentsPage,
@@ -625,6 +626,15 @@ export const repoRoutes: CustomRouteObject[] = [
               breadcrumb: () => <span>Agents</span>,
               routeName: RouteConstants.toRepoAgents,
               pageTitle: 'Agents'
+            }
+          },
+          {
+            path: 'knowledge',
+            element: <RepoDeltaKnowledgePage />,
+            handle: {
+              breadcrumb: () => <span>Knowledge</span>,
+              routeName: RouteConstants.toRepoKnowledge,
+              pageTitle: 'Knowledge'
             }
           },
           {
