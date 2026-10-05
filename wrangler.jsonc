@@ -11,6 +11,9 @@
   "r2_buckets": [
     { "binding": "ARTIFACTS", "bucket_name": "wpcloud-artifacts" }
   ],
+  // Worker-to-worker fetch between workers.dev subdomains is blocked (CF error
+  // 1042) — the service binding is the only way deploy-git can reach the forge.
+  "services": [{ "binding": "FORGE", "service": "git-on-cloudflare" }],
   "vars": {
     "SITE_HOST_SUFFIX": "pages.dev",
     "APP_HOST": "wpcloud.delta-git.workers.dev",
@@ -42,6 +45,7 @@
       "r2_buckets": [
         { "binding": "ARTIFACTS", "bucket_name": "wpcloud-artifacts" }
       ],
+      "services": [{ "binding": "FORGE", "service": "git-on-cloudflare" }],
       "vars": {
         "SITE_HOST_SUFFIX": "pages.dev",
         "APP_HOST": "wpcloud.delta-git.workers.dev",

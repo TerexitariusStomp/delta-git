@@ -7,7 +7,7 @@ import { previewUrl } from "./api";
 
 // Forge-backed deploys — publish a site straight from a delta-git repo.
 //
-//   POST /api/sites/:id/deploy-git { repo: "owner/slug", ref?: "main" }
+//   POST /api/sites/:id/deploy-git { repo: "owner/slug", ref?: "main", prefix?: "sub/dir" }
 //
 // Fetches the forge's tar archive (GET /<repo>/-/archive/<ref>.tar), unpacks
 // it into R2 under sites/{id}/artifacts/<commit>/, records the manifest, and
@@ -117,19 +117,25 @@ export async function deployFromGit(
   site: { id: string; preview_host: string },
   repo: string,
   ref: string,
-  ownerDid: string
+  ownerDid: string,
+  prefix?: string
 ): Promise<{ ok: true; sha: string; commit: string | null; files: number; url: string } | { ok: false; status: number; error: string }> {
   if (!env.FORGE_URL) return { ok: false, status: 503, error: "forge not configured" };
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return { ok: false, status: 400, error: "repo must be owner/slug" };
   if (!ref || /[\0-\x20]/.test(ref) || ref.includes("..")) return { ok: false, status: 400, error: "bad ref" };
+  const root = prefix ? cleanPath(prefix) : null;
+  if (prefix && !root) return { ok: false, status: 400, error: "bad prefix" };
 
   const url = `${env.FORGE_URL}/${repo}/-/archive/${encodeURIComponent(ref)}.tar`;
   const headers: Record<string, string> = { accept: "application/x-tar" };
   if (env.FORGE_PAT) headers.authorization = `Basic ${btoa(`${repo.split("/")[0]}:${env.FORGE_PAT}`)}`;
 
-  const res = await fetch(url, { headers });
+  // Service binding first — workers.dev hosts can't be subrequested from a
+  // Worker (CF error 1042); plain fetch stays as the dev/custom-domain path.
+  const res = env.FORGE ? await env.FORGE.fetch(url, { headers }) : await fetch(url, { headers });
   if (!res.ok || !res.body) {
-    return { ok: false, status: 502, error: `archive fetch failed: ${res.status}` };
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    return { ok: false, status: 502, error: `archive fetch failed: ${res.status} ${detail}` };
   }
   const commit = res.headers.get("x-archive-commit");
 
@@ -137,8 +143,14 @@ export async function deployFromGit(
   let bytesTotal = 0;
   const reader = new TarReader(res.body);
   for await (const e of reader.entries()) {
-    const path = cleanPath(e.name);
+    let path = cleanPath(e.name);
     if (!path) continue;
+    // prefix deploys only keep files under <root>/, re-rooted at "/".
+    if (root) {
+      if (!path.startsWith(`${root}/`)) continue;
+      path = path.slice(root.length + 1);
+      if (!path) continue;
+    }
     // dirs/symlinks carry no content — the artifact model is files only
     if (e.type !== "0" && e.type !== "" && e.type !== "\0") continue;
     if (!e.body) return { ok: false, status: 502, error: "truncated archive" };
@@ -182,14 +194,43 @@ export async function deployFromGit(
   return { ok: true, sha: artifactSha, commit, files: files.length, url: previewUrl(env, site) };
 }
 
+// Cron sweep — redeploys forge-backed sites whose ref moved.
+//
+// Signed delta-git webhooks are the fast path, but they can only deliver to a
+// custom domain (workers.dev blocks inbound Worker subrequests too), so the
+// 5-minute cron also polls ref→commit via the FORGE service binding and
+// redeploys on drift. Idempotent: manifest_sha holds the deployed commit.
+export async function forgeSync(env: Env): Promise<void> {
+  if (!env.FORGE || !env.FORGE_URL) return;
+  const sites = await env.DB.prepare(
+    "SELECT id, owner_did, preview_host, manifest_sha, source FROM sites WHERE source LIKE 'git:%' AND status<>'archived'"
+  ).all<{ id: string; owner_did: string; preview_host: string; manifest_sha: string | null; source: string }>();
+  for (const site of sites.results) {
+    try {
+      const m = /^git:([\w.-]+\/[\w.-]+)@(.+)$/.exec(site.source);
+      if (!m) continue;
+      const [, repo, ref] = m;
+      const headers: Record<string, string> = {};
+      if (env.FORGE_PAT) headers.authorization = `Basic ${btoa(`${repo.split("/")[0]}:${env.FORGE_PAT}`)}`;
+      const res = await env.FORGE.fetch(`${env.FORGE_URL}/${repo}/-/resolve/${encodeURIComponent(ref)}`, { headers });
+      if (!res.ok) continue;
+      const { commit } = (await res.json()) as { commit?: string };
+      if (!commit || commit === site.manifest_sha) continue;
+      await deployFromGit(env, site, repo, ref, site.owner_did);
+    } catch {
+      // Per-site failure must not stall the sweep — next tick retries.
+    }
+  }
+}
+
 deploygit.post("/api/sites/:id/deploy-git", async (req, env: Env) => {
   const did = await whoami(env, req);
   if (!did) return json({ error: "unauthorized" }, 401);
   const site = await env.DB.prepare("SELECT id, owner_did, preview_host FROM sites WHERE id=? AND owner_did=?")
     .bind(req.params!.id, did).first<{ id: string; owner_did: string; preview_host: string }>();
   if (!site) return json({ error: "not found" }, 404);
-  const { repo, ref = "main" } = await req.json().catch(() => ({})) as { repo?: string; ref?: string };
+  const { repo, ref = "main", prefix } = await req.json().catch(() => ({})) as { repo?: string; ref?: string; prefix?: string };
   if (!repo) return json({ error: "repo required" }, 400);
-  const out = await deployFromGit(env, site, repo, ref, did);
+  const out = await deployFromGit(env, site, repo, ref, did, prefix);
   return out.ok ? json(out) : json({ error: out.error }, out.status);
 });

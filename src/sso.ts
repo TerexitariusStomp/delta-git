@@ -14,7 +14,9 @@ import { issueToken } from "./auth";
 // The dg_token is short-lived and single-purpose (aud-bound). Revocation is
 // exp-bound only — the forge's did_sessions jti check doesn't extend here.
 
-export const sso = Router();
+// Unmatched /auth/* must return a Response — itty-router resolves undefined
+// for misses, which the Workers runtime turns into a 500.
+export const sso = Router().all("*", () => new Response("not found", { status: 404 }));
 
 const te = new TextEncoder();
 

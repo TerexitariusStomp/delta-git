@@ -6,7 +6,7 @@ import { serveSite } from "./serving";
 import { rateLimit } from "./ratelimit";
 import { supportAnswer, statusPage } from "./support";
 import { earn } from "./earn";
-import { deploygit } from "./deploygit";
+import { deploygit, forgeSync } from "./deploygit";
 import { hooks } from "./hooks";
 import { sso } from "./sso";
 import { consumeBatch } from "./queue";
@@ -57,6 +57,10 @@ export default {
     ctx.waitUntil(retainManifests(env));
     ctx.waitUntil(healthCheck(env));
     ctx.waitUntil(debitPlans(env));
+    // Push→redeploy path on workers.dev: inbound webhook delivery to this host
+    // is blocked (CF 1042), so the sweep polls forge-backed sites' refs via the
+    // FORGE service binding. /api/hooks/deploy stays live for custom domains.
+    ctx.waitUntil(forgeSync(env));
   },
 
   async queue(batch: MessageBatch<{ kind: string; site_id: string; user_did: string }>, env: Env): Promise<void> {

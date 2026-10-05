@@ -5,6 +5,9 @@ export interface Env {
   SITE_HOST_SUFFIX: string;
   APP_HOST?: string;            // e.g. wpcloud.delta-git.workers.dev — serves the app SPA + /preview/{id}/*
   FORGE_URL?: string;           // delta-git base origin for deploy-git archive fetches
+  FORGE?: Fetcher;              // service binding to git-on-cloudflare — workers.dev subrequests to
+                                // workers.dev hosts are blocked (error 1042), so the binding is the
+                                // only way to reach the forge from this worker
   USDC_CHAIN: string;
   USDC_CONTRACT: string;
   USDC_RPC: string;
