@@ -136,10 +136,7 @@ const matchVoteBody = z.object({ entry_id: z.string().optional(), stake: z.numbe
  * as `{}` (the old `|| "{}"` convention); malformed JSON or a shape the
  * schema rejects returns null — routes turn that into a 400.
  */
-function parseJsonBody<S extends z.ZodType>(
-  body: Uint8Array,
-  schema: S
-): z.infer<S> | null {
+function parseJsonBody<S extends z.ZodType>(body: Uint8Array, schema: S): z.infer<S> | null {
   let raw: unknown = {};
   if (body.length > 0) {
     try {

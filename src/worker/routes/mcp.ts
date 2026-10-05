@@ -60,7 +60,8 @@ export function registerMcpRoutes(router: AppRouter): void {
         },
         async ({ owner, repo }) => {
           const resolved = await resolveDoName(c, request, owner, repo);
-          if (!resolved) return { content: [{ type: "text", text: "repo not found" }], isError: true };
+          if (!resolved)
+            return { content: [{ type: "text", text: "repo not found" }], isError: true };
           const stub = getRepoStub(c.env, resolved.doName);
           const { refs } = await stub.getHeadAndRefs();
           return textResult(refs);
@@ -79,7 +80,8 @@ export function registerMcpRoutes(router: AppRouter): void {
         },
         async ({ owner, repo, status }) => {
           const resolved = await resolveDoName(c, request, owner, repo);
-          if (!resolved) return { content: [{ type: "text", text: "repo not found" }], isError: true };
+          if (!resolved)
+            return { content: [{ type: "text", text: "repo not found" }], isError: true };
           const stub = getRepoStub(c.env, resolved.doName);
           const statuses = (status ?? "open,merging,adjudicating,conflict").split(",");
           const intents = await stub.listMergeIntents(statuses);
@@ -99,7 +101,8 @@ export function registerMcpRoutes(router: AppRouter): void {
         },
         async ({ owner, repo, intent_id }) => {
           const resolved = await resolveDoName(c, request, owner, repo);
-          if (!resolved) return { content: [{ type: "text", text: "repo not found" }], isError: true };
+          if (!resolved)
+            return { content: [{ type: "text", text: "repo not found" }], isError: true };
           if (resolved.actor === "mcp-anon") {
             return { content: [{ type: "text", text: "auth required" }], isError: true };
           }
@@ -130,7 +133,8 @@ export function registerMcpRoutes(router: AppRouter): void {
         },
         async ({ owner, repo, ref, delta_oid }) => {
           const resolved = await resolveDoName(c, request, owner, repo);
-          if (!resolved) return { content: [{ type: "text", text: "repo not found" }], isError: true };
+          if (!resolved)
+            return { content: [{ type: "text", text: "repo not found" }], isError: true };
           const stub = getRepoStub(c.env, resolved.doName);
           const { refs } = await stub.getHeadAndRefs();
           const base = refs.find((r) => r.name === (ref ?? "refs/heads/main")) ?? refs[0];
@@ -159,7 +163,8 @@ export function registerMcpRoutes(router: AppRouter): void {
         },
         async ({ owner, repo, since }) => {
           const resolved = await resolveDoName(c, request, owner, repo);
-          if (!resolved) return { content: [{ type: "text", text: "repo not found" }], isError: true };
+          if (!resolved)
+            return { content: [{ type: "text", text: "repo not found" }], isError: true };
           const stub = getRepoStub(c.env, resolved.doName);
           const rows = await stub.listOpLog(since ?? -1);
           return textResult(rows);

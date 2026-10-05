@@ -26,7 +26,11 @@ export interface RateLimitSpec {
    * Bindings only support 10s/60s windows — the hourly lanes keep the KV
    * path. Global edge-consistent vs the KV counter's per-colo windows.
    */
-  binding?: "RATE_LIMIT_AUTH_CHALLENGE" | "RATE_LIMIT_AUTH_VERIFY" | "RATE_LIMIT_PATCH" | "RATE_LIMIT_VOTE";
+  binding?:
+    | "RATE_LIMIT_AUTH_CHALLENGE"
+    | "RATE_LIMIT_AUTH_VERIFY"
+    | "RATE_LIMIT_PATCH"
+    | "RATE_LIMIT_VOTE";
 }
 
 export interface RateLimitResult {
@@ -79,8 +83,18 @@ export async function rateLimit(
 
 // Lane-specific specs — the single place the limits live.
 export const LIMITS = {
-  authChallenge: { bucket: "auth.challenge", limit: 10, windowSec: 60, binding: "RATE_LIMIT_AUTH_CHALLENGE" },
-  authVerify: { bucket: "auth.verify", limit: 20, windowSec: 60, binding: "RATE_LIMIT_AUTH_VERIFY" },
+  authChallenge: {
+    bucket: "auth.challenge",
+    limit: 10,
+    windowSec: 60,
+    binding: "RATE_LIMIT_AUTH_CHALLENGE",
+  },
+  authVerify: {
+    bucket: "auth.verify",
+    limit: 20,
+    windowSec: 60,
+    binding: "RATE_LIMIT_AUTH_VERIFY",
+  },
   repoCreate: { bucket: "repo.create", limit: 10, windowSec: 3600 },
   ideaPost: { bucket: "idea.post", limit: 10, windowSec: 3600 },
   ideaImport: { bucket: "idea.import", limit: 5, windowSec: 3600 },
