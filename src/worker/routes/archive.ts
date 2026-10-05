@@ -179,6 +179,32 @@ async function resolveRefToCommit(
 // ---- route ----
 
 export function registerArchiveRoutes(router: AppRouter): void {
+  // Lightweight ref→commit resolution for consumers that poll (wp-cloud's
+  // forge-sync cron) — archive fetch does the same resolution but streams a
+  // whole tar; HEAD would still pay the tree walk.
+  router.get("/:owner/:repo/-/resolve/*", async (c) => {
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    if (!owner || !repo || !isValidOwnerRepo(owner) || !isValidOwnerRepo(repo)) return notFound();
+    const ref = decodeURIComponent(c.req.path.split(`/${owner}/${repo}/-/resolve/`)[1] ?? "");
+    if (!ref) return notFound();
+    const route = await resolveRepositoryRoute(c.env, owner, repo, {
+      mode: getBasicCredentials(c.req.raw) ? "allow-d1-fallback" : "route-cache-only",
+      db: c.var.db,
+      log: c.var.logFor({ service: "Archive" }),
+    });
+    if (!route) return notFound();
+    if (route.visibility !== "public") {
+      const auth = await authenticateGitRequest(c.env, c.req.raw, route, { db: c.var.db });
+      if (auth.kind !== "pat") {
+        return auth.kind === "anonymous" ? notFound() : basicChallenge();
+      }
+    }
+    const commitOid = await resolveRefToCommit(c.env, route, ref, c.var.cacheCtx);
+    if (!commitOid) return notFound();
+    return c.json({ commit: commitOid });
+  });
+
   router.get("/:owner/:repo/-/archive/*", async (c) => {
     const log = c.var.logFor({ service: "Archive" });
     const owner = c.req.param("owner");
