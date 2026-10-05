@@ -93,7 +93,7 @@ if (apply) {
     rmSync(tmp, { force: true });
   }
   console.log(
-    `\nDone. Push the site source with:\n  git push https://${nsSlug}:${patPlaintext}@git-on-cloudflare.terexmaps.workers.dev/${doName} main:main`
+    `\nDone. Push the site source with:\n  git push https://${nsSlug}:${patPlaintext}@git-on-cloudflare.delta-git.workers.dev/${doName} main:main`
   );
 } else {
   console.log("\nDry run — re-run with --apply to write to remote D1 + KV.");

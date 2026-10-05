@@ -1,13 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "git-on-cloudflare",
+  // Paid Workers account ("Pressword"). Required: the user owns multiple
+  // accounts, so every wrangler call needs explicit scoping.
+  "account_id": "ddf0cf5b4491ba59765378877fe8c697",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-05-13",
   "compatibility_flags": [
     "nodejs_als"
   ],
   "workers_dev": true,
-  // Free plan: custom cpu_ms limits need Workers Paid (default 30s cap).
   "durable_objects": {
     "bindings": [
       {
@@ -61,14 +63,14 @@
   "kv_namespaces": [
     {
       "binding": "ROUTES",
-      "id": "947d755b199a45b7bf85c0ddfbe31fac"
+      "id": "5aec0fe75cee4e65b082cec726de78f9"
     }
   ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "git-on-cloudflare",
-      "database_id": "651a76f1-4a63-4cc6-9b2d-90e97e5b02a1",
+      "database_id": "72f2335d-7f97-415e-82b7-12cf8e80a1a5",
       "migrations_dir": "drizzle/d1"
     }
   ],
@@ -81,15 +83,14 @@
   "ai": {
     "binding": "AI"
   },
-  // Analytics Engine needs a one-time dashboard opt-in per account
-  // (dash.cloudflare.com/<acct>/workers/analytics-engine). Re-enable this
-  // binding once opted in — `metric()` no-ops while it's absent.
-  // "analytics_engine_datasets": [
-  //   {
-  //     "binding": "ANALYTICS",
-  //     "dataset": "dg_metrics"
-  //   }
-  // ],
+  // Analytics Engine is included with Workers Paid; `metric()` no-ops if the
+  // binding is ever absent (e.g. an older deploy config).
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "dg_metrics"
+    }
+  ],
   "queues": {
     "producers": [
       {
