@@ -1,31 +1,36 @@
-import { Heart } from "lucide-react";
+import { MarkGithubIcon } from "@primer/octicons-react";
 
 export function Footer() {
   return (
-    <footer className="shrink-0 border-t border-zinc-200 dark:border-zinc-800/60">
-      <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 px-4 py-3 text-center sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:px-6 sm:py-2 sm:text-left">
+    <footer className="shrink-0 border-t" style={{ borderColor: "var(--borderColor-muted)" }}>
+      <div className="mx-auto flex max-w-[1280px] flex-col items-center gap-2 px-4 py-4 text-center sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:text-left">
         <a
-          href="https://limic.dev"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="m-0 flex items-center gap-1 text-xs text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-accent-600 dark:decoration-zinc-700 dark:hover:text-accent-400"
+          href="/"
+          className="m-0 flex items-center gap-1.5 text-xs no-underline hover:no-underline"
+          style={{ color: "var(--fgColor-muted)" }}
         >
-          Made with
-          <Heart className="inline h-3 w-3 text-accent-500" aria-hidden="true" />
-          on Cloudflare
+          <MarkGithubIcon size={20} aria-hidden="true" />
+          <span>git-on-cloudflare</span>
         </a>
-        <a
-          href="/rooted-finance/git-on-cloudflare"
-          className="text-xs text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-accent-600 dark:decoration-zinc-700 dark:hover:text-accent-400"
+        <nav
+          className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs"
+          aria-label="Footer"
         >
-          Source code
-        </a>
-        <a
-          href="https://wpcloud.delta-git.workers.dev"
-          className="text-xs text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-accent-600 dark:decoration-zinc-700 dark:hover:text-accent-400"
-        >
-          Apps
-        </a>
+          <a href="/rooted-finance/git-on-cloudflare" className="no-underline hover:underline">
+            Source
+          </a>
+          <a href="https://wpcloud.delta-git.workers.dev" className="no-underline hover:underline">
+            Apps
+          </a>
+          <a
+            href="https://limic.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="no-underline hover:underline"
+          >
+            limic.dev
+          </a>
+        </nav>
       </div>
     </footer>
   );

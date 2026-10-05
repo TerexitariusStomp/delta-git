@@ -9,6 +9,7 @@ import {
   resolveAdminPageRepoAccess,
   type DebugState,
 } from "./helpers";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import type { AppContext } from "../hono";
 import { renderUiDocumentResponse } from "../uiResponse";
 
@@ -44,6 +45,7 @@ export async function handleAdminPage(c: AppContext<"/:owner/:repo/admin">) {
 
   const defaultBranch = getDefaultBranchFromHead(head);
   const refEnc = encodeURIComponent(defaultBranch);
+  const repoRow = await findRepositoryByDoName(c.var.db, route.doName);
 
   return renderUiDocumentResponse(
     env,
@@ -53,6 +55,9 @@ export async function handleAdminPage(c: AppContext<"/:owner/:repo/admin">) {
       owner,
       repo,
       refEnc,
+      visibility: route.visibility,
+      description: repoRow?.description ?? "",
+      arena: route.backend === "artifacts",
       head,
       refs,
       storageSize,

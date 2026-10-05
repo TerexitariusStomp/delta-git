@@ -95,27 +95,80 @@ export async function getAgent(db: Db, did: string): Promise<AgentRow | undefine
   return undefined;
 }
 
+/**
+ * Normalize a self-declared family/model tag: lowercase, conservative
+ * charset, bounded length. Returns null when the input doesn't conform —
+ * callers treat null as "field absent" rather than an error.
+ */
+export function normalizeAgentTag(value: string | undefined | null): string | null {
+  if (!value) return null;
+  // Lowercase and collapse any run of non-tag characters into a single
+  // hyphen so "Claude Code" and "claude_code" roll up together.
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return /^[a-z0-9][a-z0-9._-]{0,39}$/.test(normalized) ? normalized : null;
+}
+
 export async function registerAgent(
   db: Db,
-  args: { pubkeyHex: string; label?: string; kind?: string; ownerDid?: string }
+  args: {
+    pubkeyHex: string;
+    label?: string;
+    kind?: string;
+    ownerDid?: string;
+    family?: string;
+    model?: string;
+  }
 ): Promise<AgentRow | { error: string }> {
   const pubkeyBytes = hexToBytesSafe(args.pubkeyHex);
   if (!pubkeyBytes || pubkeyBytes.length !== 32) return { error: "pubkey must be 32-byte hex" };
   const did = didForPubkey(pubkeyBytes);
   const existing = await getAgent(db, did);
   if (existing) return existing;
+  // Platform seats (kind="workers-ai") have verified family claims —
+  // they are registered by the platform itself, not self-declared.
+  const isPlatformSeat = args.kind === "workers-ai";
   await db.insert(agents).values({
     did,
     pubkey: args.pubkeyHex.toLowerCase(),
     label: args.label ?? null,
     ownerDid: args.ownerDid ?? null,
     kind: args.kind ?? "agent",
+    family: normalizeAgentTag(args.family) ?? (isPlatformSeat ? "delta-git" : null),
+    model: normalizeAgentTag(args.model) ?? null,
+    familyVerified: isPlatformSeat ? 1 : 0,
     rep: 0,
     banned: 0,
     createdAt: Date.now(),
     lastSeenAt: null,
   });
   return (await getAgent(db, did)) ?? { error: "insert-failed" };
+}
+
+/**
+ * Self-declared metadata update — the authenticated agent updates its own
+ * label/family/model. `familyVerified` is never settable here; only
+ * platform seats and the admin route can earn it.
+ */
+export async function updateAgentMeta(
+  db: Db,
+  did: string,
+  args: { label?: string; family?: string; model?: string }
+): Promise<AgentRow | undefined> {
+  const agent = await getAgent(db, did);
+  if (!agent) return undefined;
+  await db
+    .update(agents)
+    .set({
+      label: args.label !== undefined ? args.label.slice(0, 80) : agent.label,
+      family: args.family !== undefined ? normalizeAgentTag(args.family) : agent.family,
+      model: args.model !== undefined ? normalizeAgentTag(args.model) : agent.model,
+    })
+    .where(eq(agents.did, agent.did));
+  return await getAgent(db, agent.did);
 }
 
 /**
@@ -132,6 +185,9 @@ export async function verifyAgentRequest(args: {
   nonce: string | null;
   sig: string | null;
   nowSec?: number;
+  /** Optional `x-dg-model` header — self-declared model attribution, folded
+   * into the same row update as lastSeenAt (one write per request). */
+  model?: string | null;
 }): Promise<AgentAuth> {
   const { db } = args;
   if (!args.did || !args.ts || !args.nonce || !args.sig) {
@@ -170,7 +226,13 @@ export async function verifyAgentRequest(args: {
   );
   if (!ok) return { kind: "rejected", reason: "signature-mismatch" };
 
-  await db.update(agents).set({ lastSeenAt: Date.now() }).where(eq(agents.did, agent.did));
+  // Fold the optional x-dg-model attribution into the lastSeenAt touch so
+  // per-request model reporting costs zero extra writes.
+  const model = normalizeAgentTag(args.model);
+  await db
+    .update(agents)
+    .set({ lastSeenAt: Date.now(), ...(model && model !== agent.model ? { model } : {}) })
+    .where(eq(agents.did, agent.did));
   return { kind: "ok", agent };
 }
 

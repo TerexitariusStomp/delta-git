@@ -1,6 +1,7 @@
 import { getRepoStub, isValidOid, json } from "@/worker/common";
 import { sameOriginViolation } from "@/worker/auth/origin";
 import { safeParseJsonRequest } from "@/shared/web";
+import { updateRepositoryDescription } from "@/worker/db/d1/dal/repositories";
 import type { RepositoryDeleteMessage } from "@/worker/tasks/queue";
 import { resolveAdminApiRepoAccess, type AdminRepoAccess } from "./ui/helpers";
 import type { AppContext, AppRouter } from "./hono";
@@ -282,5 +283,30 @@ export function registerAdminRoutes(router: AppRouter) {
       requestedAt: message.requestedAt,
     });
     return json({ ok: true, queued: true }, 202);
+  });
+
+  // Browser-session form endpoint: sets/clears the repo description shown in
+  // the repo header and About sidebar. URL-encoded form post, redirects back
+  // to the admin page (302 so the PRG pattern clears the form resubmit).
+  router.post(`/:owner/:repo/admin/description`, async (c) => {
+    const gate = await requireRepoAdmin(c);
+    if (gate.kind === "response") return gate.response;
+    const { route, viewer } = gate;
+    const owner = c.req.param("owner");
+    const repo = c.req.param("repo");
+    const log = c.var.logFor({
+      service: "AdminDescription",
+      repoId: route.doName,
+    });
+    const body = await c.req.parseBody();
+    const raw = typeof body.description === "string" ? body.description : "";
+    // GitHub caps at ~350 chars; keep a sane bound so headers stay one-line.
+    const description = raw.trim().slice(0, 350);
+    await updateRepositoryDescription(c.var.db, route.repositoryId, description, Date.now());
+    log.info("admin-description:updated", {
+      actor: viewer.userId,
+      length: description.length,
+    });
+    return c.redirect(`/${owner}/${repo}/admin`, 302);
   });
 }

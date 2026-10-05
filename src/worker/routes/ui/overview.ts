@@ -20,6 +20,15 @@ import {
 } from "./helpers";
 import type { AppContext } from "../hono";
 import { renderUiDocumentResponse } from "../uiResponse";
+import {
+  resolveRef,
+  readCommitInfo,
+  isTreeMode,
+  isSymlinkMode,
+  listPathsLastChange,
+} from "@/worker/git";
+import { getFileIconName } from "@/shared/web";
+import type { FileRow } from "@/client/components/file-table";
 
 export async function handleOwnerOverview(c: AppContext<"/:owner">) {
   const env = c.env;
@@ -56,6 +65,7 @@ export async function handleOwnerOverview(c: AppContext<"/:owner">) {
       repos: repos.map((row) => ({
         slug: row.slug,
         visibility: row.visibility,
+        description: row.description ?? undefined,
       })),
     },
     {
@@ -70,7 +80,7 @@ export async function handleOwnerOverview(c: AppContext<"/:owner">) {
 
 type MirrorTarget = { name: string; url: string };
 
-function parseMirrorTargets(raw: string | null): MirrorTarget[] {
+export function parseMirrorTargets(raw: string | null): MirrorTarget[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -84,7 +94,7 @@ function parseMirrorTargets(raw: string | null): MirrorTarget[] {
 }
 
 /** `rad:<rid>` → browsable Radicle gateway URL; other URLs pass through. */
-function radicleGatewayUrl(url: string): string {
+export function radicleGatewayUrl(url: string): string {
   if (url.startsWith("rad:")) {
     return `https://app.radicle.xyz/nodes/seed.radicle.xyz/${url}`;
   }
@@ -167,10 +177,60 @@ export async function handleRepoOverview(c: AppContext<"/:owner/:repo">) {
   const mirrors = parseMirrorTargets(repoRow?.mirrorTargets ?? null);
   const radTarget = mirrors.find((m) => m.url.startsWith("rad:") || m.name === "radicle");
   const stub = getRepoStub(env, route.doName);
-  const ideas = (await stub.listWorkIntentsByKind("idea").catch(() => []))
-    .filter((row) => row.status === "open" || row.status === "claimed")
+  const allIdeas = await stub.listWorkIntentsByKind("idea").catch(() => []);
+  const openIdeas = allIdeas.filter((row) => row.status === "open" || row.status === "claimed");
+  const ideas = openIdeas
     .slice(0, 5)
     .map((row) => ({ id: row.id, title: row.title, status: row.status }));
+
+  // Code-tab data: root tree rows with per-path last-change info, plus the
+  // head commit for the table header bar. Bounded + cached per head OID.
+  const rootEntries = await readPath(env, repoId, refShort, "", cacheCtx)
+    .then((r) => (r.type === "tree" ? r.entries : []))
+    .catch(() => []);
+  const headOid = await resolveRef(env, repoId, refShort, cacheCtx).catch(() => undefined);
+  const headCommitInfo = headOid
+    ? await readCommitInfo(env, repoId, headOid, cacheCtx).catch(() => null)
+    : null;
+  const headCommit = headCommitInfo
+    ? {
+        oid: headCommitInfo.oid,
+        subject: headCommitInfo.message.split("\n", 1)[0] ?? "",
+        when: headCommitInfo.author?.when ?? headCommitInfo.committer?.when ?? 0,
+        author: headCommitInfo.author?.name ?? headCommitInfo.committer?.name,
+      }
+    : null;
+  const wanted = rootEntries.map((e) => ({
+    name: e.name,
+    isDir: isTreeMode(e.mode),
+  }));
+  const lastChange = await listPathsLastChange(env, repoId, refShort, "", wanted, cacheCtx);
+  const fileRows: FileRow[] = [...rootEntries]
+    .sort((a, b) => {
+      const aDir = isTreeMode(a.mode);
+      const bDir = isTreeMode(b.mode);
+      if (aDir !== bDir) return aDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    })
+    .map((e) => {
+      const isDir = isTreeMode(e.mode);
+      const isSymlink = isSymlinkMode(e.mode);
+      return {
+        name: e.name,
+        href: isDir
+          ? `/${owner}/${repo}/tree?ref=${refEnc}&path=${encodeURIComponent(e.name)}`
+          : `/${owner}/${repo}/blob?ref=${refEnc}&path=${encodeURIComponent(e.name)}`,
+        isDir,
+        isSymlink,
+        iconName: isSymlink ? "symlink" : isDir ? "folder" : getFileIconName(e.name),
+        shortOid: e.oid ? e.oid.slice(0, 7) : "",
+        lastChange: lastChange?.entries[e.name],
+      };
+    });
+  // SPDX-style license detection matching GitHub's About sidebar chip.
+  const licenseFile = rootEntries.find(
+    (e) => !isTreeMode(e.mode) && /^(licen[sc]e|copying)/i.test(e.name)
+  )?.name;
 
   return renderUiDocumentResponse(
     env,
@@ -188,6 +248,19 @@ export async function handleRepoOverview(c: AppContext<"/:owner/:repo">) {
       repoDid: repoRow?.did ?? undefined,
       radicleUrl: radTarget ? radicleGatewayUrl(radTarget.url) : undefined,
       ideas,
+      visibility: route.visibility,
+      description: repoRow?.description ?? "",
+      arena: route.backend === "artifacts",
+      headCommit: headCommit ?? undefined,
+      commitCount: lastChange?.commitCount,
+      fileRows,
+      cloneUrl: `${new URL(c.req.url).origin}/${owner}/${repo}`,
+      licenseFile,
+      counts: {
+        branches: branchesData.length,
+        tags: tagsData.length,
+        ideas: openIdeas.length,
+      },
     },
     {
       cacheControl: route.visibility === "private" ? "no-store" : undefined,

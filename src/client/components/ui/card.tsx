@@ -9,13 +9,11 @@ type CardProps = {
   className?: string;
 } & Omit<ComponentProps<"div">, "children" | "className">;
 
-const base = "rounded-2xl p-5 sm:p-6";
+const base = "rounded-md border p-5 sm:p-6";
 
 const variantStyles: Record<CardVariant, string> = {
-  default:
-    "border border-zinc-300 dark:border-zinc-800/60 bg-white shadow-sm dark:bg-zinc-900/50 dark:shadow-none",
-  accent:
-    "border border-accent-500/20 bg-gradient-to-br from-white to-zinc-50 dark:from-zinc-900/80 dark:to-zinc-900/40",
+  default: "card-default",
+  accent: "card-accent",
 };
 
 const interactiveStyles = "hover:-translate-y-0.5 transition-transform cursor-pointer";

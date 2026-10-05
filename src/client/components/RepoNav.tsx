@@ -1,96 +1,158 @@
-import { Bot, Lightbulb, Settings } from "lucide-react";
-import { IslandHost } from "@/client/server/IslandHost";
-import { RefPickerIsland } from "@/client/islands/ref-picker";
-import { PageHeader } from "@/client/components/ui/page-header";
+import {
+  RepoIcon,
+  RepoLockedIcon,
+  HistoryIcon,
+  CopilotIcon,
+  LightBulbIcon,
+  GearIcon,
+  TrophyIcon,
+} from "@primer/octicons-react";
 
-function decodeRef(refEnc: string): string {
-  try {
-    return decodeURIComponent(refEnc);
-  } catch {
-    return refEnc;
-  }
-}
+export type RepoTab = "browse" | "commits" | "agents" | "ideas" | "arena" | "admin";
+
+export type RepoNavCounts = {
+  commits?: number;
+  agents?: number;
+  ideas?: number;
+};
 
 type RepoNavProps = {
   owner: string;
   repo: string;
-  refEnc?: string;
-  currentTab?: "browse" | "commits" | "agents" | "ideas" | "admin";
-  showRefDropdown?: boolean;
+  currentTab?: RepoTab;
+  visibility?: "public" | "private";
+  description?: string | null;
+  counts?: RepoNavCounts;
+  // Show the Arena tab (Artifacts-backed repos only — matches need forks).
+  arena?: boolean;
 };
 
-const tabBase =
-  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/40 hover:text-zinc-900 dark:hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50";
-
-const tabActive =
-  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium bg-accent-100/50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50";
-
-export function RepoNav({ owner, repo, refEnc, currentTab, showRefDropdown = true }: RepoNavProps) {
-  const decodedRef = refEnc ? decodeRef(refEnc) : "";
-
+/** GitHub's CounterLabel — muted pill for tab counters. */
+function Counter({ value }: { value: number }) {
   return (
-    <PageHeader>
-      <div className="font-semibold text-lg">
-        <a href={`/${owner}`} className="hover:text-accent-600 dark:hover:text-accent-400">
-          {owner}
-        </a>
-        <span className="mx-1 text-zinc-500 dark:text-zinc-400">/</span>
-        <a href={`/${owner}/${repo}`} className="hover:text-accent-600 dark:hover:text-accent-400">
-          {repo}
-        </a>
+    <span
+      className="inline-block min-w-5 rounded-full px-1.5 text-center text-xs font-medium"
+      style={{
+        backgroundColor: "var(--counter-bgColor-muted)",
+        border: "1px solid var(--counter-borderColor)",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
+/** GitHub's visibility pill next to the repo name. */
+function VisibilityBadge({ visibility }: { visibility: "public" | "private" }) {
+  return (
+    <span
+      className="ml-1.5 inline-block rounded-full border px-[7px] py-px text-xs leading-[18px] font-medium"
+      style={{
+        borderColor: "var(--borderColor-default)",
+        color: "var(--fgColor-muted)",
+      }}
+    >
+      {visibility === "private" ? "Private" : "Public"}
+    </span>
+  );
+}
+
+function UnderlineTab({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={[
+        "inline-flex items-center gap-2 rounded-t-md border-b-2 px-2 py-2 text-sm no-underline hover:no-underline",
+        "-mb-px whitespace-nowrap transition-colors",
+        active ? "font-semibold" : "font-normal",
+      ].join(" ")}
+      style={{
+        color: "var(--fgColor-default)",
+        borderColor: active ? "var(--underlineNav-borderColor-active)" : "transparent",
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+export function RepoNav({
+  owner,
+  repo,
+  currentTab,
+  visibility,
+  description,
+  counts,
+  arena,
+}: RepoNavProps) {
+  const base = `/${owner}/${repo}`;
+  return (
+    <div className="w-full border-b" style={{ borderColor: "var(--borderColor-muted)" }}>
+      <div className="mx-auto w-full max-w-[1280px] px-4 pt-4 sm:px-6">
+        <h1 className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xl font-normal">
+          <span style={{ color: "var(--fgColor-muted)" }} aria-hidden="true">
+            {visibility === "private" ? <RepoLockedIcon size={16} /> : <RepoIcon size={16} />}
+          </span>
+          <span className="flex items-baseline gap-0.5">
+            <a href={`/${owner}`}>{owner}</a>
+            <span className="mx-0.5" style={{ color: "var(--fgColor-muted)" }}>
+              /
+            </span>
+            <a href={base} className="font-semibold">
+              {repo}
+            </a>
+          </span>
+          {visibility ? <VisibilityBadge visibility={visibility} /> : null}
+        </h1>
+        {description ? (
+          <p className="mb-0 mt-1 text-sm" style={{ color: "var(--fgColor-muted)" }}>
+            {description}
+          </p>
+        ) : null}
       </div>
-      {refEnc ? (
-        <div className="flex items-center gap-3">
-          <nav className="flex items-center gap-3" aria-label="Repository navigation">
-            {showRefDropdown ? (
-              <IslandHost
-                name="ref-picker"
-                props={{ owner, repo, currentRef: decodedRef }}
-                className="relative"
-              >
-                <RefPickerIsland owner={owner} repo={repo} currentRef={decodedRef} />
-              </IslandHost>
-            ) : null}
-            <div className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-1">
-              <a
-                href={`/${owner}/${repo}/tree?ref=${refEnc}`}
-                className={currentTab === "browse" ? tabActive : tabBase}
-              >
-                Browse
-              </a>
-              <a
-                href={`/${owner}/${repo}/commits?ref=${refEnc}`}
-                className={currentTab === "commits" ? tabActive : tabBase}
-              >
-                Commits
-              </a>
-              <a
-                href={`/${owner}/${repo}/agents`}
-                className={currentTab === "agents" ? tabActive : tabBase}
-              >
-                <Bot className="h-4 w-4" aria-hidden="true" />
-                <span>Agents</span>
-              </a>
-              <a
-                href={`/${owner}/${repo}/ideas`}
-                className={currentTab === "ideas" ? tabActive : tabBase}
-              >
-                <Lightbulb className="h-4 w-4" aria-hidden="true" />
-                <span>Ideas</span>
-              </a>
-              <a
-                href={`/${owner}/${repo}/admin`}
-                className={currentTab === "admin" ? tabActive : tabBase}
-              >
-                <Settings className="h-4 w-4" aria-hidden="true" />
-                <span>Admin</span>
-              </a>
-            </div>
-          </nav>
-        </div>
-      ) : (
-        <div></div>
-      )}
-    </PageHeader>
+      <nav
+        className="mx-auto mt-4 flex w-full max-w-[1280px] overflow-x-auto px-2 sm:px-4"
+        aria-label="Repository navigation"
+      >
+        <UnderlineTab href={base} active={currentTab === "browse"}>
+          <RepoIcon size={16} aria-hidden="true" />
+          Browse
+        </UnderlineTab>
+        <UnderlineTab href={`${base}/commits`} active={currentTab === "commits"}>
+          <HistoryIcon size={16} aria-hidden="true" />
+          Commits
+          {counts?.commits !== undefined ? <Counter value={counts.commits} /> : null}
+        </UnderlineTab>
+        <UnderlineTab href={`${base}/agents`} active={currentTab === "agents"}>
+          <CopilotIcon size={16} aria-hidden="true" />
+          Agents
+          {counts?.agents !== undefined ? <Counter value={counts.agents} /> : null}
+        </UnderlineTab>
+        <UnderlineTab href={`${base}/ideas`} active={currentTab === "ideas"}>
+          <LightBulbIcon size={16} aria-hidden="true" />
+          Ideas
+          {counts?.ideas !== undefined ? <Counter value={counts.ideas} /> : null}
+        </UnderlineTab>
+        {arena ? (
+          <UnderlineTab href={`${base}/arena`} active={currentTab === "arena"}>
+            <TrophyIcon size={16} aria-hidden="true" />
+            Arena
+          </UnderlineTab>
+        ) : null}
+        <UnderlineTab href={`${base}/admin`} active={currentTab === "admin"}>
+          <GearIcon size={16} aria-hidden="true" />
+          Admin
+        </UnderlineTab>
+      </nav>
+    </div>
   );
 }

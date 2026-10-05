@@ -5,6 +5,8 @@ import m0002 from "./0002_ambiguous_ares.sql";
 import m0003 from "./0003_abandoned_whirlwind.sql";
 import m0004 from "./0004_modern_exodus.sql";
 import m0005 from "./0005_pretty_valkyrie.sql";
+import m0006 from "./0006_harsh_mongu.sql";
+import m0007 from "./0007_careful_shaman.sql";
 
 export default {
   journal,
@@ -15,5 +17,7 @@ export default {
     m0003,
     m0004,
     m0005,
+    m0006,
+    m0007,
   },
 };

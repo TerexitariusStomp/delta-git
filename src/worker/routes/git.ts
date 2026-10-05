@@ -431,6 +431,27 @@ async function authorizeGitRouteForRequest(
   };
 }
 
+// Artifacts-backed repos serve their git data plane from the Cloudflare
+// Artifacts remote (`https://<acct>.artifacts.cloudflare.net/git/…`). We
+// redirect AFTER the normal auth gate so private repos stay non-enumerable
+// and PAT auth continues to decide who may discover the remote URL. Git
+// follows 302s for both discovery and POST service requests; the client
+// then authenticates to the remote with an `art_v1_*` token from
+// `POST /api/:owner/:repo/dg/token` (delta-git PATs do not work there).
+function artifactsRemoteRedirect(request: Request, route: RepositoryRoute): Response | null {
+  if (route.backend !== "artifacts" || !route.artifactsRemote) return null;
+  const url = new URL(request.url);
+  // Path is `/<owner>/<repo>[.git]/<service path>` — strip the first two
+  // segments rather than matching the slug, since the .git suffix may or
+  // may not be present in the request.
+  const suffix = url.pathname.replace(/^\/[^/]+\/[^/]+/, "");
+  const target = `${route.artifactsRemote}${suffix}${url.search}`;
+  return new Response(null, {
+    status: 302,
+    headers: { Location: target },
+  });
+}
+
 /**
  * Registers Git Smart HTTP v2 routes on the router.
  */
@@ -449,6 +470,8 @@ export function registerGitRoutes(router: AppRouter) {
     const route = resolved.route;
     const authorized = await authorizeGitRouteForRequest(c, route, service, true, "read");
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
+    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
     const { cacheCtx } = authorized;
     return withGitCors(
       c.req.raw,
@@ -477,6 +500,8 @@ export function registerGitRoutes(router: AppRouter) {
       "read"
     );
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
+    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
     return withGitCors(
       c.req.raw,
       await handleUploadPackPOST(c.env, route, c.req.raw, authorized.cacheCtx)
@@ -498,6 +523,8 @@ export function registerGitRoutes(router: AppRouter) {
       "write"
     );
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
+    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
     const res = await handleReceivePackPOST(
       c.env,
       route,

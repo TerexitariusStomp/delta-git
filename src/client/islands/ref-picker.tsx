@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, GitBranch, Tag } from "lucide-react";
+import { CheckIcon, GitBranchIcon, TagIcon } from "@primer/octicons-react";
 
 import { hydrateIsland } from "@/client/hydrate";
 import { buttonClasses } from "@/client/components/ui/button";
@@ -60,11 +60,14 @@ function RefPickerSection({
     return null;
   }
 
-  const Icon = kind === "branch" ? GitBranch : Tag;
+  const Icon = kind === "branch" ? GitBranchIcon : TagIcon;
 
   return (
     <>
-      <div className="mt-1 px-2 py-1 text-xs font-semibold uppercase text-zinc-500 dark:text-zinc-400">
+      <div
+        className="mt-1 px-2 py-1 text-xs font-semibold uppercase"
+        style={{ color: "var(--fgColor-muted)" }}
+      >
         {title}
       </div>
       {filtered.map((item) => {
@@ -74,38 +77,42 @@ function RefPickerSection({
         return isCurrent ? (
           <span
             key={`${title}-${item.name}`}
-            className="flex items-center gap-2 rounded border border-accent-200 bg-accent-50 px-2 py-1.5 text-accent-700 dark:border-accent-800 dark:bg-accent-900/20 dark:text-accent-300"
+            className="flex items-center gap-2 rounded-md px-2 py-1.5"
+            style={{
+              border: "1px solid var(--borderColor-accent-muted)",
+              backgroundColor: "var(--bgColor-accent-muted)",
+              color: "var(--fgColor-accent)",
+            }}
           >
-            <Check className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-            <Icon
-              className="h-4 w-4 flex-shrink-0 text-zinc-400 dark:text-zinc-500"
-              aria-hidden="true"
-            />
+            <CheckIcon size={16} aria-hidden="true" />
+            <span className="h-4 w-4 shrink-0" style={{ color: "var(--fgColor-muted)" }}>
+              <Icon size={16} aria-hidden="true" />
+            </span>
             <span className="font-medium">{item.displayName}</span>
           </span>
         ) : href ? (
           <a
             key={`${title}-${item.name}`}
             href={href}
-            className="flex items-center gap-2 rounded px-2 py-1.5 text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 no-underline"
+            style={{ color: "var(--fgColor-default)" }}
           >
             <span className="h-4 w-4 flex-shrink-0"></span>
-            <Icon
-              className="h-4 w-4 flex-shrink-0 text-zinc-400 dark:text-zinc-500"
-              aria-hidden="true"
-            />
+            <span className="h-4 w-4 shrink-0" style={{ color: "var(--fgColor-muted)" }}>
+              <Icon size={16} aria-hidden="true" />
+            </span>
             <span>{item.displayName}</span>
           </a>
         ) : (
           <span
             key={`${title}-${item.name}`}
-            className="flex items-center gap-2 rounded px-2 py-1.5 text-zinc-700 dark:text-zinc-300"
+            className="flex items-center gap-2 rounded-md px-2 py-1.5"
+            style={{ color: "var(--fgColor-default)" }}
           >
             <span className="h-4 w-4 flex-shrink-0"></span>
-            <Icon
-              className="h-4 w-4 flex-shrink-0 text-zinc-400 dark:text-zinc-500"
-              aria-hidden="true"
-            />
+            <span className="h-4 w-4 shrink-0" style={{ color: "var(--fgColor-muted)" }}>
+              <Icon size={16} aria-hidden="true" />
+            </span>
             <span>{item.displayName}</span>
           </span>
         );
@@ -219,39 +226,67 @@ export function RefPickerIsland({ owner, repo, currentRef }: RefPickerProps) {
         >
           <span>{formatRefLabel(currentRef)}</span>
         </summary>
-        <div className="fixed inset-x-0 z-20 mx-3 mt-2 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800/60 dark:bg-zinc-900 sm:absolute sm:right-0 sm:left-auto sm:mx-0 sm:w-72 sm:p-2 sm:shadow-md">
+        <div
+          className="fixed inset-x-0 z-20 mx-3 mt-2 rounded-md p-2 shadow-lg sm:absolute sm:right-0 sm:left-auto sm:mx-0 sm:w-72"
+          style={{
+            border: "1px solid var(--overlay-borderColor)",
+            backgroundColor: "var(--overlay-bgColor)",
+          }}
+        >
           <input
             ref={filterRef}
             type="text"
             placeholder="Filter branches/tags"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full rounded-md px-2 py-1.5 text-sm"
+            style={{
+              border: "1px solid var(--borderColor-default)",
+              backgroundColor: "var(--bgColor-default)",
+              color: "var(--fgColor-default)",
+            }}
             autoComplete="off"
           />
           <div className="mt-2 max-h-48 overflow-y-auto text-sm sm:max-h-64 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {loading ? (
-              <div className="text-zinc-500 dark:text-zinc-400 px-2 py-2">Loading...</div>
+              <div className="px-2 py-2" style={{ color: "var(--fgColor-muted)" }}>
+                Loading...
+              </div>
             ) : null}
             {!loading && error ? (
-              <div className="text-zinc-500 dark:text-zinc-400 px-2 py-2">{error}</div>
+              <div className="px-2 py-2" style={{ color: "var(--fgColor-muted)" }}>
+                {error}
+              </div>
             ) : null}
             {!loading && !error ? (
               <>
                 {showCurrentChip ? (
                   <>
-                    <div className="px-2 py-1 text-xs uppercase text-zinc-500 dark:text-zinc-400">
+                    <div
+                      className="px-2 py-1 text-xs uppercase"
+                      style={{ color: "var(--fgColor-muted)" }}
+                    >
                       Current
                     </div>
-                    <span className="flex items-center gap-2 rounded border border-accent-200 bg-accent-50 px-2 py-1.5 text-accent-700 dark:border-accent-800 dark:bg-accent-900/20 dark:text-accent-300">
-                      <Check className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                    <span
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                      style={{
+                        border: "1px solid var(--borderColor-accent-muted)",
+                        backgroundColor: "var(--bgColor-accent-muted)",
+                        color: "var(--fgColor-accent)",
+                      }}
+                    >
+                      <CheckIcon size={16} aria-hidden="true" />
                       <span className="font-medium">
                         {/^[0-9a-f]{40}$/i.test(currentRef)
                           ? `Commit: ${formatRefLabel(currentRef)}`
                           : currentRef}
                       </span>
                     </span>
-                    <div className="my-1 border-t border-zinc-200 dark:border-zinc-700"></div>
+                    <div
+                      className="my-1 border-t"
+                      style={{ borderColor: "var(--borderColor-muted)" }}
+                    ></div>
                   </>
                 ) : null}
                 <RefPickerSection
@@ -273,7 +308,9 @@ export function RefPickerIsland({ owner, repo, currentRef }: RefPickerProps) {
                 {!showCurrentChip &&
                 !branches.some((item) => item.displayName.toLowerCase().includes(queryLower)) &&
                 !tags.some((item) => item.displayName.toLowerCase().includes(queryLower)) ? (
-                  <div className="text-zinc-500 dark:text-zinc-400 px-2 py-2">No refs</div>
+                  <div className="px-2 py-2" style={{ color: "var(--fgColor-muted)" }}>
+                    No refs
+                  </div>
                 ) : null}
               </>
             ) : null}

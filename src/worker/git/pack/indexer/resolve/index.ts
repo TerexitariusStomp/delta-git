@@ -15,7 +15,7 @@
  * requires zero extra reads beyond the sequential pass.
  */
 
-import type { CacheContext } from "@/worker/cache";
+import type { CacheContext, RequestMemo } from "@/worker/cache";
 import { exports as workerExports } from "cloudflare:workers";
 import { bytesEqual } from "@/worker/common/bytes";
 import { bytesToHex } from "@/worker/common/hex";
@@ -659,8 +659,11 @@ function ensureResolveCacheContext(
         passThroughOnException() {},
         props: undefined,
         exports: workerExports,
+        abort() {},
+        // Mock-only: the resolve path never touches distributed tracing.
+        tracing: {} as Tracing,
       },
-      memo: {},
+      memo: {} as RequestMemo,
     } satisfies CacheContext);
 
   ensureMemo(resolvedCacheCtx, repoId);

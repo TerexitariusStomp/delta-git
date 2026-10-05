@@ -1,118 +1,141 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRightIcon, MarkGithubIcon, RepoIcon, KeyIcon } from "@primer/octicons-react";
 
 export type HomePageProps = {
   /** Deployment origin — used to render the git clone URL for this host. */
   origin?: string;
 };
 
+/** GitHub-dashboard-style landing: hero, clone box, apps rail, quick links. */
 export function HomePage({ origin = "" }: HomePageProps) {
+  const cardStyle = {
+    border: "1px solid var(--borderColor-default)",
+    backgroundColor: "var(--bgColor-default)",
+  } as const;
   return (
-    <div className="space-y-12 pt-8 sm:pt-12">
-      <section className="animate-slide-up opacity-0" style={{ animationDelay: "0ms" }}>
-        <span className="mb-3 inline-block text-xs font-medium uppercase tracking-widest text-zinc-500">
-          Git hosting on the edge
-        </span>
-        <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-          git-on-cloudflare
-        </h1>
-        <p className="mt-4 max-w-lg text-lg text-zinc-500 dark:text-zinc-400">
+    <div className="mx-auto w-full max-w-[1280px] px-4 py-10 sm:px-6">
+      <section className="mb-10">
+        <div className="flex items-center gap-3">
+          <span style={{ color: "var(--fgColor-default)" }} aria-hidden="true">
+            <MarkGithubIcon size={40} />
+          </span>
+          <h1
+            className="m-0 text-3xl font-semibold tracking-tight sm:text-4xl"
+            style={{ color: "var(--fgColor-default)" }}
+          >
+            git-on-cloudflare
+          </h1>
+        </div>
+        <p className="mb-0 mt-3 max-w-xl text-base" style={{ color: "var(--fgColor-muted)" }}>
           A full Git Smart HTTP v2 server running entirely on Cloudflare Workers. Clone, push, and
           browse repositories — at the edge.
         </p>
       </section>
 
-      <section className="animate-slide-up opacity-0" style={{ animationDelay: "60ms" }}>
-        <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/50 p-5 font-mono text-sm sm:text-base">
-          <div className="mb-3 flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-red-500/60" />
-            <span className="h-3 w-3 rounded-full bg-amber-500/60" />
-            <span className="h-3 w-3 rounded-full bg-green-500/60" />
+      <section className="mb-10">
+        <div
+          className="overflow-hidden rounded-md font-mono text-sm"
+          style={{ ...cardStyle, backgroundColor: "var(--bgColor-muted)" }}
+        >
+          <div
+            className="flex items-center gap-2 px-4 py-2"
+            style={{ borderBottom: "1px solid var(--borderColor-muted)" }}
+          >
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: "#ff5f57" }} />
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: "#febc2e" }} />
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: "#28c840" }} />
+            <span className="ml-2 text-xs" style={{ color: "var(--fgColor-muted)" }}>
+              terminal
+            </span>
           </div>
-          <div>
-            <span className="select-none text-zinc-500">$ </span>
-            <span className="text-zinc-800 dark:text-zinc-100">
+          <div className="px-4 py-3">
+            <span className="select-none" style={{ color: "var(--fgColor-muted)" }}>
+              ${" "}
+            </span>
+            <span style={{ color: "var(--fgColor-default)" }}>
               git clone {origin}/rooted-finance/git-on-cloudflare
             </span>
           </div>
         </div>
       </section>
 
-      <section
-        className="animate-slide-up opacity-0"
-        style={{ animationDelay: "100ms" }}
-        aria-label="Apps built on delta-git"
-      >
-        <h2 className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-500">
+      <section className="mb-10" aria-label="Apps built on delta-git">
+        <h2
+          className="m-0 mb-3 text-base font-semibold"
+          style={{ color: "var(--fgColor-default)" }}
+        >
           Apps built on delta-git
         </h2>
-        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/50 p-4 transition-colors hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">wp-cloud</span>
-            <span className="flex items-center gap-3 text-sm">
+        <div className="rounded-md p-4" style={cardStyle}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold" style={{ color: "var(--fgColor-default)" }}>
+              wp-cloud
+            </span>
+            <span className="flex items-center gap-4 text-sm">
               <a
                 href="https://wpcloud.delta-git.workers.dev"
-                className="inline-flex items-center gap-1 text-accent-500 dark:text-accent-400 no-underline hover:underline"
+                className="inline-flex items-center gap-1 font-semibold no-underline hover:underline"
               >
                 Launch app
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                <ArrowRightIcon size={12} aria-hidden="true" />
               </a>
               <a
                 href="/rooted-finance/wp-cloud"
-                className="inline-flex items-center gap-1 text-accent-500 dark:text-accent-400 no-underline hover:underline"
+                className="inline-flex items-center gap-1 font-semibold no-underline hover:underline"
               >
                 Source
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                <ArrowRightIcon size={12} aria-hidden="true" />
               </a>
             </span>
           </div>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mb-0 mt-1 text-sm" style={{ color: "var(--fgColor-muted)" }}>
             WordPress hosting on the edge — deploy a site straight from any repo on this forge.
             Static and dynamic lanes, USDC credits, push-to-redeploy via signed webhooks.
           </p>
         </div>
       </section>
 
-      <section className="animate-slide-up opacity-0" style={{ animationDelay: "120ms" }}>
-        <dl className="grid gap-x-12 gap-y-6 sm:grid-cols-2">
+      <section aria-label="Quick links">
+        <div className="grid gap-4 sm:grid-cols-2">
           <a
             href="/rooted-finance/git-on-cloudflare"
-            className="group block rounded-xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/50 p-4 no-underline transition-colors hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-sm"
+            className="group block rounded-md p-4 no-underline"
+            style={cardStyle}
           >
-            <dt className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-accent-500 dark:group-hover:text-accent-400">
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <RepoIcon size={16} aria-hidden="true" />
               Browse source
-            </dt>
-            <dd className="mt-1 flex items-center justify-between text-sm text-zinc-500">
+            </span>
+            <span
+              className="mt-1 flex items-center justify-between text-sm"
+              style={{ color: "var(--fgColor-muted)" }}
+            >
               <span>
                 Explore the{" "}
-                <span className="text-accent-500 dark:text-accent-400">git-on-cloudflare</span>{" "}
+                <span className="font-semibold" style={{ color: "var(--fgColor-link)" }}>
+                  git-on-cloudflare
+                </span>{" "}
                 repository — code, commits, and trees.
               </span>
-              <ArrowRight
-                className="ml-2 h-4 w-4 flex-shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5"
-                aria-hidden="true"
-              />
-            </dd>
+              <ArrowRightIcon size={14} aria-hidden="true" className="ml-2 shrink-0" />
+            </span>
           </a>
-          <a
-            href="/auth"
-            className="group block rounded-xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/50 p-4 no-underline transition-colors hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-sm"
-          >
-            <dt className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 group-hover:text-accent-500 dark:group-hover:text-accent-400">
+          <a href="/auth" className="group block rounded-md p-4 no-underline" style={cardStyle}>
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <KeyIcon size={16} aria-hidden="true" />
               Manage auth
-            </dt>
-            <dd className="mt-1 flex items-center justify-between text-sm text-zinc-500">
+            </span>
+            <span
+              className="mt-1 flex items-center justify-between text-sm"
+              style={{ color: "var(--fgColor-muted)" }}
+            >
               <span>
-                Configure <span className="text-accent-500 dark:text-accent-400">owners</span> and{" "}
-                <span className="text-accent-500 dark:text-accent-400">access tokens</span> for push
-                access.
+                Configure <span className="font-semibold">owners</span> and{" "}
+                <span className="font-semibold">access tokens</span> for push access.
               </span>
-              <ArrowRight
-                className="ml-2 h-4 w-4 flex-shrink-0 text-zinc-400 transition-transform group-hover:translate-x-0.5"
-                aria-hidden="true"
-              />
-            </dd>
+              <ArrowRightIcon size={14} aria-hidden="true" className="ml-2 shrink-0" />
+            </span>
           </a>
-        </dl>
+        </div>
       </section>
     </div>
   );

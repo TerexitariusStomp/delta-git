@@ -1,6 +1,6 @@
 import { createLogger, type Logger } from "@/worker/common";
 import { createDb, type Db } from "@/worker/db/d1/client";
-import type { RepositoryVisibility } from "@/worker/db/d1/schema";
+import type { RepositoryBackend, RepositoryVisibility } from "@/worker/db/d1/schema";
 import {
   findNamespaceById,
   findNamespaceBySlug,
@@ -21,6 +21,13 @@ export type RepositoryRoute = {
   repositoryId: string;
   doName: string;
   visibility: RepositoryVisibility;
+  // Storage backend discriminator. "artifacts" repos keep the DO for
+  // coordination but serve git data plane from the Artifacts remote.
+  backend: RepositoryBackend;
+  // Artifacts repo name inside the bound namespace; null for "do" repos.
+  artifactsName: string | null;
+  // HTTPS remote for Artifacts-backed repos; null for native "do" repos.
+  artifactsRemote: string | null;
   source: "kv" | "d1";
 };
 
@@ -71,6 +78,9 @@ export async function resolveRepositoryRoute(
           repositoryId: repository.id,
           doName: repository.doName,
           visibility: repository.visibility,
+          backend: repository.backend,
+          artifactsName: repository.artifactsName,
+          artifactsRemote: repository.artifactsRemote,
           source: "kv",
         };
       }
@@ -120,6 +130,9 @@ export async function resolveRepositoryRoute(
     repositoryId: repository.id,
     doName: repository.doName,
     visibility: repository.visibility,
+    backend: repository.backend,
+    artifactsName: repository.artifactsName,
+    artifactsRemote: repository.artifactsRemote,
     source: "d1",
   };
 }

@@ -74,6 +74,33 @@ export function bytesToText(bytes: Uint8Array): string {
   }
 }
 
+/**
+ * GitHub-style relative time ("3 days ago", "2 hours ago").
+ * Falls back to a date for entries older than ~1 year.
+ */
+export function formatRelativeTime(epochSeconds: number, nowSeconds?: number): string {
+  if (!epochSeconds) return "";
+  const now = nowSeconds ?? Math.floor(Date.now() / 1000);
+  const delta = now - epochSeconds;
+  if (delta < 0) return "just now";
+  if (delta < 60) return delta <= 1 ? "just now" : `${delta} seconds ago`;
+  const minutes = Math.floor(delta / 60);
+  if (minutes < 60) return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return days === 1 ? "yesterday" : `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? "last month" : `${months} months ago`;
+  const date = new Date(epochSeconds * 1000);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export function formatWhen(epochSeconds: number, tz: string): string {
   try {
     const offsetMatch = tz.match(/^([+-])(\d{2})(\d{2})$/);

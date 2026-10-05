@@ -312,13 +312,20 @@ export function registerArchiveRoutes(router: AppRouter): void {
       },
     });
 
-    log.debug("archive:stream-start", { repoId: route.doName, ref, commitOid, files: entries.length });
+    log.debug("archive:stream-start", {
+      repoId: route.doName,
+      ref,
+      commitOid,
+      files: entries.length,
+    });
     return new Response(stream, {
       headers: {
         "Content-Type": "application/x-tar",
         "Content-Disposition": `attachment; filename="${route.routeRepoSlug}-${ref.replaceAll("/", "-")}.tar"`,
         "X-Archive-Commit": commitOid,
-        "Cache-Control": /^[0-9a-f]{40}$/.test(commitOid) ? "public, max-age=31536000, immutable" : "no-store",
+        "Cache-Control": /^[0-9a-f]{40}$/.test(commitOid)
+          ? "public, max-age=31536000, immutable"
+          : "no-store",
       },
     });
   });

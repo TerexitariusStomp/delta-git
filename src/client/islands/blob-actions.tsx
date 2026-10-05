@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { useState } from "react";
-import { Clipboard, Download, FileText, Menu } from "lucide-react";
+import { CopyIcon, DownloadIcon, FileIcon, KebabHorizontalIcon } from "@primer/octicons-react";
 
 import { hydrateIsland } from "@/client/hydrate";
 import { Button, buttonClasses } from "@/client/components/ui/button";
@@ -13,6 +13,13 @@ export type BlobActionsProps = {
   isImage?: boolean;
   isPdf?: boolean;
 };
+
+const segStyle = {
+  color: "var(--fgColor-default)",
+  backgroundColor: "var(--bgColor-default)",
+} as const;
+
+const segDivider = { borderColor: "var(--borderColor-default)" } as const;
 
 export function BlobActionsIsland({
   viewRawHref,
@@ -38,10 +45,14 @@ export function BlobActionsIsland({
   return (
     <div className="flex items-center gap-2">
       <div className="hidden items-center gap-2 sm:flex">
-        <div className="inline-flex items-center overflow-hidden rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+        <div
+          className="inline-flex items-center overflow-hidden rounded-md"
+          style={{ border: "1px solid var(--borderColor-default)" }}
+        >
           {showCopy ? (
             <button
-              className="px-3 py-1.5 text-sm no-underline text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+              className="px-3 py-1 text-sm no-underline"
+              style={segStyle}
               type="button"
               onClick={() => void copyRawText()}
             >
@@ -50,51 +61,65 @@ export function BlobActionsIsland({
           ) : null}
           {!isImage && !isPdf ? (
             <a
-              className="border-l border-zinc-200 dark:border-zinc-700 px-3 py-1.5 text-sm no-underline text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
+              className="border-l px-3 py-1 text-sm no-underline"
+              style={{ ...segStyle, ...segDivider }}
               href={viewRawHref}
             >
               View
             </a>
           ) : null}
-          <span className="border-l border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800/50 px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+          <a
+            className="border-l px-3 py-1 text-sm no-underline"
+            style={{ ...segStyle, ...segDivider }}
+            href={viewRawHref.replace("&view=1", "")}
+          >
             Raw
-          </span>
+          </a>
         </div>
-        <Button size="sm" href={rawHref}>
+        <Button size="sm" variant="secondary" href={rawHref}>
           Download
         </Button>
       </div>
       <div className="sm:hidden">
         <details className="ref-menu relative">
-          <summary className={buttonClasses("secondary", "sm")}>
-            <Menu className="h-4 w-4" aria-hidden="true" />
+          <summary className={buttonClasses("secondary", "sm")} aria-label="File actions">
+            <KebabHorizontalIcon size={16} aria-hidden="true" />
           </summary>
-          <div className="fixed inset-x-0 z-20 mx-3 mt-2 rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800/60 dark:bg-zinc-900">
+          <div
+            className="fixed inset-x-0 z-20 mx-3 mt-2 rounded-md p-2 shadow-lg"
+            style={{
+              border: "1px solid var(--overlay-borderColor)",
+              backgroundColor: "var(--overlay-bgColor)",
+            }}
+          >
             <div className="flex flex-col">
               {showCopy ? (
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-left"
+                  style={{ color: "var(--fgColor-default)" }}
                   onClick={() => void copyRawText()}
                 >
-                  <Clipboard className="h-4 w-4" aria-hidden="true" />
+                  <CopyIcon size={16} aria-hidden="true" />
                   <span>{copyLabel === "Copy" ? "Copy raw" : "Copied"}</span>
                 </button>
               ) : null}
               {!isImage && !isPdf ? (
                 <a
                   href={viewRawHref}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  className="flex items-center gap-2 rounded-md px-3 py-2 no-underline"
+                  style={{ color: "var(--fgColor-default)" }}
                 >
-                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  <FileIcon size={16} aria-hidden="true" />
                   <span>View raw</span>
                 </a>
               ) : null}
               <a
                 href={rawHref}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="flex items-center gap-2 rounded-md px-3 py-2 no-underline"
+                style={{ color: "var(--fgColor-default)" }}
               >
-                <Download className="h-4 w-4" aria-hidden="true" />
+                <DownloadIcon size={16} aria-hidden="true" />
                 <span>Download</span>
               </a>
             </div>

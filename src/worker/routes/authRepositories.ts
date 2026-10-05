@@ -48,7 +48,11 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
     const parsedBody = RepositoryCreateRequestSchema.safeParse(rawBody);
     const body = parsedBody.success
       ? parsedBody.data
-      : { namespaceSlug: "", slug: "", visibility: null };
+      : { namespaceSlug: "", slug: "", visibility: null, backend: null, description: undefined };
+    if (body.backend === null) {
+      log.warn("repo-create:invalid-backend");
+      return json({ ok: false, reason: "invalid-backend" } as const, 400);
+    }
     if (body.visibility === null) {
       log.warn("repo-create:invalid-visibility");
       return json({ ok: false, reason: "invalid-visibility" } as const, 400);
@@ -83,6 +87,36 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
     // rows may store a slash-shaped `doName`, so the `repo:` prefix keeps new
     // identities unambiguous without inspecting URL slugs.
     const doName = `repo:${repositoryId.slice("repo_".length)}`;
+
+    // Artifacts backend: create the upstream repo before the D1 row so a
+    // failed create never leaves a half-provisioned repository. The returned
+    // remote URL embeds the account id, which the Worker cannot derive at
+    // runtime, so it is persisted alongside the repo name.
+    let artifactsName: string | null = null;
+    let artifactsRemote: string | null = null;
+    if (body.backend === "artifacts") {
+      const artifacts = c.env.ARTIFACTS;
+      if (!artifacts) {
+        log.warn("repo-create:artifacts-binding-missing");
+        return json({ ok: false, reason: "artifacts-unavailable" } as const, 503);
+      }
+      artifactsName = `dg-${repositoryId.slice("repo_".length)}`;
+      try {
+        const created = await artifacts.create(artifactsName, {
+          description:
+            body.description || `delta-git ${namespaceValidation.slug}/${slugValidation.slug}`,
+          setDefaultBranch: "main",
+        });
+        artifactsRemote = created.remote;
+      } catch (e) {
+        log.warn("repo-create:artifacts-create-failed", {
+          artifactsName,
+          error: String(e),
+        });
+        return json({ ok: false, reason: "artifacts-create-failed" } as const, 502);
+      }
+    }
+
     const inserted = await insertRepositoryIfNew(db, {
       id: repositoryId,
       namespaceId: namespace.id,
@@ -90,6 +124,10 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
       slug: slugValidation.slug,
       doName,
       visibility,
+      description: body.description || null,
+      backend: body.backend,
+      artifactsName,
+      artifactsRemote,
       createdAt: now,
       updatedAt: now,
     });
@@ -101,6 +139,12 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
         namespaceId: namespace.id,
         slug: slugValidation.slug,
       });
+      if (artifactsName) {
+        // Best-effort cleanup of the orphaned Artifacts repo.
+        await c.env.ARTIFACTS.delete(artifactsName).catch((e) => {
+          log.warn("repo-create:artifacts-cleanup-failed", { artifactsName, error: String(e) });
+        });
+      }
       return json({ ok: false, reason: "slug-taken" } as const, 409);
     }
     enqueueRouteCacheSync(c, log, {
@@ -114,6 +158,7 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
       namespaceSlug: namespaceValidation.slug,
       slug: slugValidation.slug,
       visibility,
+      backend: body.backend,
     });
     return json({
       ok: true,
@@ -121,6 +166,8 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
       namespaceSlug: namespaceValidation.slug,
       slug: slugValidation.slug,
       visibility,
+      backend: inserted.backend,
+      artifactsRemote: inserted.artifactsRemote,
       updatedAt: now,
     } as const);
   });

@@ -22,6 +22,8 @@ type PagerModel = {
 export type CommitsPageProps = {
   owner: string;
   repo: string;
+  /** Show the Arena tab (artifacts repos). */
+  arena?: boolean;
   ref: string;
   refEnc: string;
   commits: CommitView[];
@@ -32,8 +34,8 @@ export type CommitsPageProps = {
 export function CommitsPage({
   owner,
   repo,
+  arena,
   ref,
-  refEnc,
   commits,
   pager,
   progress,
@@ -49,17 +51,33 @@ export function CommitsPage({
     );
 
   return (
-    <div>
-      <RepoNav owner={owner} repo={repo} refEnc={refEnc} currentTab="commits" />
-      <ProgressBanner progress={progress} />
-      <span className="mb-1 inline-block text-xs font-semibold uppercase tracking-wider text-accent-500 dark:text-accent-400">
-        History
-      </span>
-      <h2 className="font-display tracking-tight">Commits on {refLabel}</h2>
-      <Pager pager={pager} />
-      <IslandHost name="merge-expander" props={{ owner, repo, commits }}>
-        <MergeExpanderIsland owner={owner} repo={repo} commits={commits} />
-      </IslandHost>
-    </div>
+    <>
+      <RepoNav owner={owner} repo={repo} currentTab="commits" arena={arena} />
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6">
+        <ProgressBanner progress={progress} />
+        <div className="mb-3 flex items-center gap-3">
+          <IslandHost name="ref-picker" props={{ owner, repo, currentRef: ref }}>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold"
+              style={{
+                backgroundColor: "var(--bgColor-default)",
+                border: "1px solid var(--borderColor-default)",
+                color: "var(--fgColor-default)",
+              }}
+            >
+              {refLabel}
+            </button>
+          </IslandHost>
+          <h2 className="m-0 text-base font-semibold" style={{ color: "var(--fgColor-default)" }}>
+            Commits
+          </h2>
+        </div>
+        <IslandHost name="merge-expander" props={{ owner, repo, commits }}>
+          <MergeExpanderIsland owner={owner} repo={repo} commits={commits} />
+        </IslandHost>
+        <Pager pager={pager} />
+      </div>
+    </>
   );
 }

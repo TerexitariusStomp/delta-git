@@ -41,6 +41,22 @@ import {
   releaseMergeIntentState,
 } from "./catalog/merge";
 import {
+  advanceMatchPhasesState,
+  attachWorkspaceState,
+  castMatchVoteState,
+  createMatchState,
+  enterMatchState,
+  getMatchState,
+  getWorkspaceState,
+  ingestRemoteSyncState,
+  listMatchesState,
+  recordProcessedEventState,
+  recordWorkspacePushState,
+  resolveMatchState,
+  sweepWorkspacesState,
+  type MatchSettlement,
+} from "./catalog/arena";
+import {
   acceptPatchCommitState,
   addWebhookSubState,
   castWorkVoteState,
@@ -60,7 +76,13 @@ import {
   setCommitStatusState,
   updateWorkIntentResultState,
 } from "./catalog/agentApi";
-import type { CommitStatusRow, WebhookSubRow, WorkIntentRow } from "./db/schema";
+import type {
+  CommitStatusRow,
+  MatchRow,
+  WebhookSubRow,
+  WorkIntentRow,
+  WorkspaceRow,
+} from "./db/schema";
 import type { StagedImportPack } from "./catalog/agentApi";
 import { handleIdleAndMaintenance } from "./maintenance";
 import {
@@ -130,6 +152,31 @@ export class RepoDurableObject extends DurableObject {
     this.logger.debug("alarm:start", {});
 
     await clearExpiredLeases(this.ctx, this.logger);
+
+    // Arena lifecycle: move building→judging past endsAt and surface
+    // judging-past-deadline matches as resolve-needed queue messages.
+    try {
+      const phases = await advanceMatchPhasesState(this.ctx, Date.now());
+      for (const pending of phases.resolveNeeded) {
+        await this.env.REPO_TASKS_QUEUE.send({
+          kind: "arena-resolve",
+          doId: this.ctx.id.toString(),
+          repoId: pending.doName,
+          matchId: pending.matchId,
+        });
+      }
+      // Reap workspace forks whose matches finished or that outlived the
+      // task TTL — Artifacts namespace quota is finite.
+      await sweepWorkspacesState({ ctx: this.ctx, env: this.env, now: Date.now() });
+      if (phases.judged.length || phases.resolveNeeded.length) {
+        this.logger.info("arena:alarm-advanced", {
+          judged: phases.judged.length,
+          resolveNeeded: phases.resolveNeeded.length,
+        });
+      }
+    } catch (e) {
+      this.logger.warn("arena:alarm-advance-failed", { error: String(e) });
+    }
 
     if (
       await rearmCompactionQueueFromAlarm({ ctx: this.ctx, env: this.env, logger: this.logger })
@@ -560,6 +607,90 @@ export class RepoDurableObject extends DurableObject {
       head: args.head,
       actor: args.actor,
     });
+  }
+
+  // --- workspaces + arena -------------------------------------------------
+
+  public async attachWorkspace(args: { row: WorkspaceRow; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await attachWorkspaceState({ ctx: this.ctx, ...args });
+  }
+
+  public async getWorkspace(artifactsName: string) {
+    await this.ensureAccessAndAlarm();
+    return await getWorkspaceState(this.ctx, artifactsName);
+  }
+
+  public async recordWorkspacePush(args: {
+    artifactsName: string;
+    headOid: string;
+    actor: string;
+    stagedPack?: StagedImportPack;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await recordWorkspacePushState({ ctx: this.ctx, ...args });
+  }
+
+  public async ingestRemoteSync(args: {
+    packs: StagedImportPack[];
+    refs: { name: string; oid: string }[];
+    head?: { target: string; oid: string };
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await ingestRemoteSyncState({ ctx: this.ctx, ...args });
+  }
+
+  public async recordProcessedEvent(eventId: string) {
+    await this.ensureAccessAndAlarm();
+    return await recordProcessedEventState(this.ctx, eventId);
+  }
+
+  public async createMatch(args: { row: MatchRow; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await createMatchState({ ctx: this.ctx, ...args });
+  }
+
+  public async getMatch(id: string) {
+    await this.ensureAccessAndAlarm();
+    return await getMatchState(this.ctx, id);
+  }
+
+  public async listMatches(statuses: string[]) {
+    await this.ensureAccessAndAlarm();
+    return await listMatchesState(this.ctx, statuses);
+  }
+
+  public async enterMatch(args: {
+    matchId: string;
+    entryId: string;
+    entrantDid: string;
+    workspaceName: string;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await enterMatchState({ ctx: this.ctx, ...args });
+  }
+
+  public async castMatchVote(args: {
+    matchId: string;
+    voterDid: string;
+    entryId: string;
+    stake?: number;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await castMatchVoteState({ ctx: this.ctx, ...args });
+  }
+
+  public async resolveMatch(args: {
+    matchId: string;
+    winnerEntryId: string | null;
+    scores: { entryId: string; autoScore: number; voteCount: number; voteWeight?: number }[];
+    settlement?: MatchSettlement;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await resolveMatchState({ ctx: this.ctx, ...args });
   }
 
   private prefix() {

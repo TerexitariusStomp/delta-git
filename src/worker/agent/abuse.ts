@@ -57,8 +57,16 @@ export const LIMITS = {
   repoCreate: { bucket: "repo.create", limit: 10, windowSec: 3600 },
   ideaPost: { bucket: "idea.post", limit: 10, windowSec: 3600 },
   ideaImport: { bucket: "idea.import", limit: 5, windowSec: 3600 },
+  siteBuild: { bucket: "site.build", limit: 5, windowSec: 3600 },
   patch: { bucket: "patch", limit: 60, windowSec: 60 },
   vote: { bucket: "vote", limit: 30, windowSec: 60 },
+  tokenMint: { bucket: "token.mint", limit: 20, windowSec: 3600 },
+  matchCreate: { bucket: "match.create", limit: 10, windowSec: 3600 },
+  matchEnter: { bucket: "match.enter", limit: 10, windowSec: 3600 },
+  matchVote: { bucket: "match.vote", limit: 30, windowSec: 3600 },
+  workspaceCreate: { bucket: "workspace.create", limit: 10, windowSec: 3600 },
+  vouch: { bucket: "vouch", limit: 30, windowSec: 3600 },
+  epochAllocate: { bucket: "epoch.allocate", limit: 60, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitSpec>;
 
 // ---------------------------------------------------------------------------
@@ -114,7 +122,11 @@ export type MetricEvent =
   | "rate.limited"
   | "auth.did"
   | "federate.push"
-  | "overnight.stage";
+  | "overnight.stage"
+  | "arena.enter"
+  | "arena.vote"
+  | "arena.resolve"
+  | "artifacts.sync";
 
 /**
  * Fire-and-forget metric. blobs: [event, lane/scope, detail]; doubles:

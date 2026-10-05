@@ -1,18 +1,9 @@
-import type { FileIconName } from "@/shared/web";
 import { Breadcrumbs } from "@/client/components/Breadcrumbs";
-import { EmptyState } from "@/client/components/EmptyState";
-import { FileIcon } from "@/client/components/FileIcon";
 import { type Progress, ProgressBanner } from "@/client/components/ProgressBanner";
 import { RepoNav } from "@/client/components/RepoNav";
-
-type TreeEntry = {
-  name: string;
-  href: string;
-  isDir: boolean;
-  isSymlink: boolean;
-  iconName: FileIconName;
-  shortOid: string;
-};
+import { FileTable, type FileRow, type FileRowLastChange } from "@/client/components/file-table";
+import { CloneMenu } from "@/client/components/clone-menu";
+import { IslandHost } from "@/client/server/IslandHost";
 
 type Breadcrumb = {
   name: string;
@@ -22,80 +13,92 @@ type Breadcrumb = {
 export type TreePageProps = {
   owner: string;
   repo: string;
+  /** Show the Arena tab (artifacts repos). */
+  arena?: boolean;
   refEnc: string;
-  entries: TreeEntry[];
+  /** Raw (unencoded) ref name, for the branch-picker trigger label. */
+  refShort?: string;
+  fileRows?: FileRow[];
+  headCommit?: FileRowLastChange;
+  /** Exact first-parent commit count when the bounded walk reached the root. */
+  commitCount?: number;
+  currentPath?: string;
   breadcrumbs?: Breadcrumb[];
   parentHref?: string | null;
   progress?: Progress;
+  visibility?: "public" | "private";
+  description?: string;
+  cloneUrl?: string;
 };
-
-function getTreeEntryIconClass(entry: TreeEntry): string {
-  if (entry.isDir) {
-    return "text-amber-600 dark:text-amber-400";
-  }
-  if (entry.isSymlink) {
-    return "text-accent-500 dark:text-accent-400";
-  }
-  return "text-zinc-500 dark:text-zinc-400";
-}
 
 export function TreePage({
   owner,
   repo,
   refEnc,
-  entries,
+  refShort,
+  fileRows = [],
+  headCommit,
+  commitCount,
+  currentPath = "",
   breadcrumbs,
   parentHref,
   progress,
+  visibility,
+  description,
+  arena,
+  cloneUrl,
 }: TreePageProps) {
+  const base = `/${owner}/${repo}`;
   return (
     <>
-      <RepoNav owner={owner} repo={repo} refEnc={refEnc} currentTab="browse" />
-      <ProgressBanner progress={progress} />
-      <div>
-        <span className="mb-1 inline-block text-xs font-semibold uppercase tracking-wider text-accent-500 dark:text-accent-400">
-          Browse
-        </span>
-        <h2 className="font-display tracking-tight">Tree</h2>
-        <Breadcrumbs items={breadcrumbs} parentHref={parentHref} />
-        <table className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 shadow-xs dark:border-zinc-800/60">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>OID</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.length ? (
-              entries.map((entry) => (
-                <tr key={`${entry.href}-${entry.name}`}>
-                  <td>
-                    <FileIcon
-                      name={entry.iconName}
-                      className={`mr-1.5 inline-block h-4 w-4 align-[-2px] ${getTreeEntryIconClass(entry)}`}
-                    />{" "}
-                    <a href={entry.href}>{entry.name}</a>
-                  </td>
-                  <td className="text-zinc-500 dark:text-zinc-400">{entry.shortOid}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={2}>
-                  <EmptyState
-                    icon={
-                      <FileIcon
-                        name="folder"
-                        className="h-5 w-5 text-zinc-500 dark:text-zinc-400"
-                      />
-                    }
-                    title="This tree is empty"
-                  />
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <RepoNav
+        owner={owner}
+        repo={repo}
+        currentTab="browse"
+        visibility={visibility}
+        description={description}
+        arena={arena}
+      />
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6">
+        <ProgressBanner progress={progress} />
+        <div className="min-w-0">
+          {/* Branch picker + breadcrumbs + clone menu row */}
+          <div className="mb-3 flex items-center gap-3">
+            <IslandHost name="ref-picker" props={{ owner, repo, currentRef: refShort ?? refEnc }}>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold"
+                style={{
+                  backgroundColor: "var(--bgColor-default)",
+                  border: "1px solid var(--borderColor-default)",
+                  color: "var(--fgColor-default)",
+                }}
+              >
+                {refShort ?? refEnc}
+              </button>
+            </IslandHost>
+            <div className="min-w-0 flex-1">
+              <Breadcrumbs items={breadcrumbs} parentHref={parentHref} />
+            </div>
+            {cloneUrl ? <CloneMenu cloneUrl={cloneUrl} /> : null}
+          </div>
+          <FileTable
+            owner={owner}
+            repo={repo}
+            rows={fileRows}
+            parentHref={currentPath ? parentHref : undefined}
+            commitBar={
+              headCommit
+                ? {
+                    ...headCommit,
+                    commitCount,
+                    commitsHref: `${base}/commits?ref=${refEnc}`,
+                    commitHref: `${base}/commit/${headCommit.oid}`,
+                  }
+                : undefined
+            }
+          />
+        </div>
       </div>
     </>
   );

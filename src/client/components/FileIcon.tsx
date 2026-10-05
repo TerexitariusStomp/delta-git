@@ -1,37 +1,40 @@
 import type { FileIconName } from "@/shared/web";
 import {
-  Database,
-  File,
-  FileCode2,
-  FileDiff,
-  FileImage,
-  FileSpreadsheet,
-  FileSymlink,
-  FileText,
-  Folder,
-  Terminal,
-  type LucideIcon,
-} from "lucide-react";
+  DatabaseIcon,
+  FileIcon as OctoFileIcon,
+  FileCodeIcon,
+  FileDiffIcon,
+  FileMediaIcon,
+  FileSymlinkFileIcon,
+  FileDirectoryIcon,
+  FileBinaryIcon,
+  TerminalIcon,
+  type Icon,
+} from "@primer/octicons-react";
 
 type FileIconProps = {
   name: FileIconName;
   className?: string;
 };
 
-const iconByName: Record<FileIconName, LucideIcon> = {
-  code: FileCode2,
-  database: Database,
-  diff: FileDiff,
-  file: File,
-  folder: Folder,
-  image: FileImage,
-  spreadsheet: FileSpreadsheet,
-  symlink: FileSymlink,
-  terminal: Terminal,
-  text: FileText,
+const iconByName: Record<FileIconName, Icon> = {
+  code: FileCodeIcon,
+  database: DatabaseIcon,
+  diff: FileDiffIcon,
+  file: FileBinaryIcon,
+  folder: FileDirectoryIcon,
+  image: FileMediaIcon,
+  spreadsheet: FileBinaryIcon,
+  symlink: FileSymlinkFileIcon,
+  terminal: TerminalIcon,
+  text: OctoFileIcon,
 };
 
 export function FileIcon({ name, className }: FileIconProps) {
   const Icon = iconByName[name];
-  return <Icon className={className} aria-hidden="true" />;
+  return (
+    <span className={className} aria-hidden="true">
+      <Icon size={16} />
+    </span>
+  );
 }

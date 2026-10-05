@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "@primer/primitives/dist/css/primitives.css";
+@import "@primer/primitives/dist/css/functional/themes/light.css";
+@import "@primer/primitives/dist/css/functional/themes/dark.css";
 @source inline("bg-sky-100 text-sky-900 dark:bg-sky-500/20 dark:text-sky-300 dark:border dark:border-sky-500/40");
 @source inline("bg-amber-200 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200 dark:border dark:border-amber-500/40");
 @source inline("bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200");
@@ -8,42 +11,77 @@
 
 @theme {
   --default-transition-duration: 75ms;
-  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
-  --font-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  /* GitHub chrome font stack — matches the clone target */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* GitHub has no display serif — alias leftover display headings to sans. */
+  --font-display: var(--font-sans);
 
-  /* Warm zinc overrides -- see Section 4 Neutral Palette */
-  --color-zinc-50: #fafaf9;
-  --color-zinc-100: #f5f4f4;
-  --color-zinc-200: #e5e4e5;
-  --color-zinc-300: #d6d4d7;
-  --color-zinc-400: #a3a1a8;
-  --color-zinc-500: #747178;
-  --color-zinc-600: #555259;
-  --color-zinc-700: #423f42;
-  --color-zinc-800: #2a2729;
-  --color-zinc-900: #1b181a;
-  --color-zinc-950: #0c090b;
+  /* Primer neutral ramp — monotonic, light end doubles for light-mode
+     classes and the dark end for dark: classes. */
+  --color-zinc-50: #ffffff;
+  --color-zinc-100: #f6f8fa;
+  --color-zinc-200: #e3e8ee;
+  --color-zinc-300: #d1d9e0;
+  --color-zinc-400: #818b98;
+  --color-zinc-500: #59636e;
+  --color-zinc-600: #3d444d;
+  --color-zinc-700: #2a313c;
+  --color-zinc-800: #212830;
+  --color-zinc-900: #151b23;
+  --color-zinc-950: #0d1117;
 
-  --color-accent-50: #eef2ff;
-  --color-accent-100: #e0e7ff;
-  --color-accent-200: #c7d2fe;
-  --color-accent-300: #a5b4fc;
-  --color-accent-400: #818cf8;
-  --color-accent-500: #6366f1;
-  --color-accent-600: #4f46e5;
-  --color-accent-700: #4338ca;
-  --color-accent-800: #3730a3;
-  --color-accent-900: #312e81;
-
-  /* Lifted warm canvas background -- see Section 4 Surface Hierarchy */
-  --color-canvas: #221f21;
+  /* GitHub blue ramp */
+  --color-accent-50: #ddf4ff;
+  --color-accent-100: #b6e3ff;
+  --color-accent-200: #80ccff;
+  --color-accent-300: #54aeff;
+  --color-accent-400: #4493f8;
+  --color-accent-500: #1f6feb;
+  --color-accent-600: #0969da;
+  --color-accent-700: #0550ae;
+  --color-accent-800: #0a3069;
+  --color-accent-900: #002766;
 
   --animate-fade-in: fade-in 0.4s ease-out both;
   --animate-slide-up: slide-up 0.35s ease-out both;
   --animate-scale-fade: scale-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-shimmer: shimmer 1.5s ease-in-out infinite;
   --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+}
+
+/* Semantic tokens aliased onto Primer's theme-scoped CSS vars. These flip
+   automatically with [data-color-mode] on <html> — no dark: variant needed. */
+@theme inline {
+  --color-canvas: var(--bgColor-default);
+  --color-subtle: var(--bgColor-muted);
+  --color-inset: var(--bgColor-inset);
+  --color-overlay: var(--overlay-bgColor);
+  --color-edge: var(--borderColor-default);
+  --color-edge-muted: var(--borderColor-muted);
+  --color-fg: var(--fgColor-default);
+  --color-fg-muted: var(--fgColor-muted);
+  --color-on-emphasis: var(--fgColor-onEmphasis);
+  --color-link: var(--fgColor-link);
+  --color-success-fg: var(--fgColor-success);
+  --color-danger-fg: var(--fgColor-danger);
+  --color-attention-fg: var(--fgColor-attention);
+  --color-done-fg: var(--fgColor-done);
+  --color-open-fg: var(--fgColor-open);
+  --color-btn: var(--button-primary-bgColor-rest);
+  --color-btn-hover: var(--button-primary-bgColor-hover);
+  --color-btn-active: var(--button-primary-bgColor-active);
+  --color-btn-fg: var(--button-primary-fgColor-rest);
+  --color-btn-edge: var(--button-primary-borderColor-rest);
+  --color-control: var(--control-bgColor-rest);
+  --color-control-hover: var(--control-bgColor-hover);
+  --color-control-active: var(--control-bgColor-active);
+  --color-control-edge: var(--control-borderColor-rest);
+  --color-header: var(--header-bgColor);
+  --color-header-fg: var(--header-fgColor-default);
 }
 
 @keyframes fade-in {
@@ -112,15 +150,9 @@
   }
 
   body {
-    @apply bg-canvas font-sans text-zinc-100 antialiased;
-    font-weight: 450;
+    @apply bg-canvas font-sans antialiased;
+    color: var(--fgColor-default);
     overflow-x: clip;
-  }
-
-  html:not(.dark) body {
-    @apply text-zinc-900;
-    background-color: var(--color-zinc-100);
-    background-image: none;
   }
 
   html {
@@ -132,17 +164,20 @@
   }
 
   *:focus-visible {
-    @apply outline-none ring-2 ring-accent-500/50 ring-offset-2 ring-offset-canvas;
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--bgColor-default),
+      0 0 0 4px var(--borderColor-accent-emphasis);
   }
 
   ::selection {
-    @apply bg-accent-500/[0.28] text-accent-50;
+    background-color: var(--bgColor-accent-muted);
   }
 
   *,
   ::before,
   ::after {
-    border-color: var(--color-zinc-200, currentcolor);
+    border-color: var(--borderColor-default, currentcolor);
   }
 
   h1 {
@@ -162,7 +197,11 @@
   }
 
   a {
-    @apply text-accent-600 transition-colors hover:text-accent-500 dark:text-accent-400 dark:hover:text-accent-300;
+    color: var(--fgColor-link);
+  }
+
+  a:hover {
+    text-decoration: underline;
   }
 
   button:not(:disabled),
@@ -203,27 +242,36 @@
   }
 
   table {
-    @apply w-full border-collapse bg-white dark:bg-zinc-900/50;
+    @apply w-full border-collapse;
+    background-color: var(--bgColor-default);
   }
 
   table th {
-    @apply bg-zinc-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:bg-zinc-800/50 dark:text-zinc-400;
+    @apply px-3 py-2 text-left text-xs font-normal;
+    color: var(--fgColor-muted);
+    background-color: var(--bgColor-muted);
   }
 
   table td {
-    @apply px-4 py-3 text-sm;
+    @apply px-3 py-2 text-sm;
   }
 
   table tbody tr {
-    @apply border-t border-zinc-200 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/30;
+    border-top: 1px solid var(--borderColor-muted);
+  }
+
+  table tbody tr:hover {
+    background-color: var(--bgColor-muted);
   }
 
   pre {
-    @apply overflow-x-auto rounded-xl bg-zinc-50 p-4 dark:bg-zinc-900;
+    @apply overflow-x-auto rounded-md p-4;
+    background-color: var(--bgColor-muted);
   }
 
   code {
-    @apply rounded-sm bg-zinc-100 px-1 py-0.5 text-sm font-mono dark:bg-zinc-800;
+    @apply rounded-sm px-1 py-0.5 text-sm font-mono;
+    background-color: var(--bgColor-neutral-muted);
   }
 
   pre code {
@@ -231,13 +279,8 @@
   }
 
   .blob-container {
-    background: var(--color-zinc-50);
-    border-color: var(--color-zinc-300);
-  }
-
-  html.dark .blob-container {
-    background: color-mix(in srgb, var(--color-zinc-900) 50%, transparent);
-    border-color: color-mix(in srgb, var(--color-zinc-800) 60%, transparent);
+    background: var(--bgColor-default);
+    border-color: var(--borderColor-default);
   }
 
   .ref-menu > summary {
@@ -255,7 +298,9 @@
   }
 
   .markdown-content {
-    @apply max-w-4xl text-[0.95rem] leading-7 text-zinc-700 dark:text-zinc-200;
+    @apply max-w-4xl leading-6;
+    font-size: 16px;
+    color: var(--fgColor-default);
   }
 
   .markdown-content > *:first-child {
@@ -270,7 +315,14 @@
   .markdown-content h2,
   .markdown-content h3,
   .markdown-content h4 {
-    @apply mt-6 mb-3 font-semibold text-zinc-900 dark:text-zinc-50;
+    @apply mt-6 mb-3 font-semibold;
+    color: var(--fgColor-default);
+  }
+
+  .markdown-content h1,
+  .markdown-content h2 {
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--borderColor-muted);
   }
 
   .markdown-content p,
@@ -295,7 +347,9 @@
   }
 
   .markdown-content blockquote {
-    @apply border-l-4 border-zinc-300 pl-4 italic text-zinc-600 dark:border-zinc-700 dark:text-zinc-300;
+    border-left: 0.25em solid var(--borderColor-default);
+    padding-left: 1em;
+    color: var(--fgColor-muted);
   }
 
   .markdown-content img {
@@ -303,7 +357,8 @@
   }
 
   .markdown-content pre {
-    @apply overflow-x-auto rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900;
+    @apply overflow-x-auto rounded-md p-4;
+    background-color: var(--bgColor-muted);
   }
 
   .markdown-content pre code,
@@ -366,25 +421,17 @@
     vertical-align: top;
     white-space: nowrap;
     user-select: none;
-    border-right: 1px solid color-mix(in srgb, var(--color-zinc-200) 80%, transparent);
-  }
-
-  html.dark .code-table .line-num {
-    border-right-color: color-mix(in srgb, var(--color-zinc-700) 90%, transparent);
+    border-right: 1px solid var(--borderColor-muted);
   }
 
   .code-table .line-num a {
     display: block;
-    color: var(--color-zinc-400);
+    color: var(--fgColor-subtle, var(--fgColor-muted));
     text-decoration: none;
   }
 
-  html.dark .code-table .line-num a {
-    color: var(--color-zinc-500);
-  }
-
   .code-table .line-num a:hover {
-    color: var(--color-accent-500);
+    color: var(--fgColor-link);
   }
 
   .code-table .line-code {
@@ -394,11 +441,7 @@
   }
 
   .code-line:hover {
-    background: color-mix(in srgb, var(--color-accent-500) 4%, transparent);
-  }
-
-  html.dark .code-line:hover {
-    background: color-mix(in srgb, var(--color-accent-500) 8%, transparent);
+    background: var(--bgColor-muted);
   }
 
   .code-line {
@@ -407,12 +450,7 @@
 
   .code-line:target,
   .code-line.line-highlight {
-    background: color-mix(in srgb, var(--color-accent-500) 8%, transparent);
-  }
-
-  html.dark .code-line:target,
-  html.dark .code-line.line-highlight {
-    background: color-mix(in srgb, var(--color-accent-500) 15%, transparent);
+    background: var(--bgColor-attention-muted);
   }
 
   svg.inline {
@@ -510,13 +548,16 @@
 
 @layer components {
   .diff-viewer {
-    @apply rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800/60 dark:bg-zinc-900/50;
-    overflow: hidden;
+    @apply rounded-md overflow-hidden;
+    border: 1px solid var(--borderColor-default);
+    background-color: var(--bgColor-default);
   }
 
   /* Summary bar */
   .diff-summary {
-    @apply flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-5 py-3.5 dark:border-zinc-800;
+    @apply flex flex-wrap items-center justify-between gap-3 px-5 py-3.5;
+    border-bottom: 1px solid var(--borderColor-muted);
+    background-color: var(--bgColor-muted);
   }
 
   .diff-summary-stats {
@@ -524,19 +565,24 @@
   }
 
   .diff-stat-add {
-    @apply font-medium text-green-700 dark:text-green-400;
+    @apply font-medium;
+    color: var(--fgColor-success);
   }
 
   .diff-stat-mod {
-    @apply font-medium text-amber-700 dark:text-amber-400;
+    @apply font-medium;
+    color: var(--fgColor-attention);
   }
 
   .diff-stat-del {
-    @apply font-medium text-red-700 dark:text-red-400;
+    @apply font-medium;
+    color: var(--fgColor-danger);
   }
 
   .diff-compare-label {
-    @apply rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300;
+    @apply rounded-full px-3 py-1 text-xs font-medium;
+    background-color: var(--bgColor-neutral-muted);
+    color: var(--fgColor-muted);
   }
 
   /* File list */
@@ -545,7 +591,11 @@
   }
 
   .diff-file-entry {
-    @apply border-b border-zinc-100 last:border-b-0 dark:border-zinc-800/60;
+    border-bottom: 1px solid var(--borderColor-muted);
+  }
+
+  .diff-file-entry:last-child {
+    border-bottom: 0;
   }
 
   .diff-file-row {
@@ -553,7 +603,7 @@
   }
 
   .diff-file-row:hover {
-    @apply bg-zinc-50/60 dark:bg-zinc-800/20;
+    background-color: var(--bgColor-muted);
   }
 
   .diff-file-info {
@@ -575,24 +625,36 @@
   }
 
   .diff-badge-add {
-    @apply bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300;
+    background-color: var(--bgColor-success-muted);
+    color: var(--fgColor-success);
   }
 
   .diff-badge-mod {
-    @apply bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300;
+    background-color: var(--bgColor-attention-muted);
+    color: var(--fgColor-attention);
   }
 
   .diff-badge-del {
-    @apply bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300;
+    background-color: var(--bgColor-danger-muted);
+    color: var(--fgColor-danger);
   }
 
   /* Toggle button */
   .diff-toggle-btn {
-    @apply inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-700;
+    @apply inline-flex flex-shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors;
+    border: 1px solid var(--control-borderColor-rest);
+    background-color: var(--control-bgColor-rest);
+    color: var(--fgColor-default);
+  }
+
+  .diff-toggle-btn:hover {
+    background-color: var(--control-bgColor-hover);
   }
 
   .diff-toggle-btn.active {
-    @apply border-accent-200 bg-accent-50 text-accent-700 dark:border-accent-800 dark:bg-accent-900/30 dark:text-accent-300;
+    background-color: var(--bgColor-accent-muted);
+    border-color: var(--borderColor-accent-muted);
+    color: var(--fgColor-accent);
   }
 
   .diff-toggle-icon {
@@ -601,7 +663,7 @@
 
   /* Expanded content area */
   .diff-expand-area {
-    @apply border-t border-zinc-100 dark:border-zinc-800/60;
+    border-top: 1px solid var(--borderColor-muted);
   }
 
   /* Patch container */
@@ -655,11 +717,7 @@
     font-family: var(--font-mono);
     font-size: 0.75rem;
     line-height: 1.375rem;
-    color: var(--color-zinc-400);
-  }
-
-  html.dark .diff-gutter {
-    color: var(--color-zinc-500);
+    color: var(--fgColor-muted);
   }
 
   /* Code cell */
@@ -671,68 +729,40 @@
     line-height: 1.375rem;
   }
 
-  /* Line-level diff coloring - light */
+  /* Line-level diff coloring — Primer muted tokens flip with the theme */
   .diff-line-add {
-    background: rgb(187 247 208 / 0.35) !important;
+    background: var(--bgColor-success-muted) !important;
   }
 
   .diff-line-add .diff-gutter {
-    color: #16a34a;
+    color: var(--fgColor-success);
   }
 
   .diff-line-del {
-    background: rgb(254 202 202 / 0.4) !important;
+    background: var(--bgColor-danger-muted) !important;
   }
 
   .diff-line-del .diff-gutter {
-    color: #dc2626;
+    color: var(--fgColor-danger);
   }
 
   .diff-line-hunk {
-    background: color-mix(in srgb, var(--color-accent-100) 40%, transparent) !important;
+    background: var(--bgColor-accent-muted) !important;
   }
 
   .diff-line-hunk .diff-code {
-    color: var(--color-accent-500);
+    color: var(--fgColor-accent);
     font-style: italic;
   }
 
   .diff-line-hunk .diff-gutter {
-    color: var(--color-accent-500);
-  }
-
-  /* Line-level diff coloring - dark */
-  html.dark .diff-line-add {
-    background: rgb(22 101 52 / 0.25) !important;
-  }
-
-  html.dark .diff-line-add .diff-gutter {
-    color: #4ade80;
-  }
-
-  html.dark .diff-line-del {
-    background: rgb(153 27 27 / 0.25) !important;
-  }
-
-  html.dark .diff-line-del .diff-gutter {
-    color: #f87171;
-  }
-
-  html.dark .diff-line-hunk {
-    background: color-mix(in srgb, var(--color-accent-800) 20%, transparent) !important;
-  }
-
-  html.dark .diff-line-hunk .diff-code {
-    color: var(--color-accent-300);
-  }
-
-  html.dark .diff-line-hunk .diff-gutter {
-    color: var(--color-accent-300);
+    color: var(--fgColor-accent);
   }
 
   /* Loading state */
   .diff-loading {
-    @apply flex items-center gap-2 px-5 py-4 text-sm text-zinc-500 dark:text-zinc-400;
+    @apply flex items-center gap-2 px-5 py-4 text-sm;
+    color: var(--fgColor-muted);
   }
 
   .diff-spinner {
@@ -753,13 +783,32 @@
 
   /* Skip message */
   .diff-skip-msg {
-    @apply px-5 py-4 text-sm italic text-zinc-500 dark:text-zinc-400;
+    @apply px-5 py-4 text-sm italic;
+    color: var(--fgColor-muted);
   }
 
   /* Empty state */
   .diff-empty {
-    @apply px-5 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400;
+    @apply px-5 py-6 text-center text-sm;
+    color: var(--fgColor-muted);
   }
+}
+
+/* GitHub-style divided list rows (ideas, merge intents): border between rows
+   only, not above the first — the container border supplies that edge. */
+.gh-list > li + li {
+  border-top: 1px solid var(--borderColor-muted);
+}
+
+/* Shared card variants (Card component) on Primer surface tokens. */
+.card-default {
+  border-color: var(--borderColor-default);
+  background-color: var(--bgColor-default);
+}
+
+.card-accent {
+  border-color: var(--borderColor-accent-muted);
+  background-color: var(--bgColor-accent-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

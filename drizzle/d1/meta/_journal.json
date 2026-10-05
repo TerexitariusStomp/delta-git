@@ -29,6 +29,41 @@
       "when": 1791139435528,
       "tag": "0003_classy_microchip",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791170466598,
+      "tag": "0004_lowly_captain_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791173836407,
+      "tag": "0005_silly_lyja",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791175308769,
+      "tag": "0006_wealthy_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791175829957,
+      "tag": "0007_giant_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791177525825,
+      "tag": "0008_flawless_blockbuster",
+      "breakpoints": true
     }
   ]
 }

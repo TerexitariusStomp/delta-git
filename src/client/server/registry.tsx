@@ -2,6 +2,8 @@ import type { ReactElement } from "react";
 
 import { clientEntrypoints, type ClientEntrypoint } from "@/client/entrypoints";
 import { AccountPage, type AccountPageProps } from "@/client/pages/AccountPage";
+import { ArenaPage, type ArenaPageProps } from "@/client/pages/ArenaPage";
+import { ArenaMatchPage, type ArenaMatchPageProps } from "@/client/pages/ArenaMatchPage";
 import { AdminPage, type AdminPageProps } from "@/client/pages/AdminPage";
 import { AgentsPage, type AgentsPageProps } from "@/client/pages/AgentsPage";
 import { AuthSignInPage, type AuthSignInPageProps } from "@/client/pages/AuthSignInPage";
@@ -88,6 +90,17 @@ const views: Record<string, ViewDefinition> = {
     kind: "document",
     clientEntrypoints: [clientEntrypoints.shell],
     render: renderWithProps((props: IdeasPageProps) => <IdeasPage {...props} />),
+  },
+  arena: {
+    kind: "document",
+    title: "Arena · delta-git",
+    clientEntrypoints: [clientEntrypoints.shell],
+    render: renderWithProps((props: ArenaPageProps) => <ArenaPage {...props} />),
+  },
+  "arena-match": {
+    kind: "document",
+    clientEntrypoints: [clientEntrypoints.shell, clientEntrypoints.arenaMatch],
+    render: renderWithProps((props: ArenaMatchPageProps) => <ArenaMatchPage {...props} />),
   },
   leaderboard: {
     kind: "document",

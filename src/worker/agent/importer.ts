@@ -104,7 +104,8 @@ type FetchPackResult = { pack: Uint8Array } | { fatal: string };
 async function fetchPack(
   client: GitFetch,
   base: string,
-  wants: string[]
+  wants: string[],
+  haves: string[] = []
 ): Promise<FetchPackResult | Response> {
   const parts: Uint8Array[] = [
     pktLine("command=fetch\n"),
@@ -112,6 +113,7 @@ async function fetchPack(
     delimPkt(),
   ];
   for (const oid of wants) parts.push(pktLine(`want ${oid}\n`));
+  for (const oid of haves) parts.push(pktLine(`have ${oid}\n`));
   parts.push(pktLine("done\n"), flushPkt());
   const res = await client(`${base}/git-upload-pack`, {
     method: "POST",
@@ -253,4 +255,140 @@ export async function importRemoteRepo(args: {
     head: headRef.name,
     objects: resolveResult.objectCount,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Incremental sync (Artifacts → DO object mirror)
+// ---------------------------------------------------------------------------
+
+export type SyncResult =
+  | { kind: "synced"; refs: number; objects: number; changed: boolean }
+  | { kind: "failed"; reason: string };
+
+/**
+ * Fetch the delta between a remote's advertised refs and the DO mirror,
+ * then reconcile refs/head in one DO call. Unlike `importRemoteRepo` this
+ * works on non-empty repos: local ref tips are sent as `have`s so the
+ * remote packs only what changed, and `ingestRemoteSync` converges refs to
+ * the remote's advertised state rather than requiring an empty repo.
+ *
+ * Used by the `cf.artifacts.repo.*` event consumer to keep the coordination
+ * mirror of Artifacts-backed repos current.
+ */
+export async function syncRemoteRepo(args: {
+  env: Env;
+  repoId: string;
+  stub: DurableObjectStub<RepoDurableObject>;
+  url: string;
+  actor: string;
+  cacheCtx?: CacheContext;
+  fetcher?: GitFetch;
+  headers?: Record<string, string>;
+}): Promise<SyncResult> {
+  const { env, repoId, stub, actor, cacheCtx } = args;
+  const log = createLogger(env.LOG_LEVEL, { service: "RepoSync", repoId });
+  const client: GitFetch =
+    args.fetcher ??
+    ((input, init) => {
+      const headers = { ...(init?.headers as Record<string, string>), ...args.headers };
+      return fetch(input, { ...init, headers });
+    });
+
+  let url: URL;
+  try {
+    url = assertImportableUrl(args.url);
+  } catch (error) {
+    return { kind: "failed", reason: String(error) };
+  }
+  const base = url.toString().replace(/\/+$/, "");
+
+  const lsResult = await lsRefs(client, base);
+  if (lsResult instanceof Response) {
+    return { kind: "failed", reason: `ls-refs:http-${lsResult.status}` };
+  }
+  const { refs: remoteRefs, headTarget } = lsResult;
+  const branches = remoteRefs.filter((ref) => ref.name.startsWith("refs/heads/"));
+  const headRef = remoteRefs.find((ref) => ref.name === headTarget) ?? branches[0] ?? remoteRefs[0];
+
+  const local = await stub.getHeadAndRefs();
+  const localByName = new Map(local.refs.map((ref) => [ref.name, ref.oid] as const));
+  const localOids = new Set(local.refs.map((ref) => ref.oid));
+
+  const refsChanged =
+    remoteRefs.length !== local.refs.length ||
+    remoteRefs.some((ref) => localByName.get(ref.name) !== ref.oid);
+  const wants = [...new Set(remoteRefs.map((ref) => ref.oid))].filter((oid) => !localOids.has(oid));
+
+  const packs: { packKey: string; packBytes: number; idxBytes: number; objectCount: number }[] = [];
+  let totalObjects = 0;
+
+  if (wants.length > 0) {
+    const haves = [...localOids].slice(0, 64);
+    const fetched = await fetchPack(client, base, wants, haves);
+    if (fetched instanceof Response) {
+      return { kind: "failed", reason: `fetch:http-${fetched.status}` };
+    }
+    if ("fatal" in fetched) return { kind: "failed", reason: `fetch:${fetched.fatal}` };
+    if (fetched.pack.byteLength > MAX_PACK_BYTES) {
+      return { kind: "failed", reason: "pack-too-large" };
+    }
+    if (fetched.pack.byteLength < 32 || td.decode(fetched.pack.subarray(0, 4)) !== "PACK") {
+      return { kind: "failed", reason: "not-a-pack" };
+    }
+
+    const limiter = getLimiter(cacheCtx);
+    const prefix = doPrefix(stub.id.toString());
+    const packKey = r2PackKey(prefix, `pack-sync-${crypto.randomUUID().slice(0, 8)}.pack`);
+    await limiter.run("r2:put-sync-pack", () => env.REPO_BUCKET.put(packKey, fetched.pack));
+    let subrequests = 1;
+    const countSubrequest = (n = 1) => {
+      subrequests += n;
+    };
+
+    const scanResult = await scanPack({
+      env,
+      packKey,
+      packSize: fetched.pack.byteLength,
+      limiter,
+      countSubrequest,
+      log,
+    });
+    const resolveResult = await resolveDeltasAndWriteIdx({
+      env,
+      packKey,
+      packSize: fetched.pack.byteLength,
+      limiter,
+      countSubrequest,
+      log,
+      scanResult,
+      repoId,
+      cacheCtx,
+    });
+    totalObjects = resolveResult.objectCount;
+    packs.push({
+      packKey,
+      packBytes: fetched.pack.byteLength,
+      idxBytes: resolveResult.idxBytes,
+      objectCount: resolveResult.objectCount,
+    });
+  }
+
+  if (!refsChanged && wants.length === 0) {
+    return { kind: "synced", refs: remoteRefs.length, objects: 0, changed: false };
+  }
+
+  await stub.ingestRemoteSync({
+    packs,
+    refs: remoteRefs,
+    head: headRef ? { target: headRef.name, oid: headRef.oid } : undefined,
+    actor,
+  });
+
+  log.info("sync:done", {
+    url: base,
+    refs: remoteRefs.length,
+    objects: totalObjects,
+    wants: wants.length,
+  });
+  return { kind: "synced", refs: remoteRefs.length, objects: totalObjects, changed: true };
 }

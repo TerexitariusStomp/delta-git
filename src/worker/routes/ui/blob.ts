@@ -9,6 +9,7 @@ import {
 } from "@/shared/web";
 import { handleError } from "@/client/server/error";
 import { badRequest, isRequestPrivate, resolveUiRepoAccess } from "./helpers";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import type { AppContext } from "../hono";
 import { renderUiDocumentResponse } from "../uiResponse";
 
@@ -45,6 +46,7 @@ export async function handleBlob(c: AppContext<"/:owner/:repo/blob">) {
     if (result.type !== "blob") return new Response("Not a blob\n", { status: 400 });
     const fileName = path || result.oid;
     const viewer = access.viewer;
+    const repoRow = await findRepositoryByDoName(c.var.db, repoId);
 
     // Generate breadcrumbs and parent link (same pattern as tree.ts)
     const parts = (path || "").split("/").filter(Boolean);
@@ -85,6 +87,7 @@ export async function handleBlob(c: AppContext<"/:owner/:repo/blob">) {
           owner,
           repo,
           refEnc: encodeURIComponent(ref),
+          refShort: ref,
           fileName,
           tooLarge: true,
           sizeStr,
@@ -92,6 +95,9 @@ export async function handleBlob(c: AppContext<"/:owner/:repo/blob">) {
           rawHref,
           breadcrumbs,
           parentHref,
+          visibility: route.visibility,
+          description: repoRow?.description ?? "",
+          arena: route.backend === "artifacts",
         },
         {
           cacheControl: isPrivate ? "no-store" : undefined,
@@ -111,11 +117,15 @@ export async function handleBlob(c: AppContext<"/:owner/:repo/blob">) {
       owner,
       repo,
       refEnc: encodeURIComponent(ref),
+      refShort: ref,
       fileName,
       viewRawHref,
       breadcrumbs,
       parentHref,
       rawHref,
+      visibility: route.visibility,
+      description: repoRow?.description ?? "",
+      arena: route.backend === "artifacts",
     };
 
     if (isBinary) {

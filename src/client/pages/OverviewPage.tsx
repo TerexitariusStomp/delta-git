@@ -1,30 +1,35 @@
-import { BookOpen, GitBranch, Tag } from "lucide-react";
-import { MarkdownContent } from "@/client/components/MarkdownContent";
-import { type Progress, ProgressBanner } from "@/client/components/ProgressBanner";
 import { RepoNav } from "@/client/components/RepoNav";
-import { Card } from "@/client/components/ui/card";
-import { EmptyState } from "@/client/components/EmptyState";
-
-type RefLink = {
-  name: string;
-  displayName: string;
-};
+import { type Progress, ProgressBanner } from "@/client/components/ProgressBanner";
+import { FileTable, type FileRow, type FileRowLastChange } from "@/client/components/file-table";
+import { CloneMenu } from "@/client/components/clone-menu";
+import { AboutSidebar } from "@/client/components/about-sidebar";
+import { MarkdownContent } from "@/client/components/MarkdownContent";
+import { CommentDiscussionIcon, ArrowRightIcon, BookIcon } from "@primer/octicons-react";
+import { IslandHost } from "@/client/server/IslandHost";
 
 export type OverviewPageProps = {
   owner: string;
   repo: string;
+  /** Show the Arena tab (artifacts repos). */
+  arena?: boolean;
   refShort: string;
   refEnc: string;
-  branches: RefLink[];
-  tags: RefLink[];
+  branches?: { name: string; href: string }[];
+  tags?: { name: string; href: string }[];
   readmeMd?: string;
   progress?: Progress;
-  /** Federation-addressable repo DID (did:dg:repo:…). */
   repoDid?: string;
-  /** Browsable Radicle gateway URL when a rad: mirror target is configured. */
   radicleUrl?: string;
-  /** Newest open/claimed ideas — the plain-language lane above the README. */
   ideas?: { id: string; title: string; status: string }[];
+  visibility?: "public" | "private";
+  description?: string;
+  headCommit?: FileRowLastChange;
+  /** Exact first-parent commit count when the bounded walk reached the root. */
+  commitCount?: number;
+  fileRows?: FileRow[];
+  cloneUrl?: string;
+  licenseFile?: string;
+  counts?: { branches?: number; tags?: number; ideas?: number };
 };
 
 export function OverviewPage({
@@ -32,151 +37,204 @@ export function OverviewPage({
   repo,
   refShort,
   refEnc,
-  branches,
-  tags,
+  branches = [],
+  tags = [],
   readmeMd,
   progress,
   repoDid,
   radicleUrl,
-  ideas,
+  ideas = [],
+  visibility,
+  description,
+  arena,
+  headCommit,
+  commitCount,
+  fileRows = [],
+  cloneUrl,
+  licenseFile,
+  counts,
 }: OverviewPageProps) {
+  const base = `/${owner}/${repo}`;
+  const wpCloudUrl = `https://wpcloud.delta-git.workers.dev/?repo=${encodeURIComponent(
+    `${owner}/${repo}`
+  )}`;
   return (
     <>
-      <RepoNav owner={owner} repo={repo} refEnc={refEnc} showRefDropdown={false} />
-      <ProgressBanner progress={progress} />
-      {(repoDid || radicleUrl || (ideas && ideas.length > 0)) && (
-        <div className="mt-6">
-          <Card>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3>Ideas &amp; Federation</h3>
-              <a
-                href={`/${owner}/${repo}/ideas`}
-                className="text-sm text-accent-500 hover:underline"
+      <RepoNav
+        owner={owner}
+        repo={repo}
+        currentTab="browse"
+        visibility={visibility}
+        description={description}
+        arena={arena}
+        counts={counts}
+      />
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6">
+        <ProgressBanner progress={progress} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_296px]">
+          <div className="min-w-0">
+            {/* Branch picker + clone menu row */}
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <IslandHost name="ref-picker" props={{ owner, repo, currentRef: refShort }}>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold"
+                  style={{
+                    backgroundColor: "var(--bgColor-default)",
+                    border: "1px solid var(--borderColor-default)",
+                    color: "var(--fgColor-default)",
+                  }}
+                >
+                  <span style={{ color: "var(--fgColor-muted)" }}>
+                    <GitBranchGlyph />
+                  </span>
+                  {refShort}
+                </button>
+              </IslandHost>
+              <div className="hidden text-sm sm:block" style={{ color: "var(--fgColor-muted)" }}>
+                <a
+                  href={`${base}/tree?ref=${refEnc}`}
+                  className="font-semibold hover:underline"
+                  style={{ color: "var(--fgColor-default)" }}
+                >
+                  {counts?.branches ?? branches.length}
+                </a>{" "}
+                branches{" "}
+                <a
+                  href={`${base}/tree?ref=${refEnc}`}
+                  className="font-semibold hover:underline"
+                  style={{ color: "var(--fgColor-default)" }}
+                >
+                  {counts?.tags ?? tags.length}
+                </a>{" "}
+                tags
+              </div>
+              {cloneUrl ? <CloneMenu cloneUrl={cloneUrl} /> : null}
+            </div>
+
+            <FileTable
+              owner={owner}
+              repo={repo}
+              rows={fileRows}
+              commitBar={
+                headCommit
+                  ? {
+                      ...headCommit,
+                      commitCount,
+                      commitsHref: `${base}/commits?ref=${refEnc}`,
+                      commitHref: `${base}/commit/${headCommit.oid}`,
+                    }
+                  : undefined
+              }
+            />
+
+            {/* README card */}
+            {readmeMd ? (
+              <section
+                className="mt-4 rounded-md"
+                style={{ border: "1px solid var(--borderColor-default)" }}
+                aria-labelledby="readme-heading"
               >
-                View all ideas →
-              </a>
-            </div>
-            {ideas && ideas.length > 0 && (
-              <ul className="mt-2 space-y-1 text-sm">
-                {ideas.map((idea) => (
-                  <li key={idea.id} className="flex items-center gap-2">
-                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                      {idea.status}
-                    </span>
-                    <span>{idea.title}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {(repoDid || radicleUrl) && (
-              <dl className="mt-3 space-y-1 border-t border-zinc-200 pt-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                {repoDid && (
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 font-medium">Repo DID</dt>
-                    <dd className="truncate">
-                      <code>{repoDid}</code>
-                    </dd>
-                  </div>
-                )}
-                {radicleUrl && (
-                  <div className="flex gap-2">
-                    <dt className="shrink-0 font-medium">Radicle</dt>
-                    <dd className="truncate">
-                      <a
-                        href={radicleUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-accent-500 hover:underline"
-                      >
-                        {radicleUrl}
-                      </a>
-                    </dd>
-                  </div>
-                )}
-              </dl>
-            )}
-          </Card>
-        </div>
-      )}
-      <div className="mt-6 grid gap-6 md:grid-cols-[1fr_2fr] [&>*]:min-w-0">
-        {/* Left column: Refs */}
-        <div className="space-y-6">
-          <Card>
-            <h3 className="flex items-center gap-2">
-              <GitBranch className="inline h-4 w-4 text-accent-500" aria-hidden="true" />
-              Branches
-            </h3>
-            <p className="mb-2 text-sm text-zinc-500 dark:text-zinc-400">
-              Default: <code>{refShort}</code>
-            </p>
-            <div className="[&>div]:border-b [&>div]:border-zinc-200 dark:[&>div]:border-zinc-800 [&>div]:py-2 [&>div:last-child]:border-b-0">
-              {branches.length ? (
-                branches.map((branch) => (
-                  <div key={branch.name}>
-                    <a href={`/${owner}/${repo}/tree?ref=${branch.name}`}>{branch.displayName}</a>
-                  </div>
-                ))
-              ) : (
-                <EmptyState
-                  icon={
-                    <GitBranch
-                      className="h-5 w-5 text-zinc-500 dark:text-zinc-400"
-                      aria-hidden="true"
-                    />
-                  }
-                  title="No branches yet"
-                />
-              )}
-            </div>
-          </Card>
-          <Card>
-            <h3 className="flex items-center gap-2">
-              <Tag className="inline h-4 w-4 text-accent-500" aria-hidden="true" />
-              Tags
-            </h3>
-            <div className="[&>div]:border-b [&>div]:border-zinc-200 dark:[&>div]:border-zinc-800 [&>div]:py-2 [&>div:last-child]:border-b-0">
-              {tags.length ? (
-                tags.map((tag) => (
-                  <div key={tag.name}>
-                    <a href={`/${owner}/${repo}/tree?ref=${tag.name}`}>{tag.displayName}</a>
-                  </div>
-                ))
-              ) : (
-                <EmptyState
-                  icon={
-                    <Tag className="h-5 w-5 text-zinc-500 dark:text-zinc-400" aria-hidden="true" />
-                  }
-                  title="No tags yet"
-                />
-              )}
-            </div>
-          </Card>
-        </div>
-        {/* Right column: README */}
-        <div>
-          {readmeMd ? (
-            <Card>
-              <MarkdownContent
-                markdown={readmeMd}
-                context={{ owner, repo, ref: refShort, baseDir: "" }}
-              />
-            </Card>
-          ) : (
-            <Card>
-              <EmptyState
-                icon={
-                  <BookOpen
-                    className="h-5 w-5 text-zinc-500 dark:text-zinc-400"
-                    aria-hidden="true"
+                <h2
+                  id="readme-heading"
+                  className="m-0 flex items-center gap-2 rounded-t-md px-4 py-2.5 text-sm font-semibold"
+                  style={{
+                    borderBottom: "1px solid var(--borderColor-muted)",
+                    color: "var(--fgColor-default)",
+                  }}
+                >
+                  <BookIcon size={16} />
+                  README.md
+                </h2>
+                <article className="p-4 sm:p-8">
+                  <MarkdownContent
+                    markdown={readmeMd}
+                    context={{ owner, repo, ref: refShort, baseDir: "" }}
                   />
-                }
-                title="No README found"
-                detail="Add a README.md to the root of your repository."
-              />
-            </Card>
-          )}
+                </article>
+              </section>
+            ) : null}
+          </div>
+
+          <aside className="min-w-0">
+            <AboutSidebar
+              owner={owner}
+              repo={repo}
+              description={description}
+              repoDid={repoDid}
+              radicleUrl={radicleUrl}
+              licenseFile={
+                licenseFile
+                  ? {
+                      name: licenseFile,
+                      href: `${base}/blob?ref=${refEnc}&path=${encodeURIComponent(licenseFile)}`,
+                    }
+                  : null
+              }
+              branchCount={counts?.branches ?? branches.length}
+              tagCount={counts?.tags ?? tags.length}
+              openIdeaCount={counts?.ideas}
+              branchesHref={`${base}/tree?ref=${refEnc}`}
+              tagsHref={`${base}/tree?ref=${refEnc}`}
+              ideasHref={`${base}/ideas`}
+            />
+            <a
+              href={wpCloudUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-block text-sm no-underline hover:underline"
+              style={{ color: "var(--fgColor-muted)" }}
+            >
+              Deploy with wp-cloud ↗
+            </a>
+            {/* Ideas preview — delta-git's native concept surfaced like a
+                "recent issues" rail */}
+            {ideas.length > 0 ? (
+              <section className="mt-6" aria-labelledby="overview-ideas">
+                <h3
+                  id="overview-ideas"
+                  className="mb-2 flex items-center gap-2 text-sm font-semibold"
+                  style={{ color: "var(--fgColor-default)" }}
+                >
+                  <CommentDiscussionIcon size={16} />
+                  Open ideas
+                </h3>
+                <ul className="m-0 list-none p-0">
+                  {ideas.map((idea) => (
+                    <li
+                      key={idea.id}
+                      className="py-1.5 text-sm"
+                      style={{ borderBottom: "1px solid var(--borderColor-muted)" }}
+                    >
+                      <a
+                        href={`${base}/ideas`}
+                        className="font-medium hover:underline"
+                        style={{ color: "var(--fgColor-default)" }}
+                      >
+                        {idea.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  href={`${base}/ideas`}
+                  className="mt-2 inline-flex items-center gap-1 text-sm font-semibold"
+                >
+                  View all ideas <ArrowRightIcon size={12} />
+                </a>
+              </section>
+            ) : null}
+          </aside>
         </div>
       </div>
     </>
+  );
+}
+
+function GitBranchGlyph() {
+  return (
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" />
+    </svg>
   );
 }

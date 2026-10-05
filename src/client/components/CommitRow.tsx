@@ -1,4 +1,5 @@
 import type { KeyboardEventHandler, MouseEventHandler } from "react";
+import { GitMergeIcon } from "@primer/octicons-react";
 
 type CommitView = {
   oid: string;
@@ -6,6 +7,7 @@ type CommitView = {
   firstLine: string;
   authorName: string;
   when: string;
+  whenEpoch?: number;
 };
 
 type CommitRowProps = {
@@ -33,12 +35,7 @@ export function CommitRow({
   mergeExpanded,
   onToggle,
 }: CommitRowProps) {
-  const classes = [
-    compact
-      ? "text-sm subrow bg-accent-50/20 dark:bg-accent-900/10 border-l-2 border-b border-b-zinc-200 border-l-accent-400 dark:border-b-zinc-800 dark:border-l-accent-700"
-      : "",
-    rowClass || "",
-  ]
+  const classes = [compact ? "text-sm" : "", onToggle ? "cursor-pointer" : "", rowClass || ""]
     .filter(Boolean)
     .join(" ");
 
@@ -63,25 +60,54 @@ export function CommitRow({
       tabIndex={onToggle ? 0 : undefined}
       aria-expanded={onToggle ? mergeExpanded : undefined}
     >
-      <td>
-        <a href={`/${owner}/${repo}/commit/${commit.oid}`}>{commit.shortOid}</a>
-      </td>
-      <td className={compact ? "pl-6" : undefined}>
-        {isMerge ? (
-          <span
-            className={`merge-badge mr-2 inline-block rounded px-2 py-0.5 text-xs ${
-              mergeExpanded
-                ? "bg-amber-200 text-amber-900 dark:border dark:border-amber-500/40 dark:bg-amber-900/40 dark:text-amber-200"
-                : "bg-sky-100 text-sky-900 dark:border dark:border-sky-500/40 dark:bg-sky-500/20 dark:text-sky-300"
-            }`}
+      <td className={compact ? "py-2 pl-8" : "py-2"}>
+        <div className="flex min-w-0 items-center gap-2">
+          {isMerge ? (
+            <span
+              className="merge-badge inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs"
+              style={{
+                backgroundColor: mergeExpanded
+                  ? "var(--bgColor-attention-muted)"
+                  : "var(--bgColor-accent-muted)",
+                color: mergeExpanded ? "var(--fgColor-attention)" : "var(--fgColor-accent)",
+                border: "1px solid var(--borderColor-muted)",
+              }}
+              title={mergeExpanded ? "Collapse merge commits" : "Expand merge commits"}
+            >
+              <GitMergeIcon size={12} aria-hidden="true" />
+              Merge
+            </span>
+          ) : null}
+          <a
+            href={`/${owner}/${repo}/commit/${commit.oid}`}
+            className="truncate font-semibold no-underline hover:underline"
+            style={{ color: "var(--fgColor-default)" }}
+            title={commit.firstLine}
           >
-            Merge
-          </span>
+            {commit.firstLine}
+          </a>
+        </div>
+        {commit.authorName ? (
+          <div className="mt-0.5 truncate text-xs" style={{ color: "var(--fgColor-muted)" }}>
+            {commit.authorName}
+          </div>
         ) : null}
-        {commit.firstLine}
       </td>
-      <td className="text-zinc-500 dark:text-zinc-400">{commit.authorName}</td>
-      <td className="text-zinc-500 dark:text-zinc-400">{commit.when}</td>
+      <td className="py-2 text-right whitespace-nowrap">
+        <a
+          href={`/${owner}/${repo}/commit/${commit.oid}`}
+          className="font-mono text-xs no-underline hover:underline"
+          style={{ color: "var(--fgColor-muted)" }}
+        >
+          {commit.shortOid}
+        </a>
+      </td>
+      <td
+        className="py-2 text-right text-xs whitespace-nowrap"
+        style={{ color: "var(--fgColor-muted)" }}
+      >
+        {commit.when}
+      </td>
     </tr>
   );
 }

@@ -1,5 +1,13 @@
 import { sql, desc } from "drizzle-orm";
-import { sqliteTable, text, primaryKey, index, check, integer } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  primaryKey,
+  index,
+  uniqueIndex,
+  check,
+  integer,
+} from "drizzle-orm/sqlite-core";
 
 export const packCatalog = sqliteTable(
   "pack_catalog",
@@ -212,3 +220,147 @@ export const repoSecrets = sqliteTable(
 );
 
 export type RepoSecretRow = typeof repoSecrets.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Artifacts workspaces + competitive arena
+// ---------------------------------------------------------------------------
+// A workspace is an Artifacts fork used as an agent sandbox ("one repo per
+// unit of autonomous work"). Rows live in the *canonical* repo's DO so they
+// are consistent with the merge intents they produce. The fork name encodes
+// the canonical Artifacts name (`ws-<dg-name>-<rand>`) so push events routed
+// by repo name can find their home repo without a global index.
+
+export const workspaces = sqliteTable(
+  "workspaces",
+  {
+    artifactsName: text("artifacts_name").notNull(),
+    // "task" = free work-intent workspace, "arena" = match entry.
+    kind: text("kind").notNull(),
+    ownerDid: text("owner_did").notNull(),
+    workIntentId: text("work_intent_id"),
+    matchId: text("match_id"),
+    // Last observed head commit of the fork's default branch.
+    headOid: text("head_oid"),
+    pushCount: integer("push_count").notNull().default(0),
+    firstPushAt: integer("first_push_at"),
+    lastPushAt: integer("last_push_at"),
+    // open | merged | expired | deleted
+    status: text("status").notNull().default("open"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.artifactsName], name: "workspaces_pk" }),
+    index("idx_workspaces_match").on(t.matchId),
+    index("idx_workspaces_status").on(t.status),
+    check("chk_workspaces_kind", sql`"kind" IN ('task','arena')`),
+    check("chk_workspaces_status", sql`"status" IN ('open','merged','expired','deleted')`),
+  ]
+);
+
+export type WorkspaceRow = typeof workspaces.$inferSelect;
+
+// Time-boxed competitive match: same brief → one workspace fork per entrant
+// → composite judging (auto-signals + blind votes) → winner merged into the
+// canonical repo.
+export const matches = sqliteTable(
+  "matches",
+  {
+    id: text("id").notNull(),
+    // The owning repo's DO *name* — the alarm path emits resolve queue
+    // messages that need it for `idFromName`-based object reads.
+    doName: text("do_name").notNull(),
+    title: text("title").notNull(),
+    // Markdown brief shared by every entrant.
+    spec: text("spec").notNull(),
+    // open (recruiting) → building (time-boxed) → judging → resolved | expired
+    status: text("status").notNull().default("open"),
+    windowMinutes: integer("window_minutes").notNull(),
+    judgeMinutes: integer("judge_minutes").notNull(),
+    maxEntrants: integer("max_entrants").notNull(),
+    prizeRep: integer("prize_rep").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    startedAt: integer("started_at"),
+    endsAt: integer("ends_at"),
+    judgeEndsAt: integer("judge_ends_at"),
+    winnerEntryId: text("winner_entry_id"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "matches_pk" }),
+    index("idx_matches_status").on(t.status, t.endsAt),
+    check(
+      "chk_matches_status",
+      sql`"status" IN ('open','building','judging','resolved','expired')`
+    ),
+  ]
+);
+
+export type MatchRow = typeof matches.$inferSelect;
+
+export const matchEntries = sqliteTable(
+  "match_entries",
+  {
+    id: text("id").notNull(),
+    matchId: text("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    entrantDid: text("entrant_did").notNull(),
+    // Artifacts fork name for this entry's sandbox.
+    workspaceName: text("workspace_name").notNull(),
+    headOid: text("head_oid"),
+    pushCount: integer("push_count").notNull().default(0),
+    firstPushAt: integer("first_push_at"),
+    lastPushAt: integer("last_push_at"),
+    // Composite auto-score in milli-points (0..1000): preview reachable,
+    // wall-clock, commit signal. Filled at judging.
+    autoScore: integer("auto_score").notNull().default(0),
+    voteCount: integer("vote_count").notNull().default(0),
+    won: integer("won").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "match_entries_pk" }),
+    index("idx_match_entries_match").on(t.matchId),
+    index("idx_match_entries_did").on(t.entrantDid),
+    // One entry per entrant per match.
+    uniqueIndex("uq_match_entries_match_did").on(t.matchId, t.entrantDid),
+  ]
+);
+
+export type MatchEntryRow = typeof matchEntries.$inferSelect;
+
+export const matchVotes = sqliteTable(
+  "match_votes",
+  {
+    matchId: text("match_id")
+      .notNull()
+      .references(() => matches.id, { onDelete: "cascade" }),
+    voterDid: text("voter_did").notNull(),
+    entryId: text("entry_id").notNull(),
+    // Rep escrowed at vote time (Confetti-style stake-to-vote). Settled by
+    // the arena-resolve task: winner-side voters get stake back plus a
+    // pro-rata pool share; loser-side voters forfeit a fraction. The DO
+    // records the stake; rep actually moves in D1 via the route/task.
+    stake: integer("stake").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.matchId, t.voterDid], name: "match_votes_pk" }),
+    index("idx_match_votes_entry").on(t.entryId),
+  ]
+);
+
+export type MatchVoteRow = typeof matchVotes.$inferSelect;
+
+// Idempotency for at-least-once queue deliveries (Artifacts lifecycle
+// events). Event ids are Cloudflare-assigned and globally unique.
+export const processedEvents = sqliteTable(
+  "processed_events",
+  {
+    eventId: text("event_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId], name: "processed_events_pk" })]
+);
+
+export type ProcessedEventRow = typeof processedEvents.$inferSelect;

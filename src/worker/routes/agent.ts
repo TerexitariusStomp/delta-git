@@ -1,13 +1,26 @@
 import type { AppContext, AppRouter } from "./hono";
 import type { RepositoryRoute } from "@/worker/repositories/route";
 import type { AgentRow } from "@/worker/db/d1/schema";
-import type { MergeIntentRow } from "@/worker/do/repo/db/schema";
+import type {
+  MatchEntryRow,
+  MatchRow,
+  MergeIntentRow,
+  WorkspaceRow,
+} from "@/worker/do/repo/db/schema";
 
 import { getRepoStub } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
-import { adjustAgentRep, getAgent, registerAgent, verifyAgentRequest } from "@/worker/agent/auth";
+import {
+  adjustAgentRep,
+  getAgent,
+  registerAgent,
+  updateAgentMeta,
+  verifyAgentRequest,
+} from "@/worker/agent/auth";
+import { bumpArenaMatchEntryCount, insertArenaMatchIndex } from "@/worker/db/d1/dal/arena";
+import { adjustRep, findRepTarget } from "@/worker/db/d1/dal/reputation";
 import { applyUnifiedPatch } from "@/worker/agent/patch";
 import { scanTextForSecrets } from "@/worker/agent/secretscan";
 import { attemptMerge, mergeDryRun } from "@/worker/merge/engine";
@@ -23,6 +36,7 @@ import {
   rateLimit,
 } from "@/worker/agent/abuse";
 import { bytesToHex } from "@/worker/common/hex";
+import { arenaShuffleKey, clampStake, voteGateError } from "@/shared/arena";
 
 // delta-git agent API.
 //
@@ -32,8 +46,10 @@ import { bytesToHex } from "@/worker/common/hex";
 // everything here is JSON.
 
 const DEFAULT_QUORUM_K = 3;
-/** Rep required to cast merge-adjudication votes (sybil gate). */
-const ADJUDICATOR_MIN_REP = 0;
+// Contribution is permissionless but governance is earned: adjudication
+// and arena votes both require rep gained through merged work, vouches, or
+// epochs (VOTE_MIN_REP lives in shared/arena.ts — the UI needs it too).
+const ADJUDICATOR_MIN_REP = 5;
 
 function json(c: AppContext, body: unknown, status = 200): Response {
   return c.json(body as never, status as never);
@@ -78,6 +94,7 @@ async function authenticate(
     ts: c.req.header("x-dg-ts") ?? null,
     nonce: c.req.header("x-dg-nonce") ?? null,
     sig: c.req.header("x-dg-sig") ?? null,
+    model: c.req.header("x-dg-model") ?? null,
   });
   if (verified.kind !== "ok") return bad(c, `agent-auth:${verified.reason}`, 401);
   return { actor: verified.agent.did, agent: verified.agent };
@@ -104,11 +121,55 @@ export function registerAgentRoutes(router: AppRouter): void {
   // --- agent registry -----------------------------------------------------
 
   router.post("/api/agents", async (c) => {
-    const body = await c.req.json<{ pubkey?: string; label?: string }>().catch(() => null);
+    const body = await c.req
+      .json<{ pubkey?: string; label?: string; family?: string; model?: string }>()
+      .catch(() => null);
     if (!body?.pubkey) return bad(c, "pubkey required");
-    const agent = await registerAgent(c.var.db, { pubkeyHex: body.pubkey, label: body.label });
+    const agent = await registerAgent(c.var.db, {
+      pubkeyHex: body.pubkey,
+      label: body.label,
+      family: body.family,
+      model: body.model,
+    });
     if ("error" in agent) return bad(c, agent.error);
-    return json(c, { did: agent.did, rep: agent.rep, label: agent.label });
+    return json(c, {
+      did: agent.did,
+      rep: agent.rep,
+      label: agent.label,
+      family: agent.family,
+      model: agent.model,
+    });
+  });
+
+  // Self-declared metadata update — the agent must sign with the DID in the
+  // path (self-edit only). family/model roll up into the leaderboards.
+  router.post("/api/agents/:did/meta", async (c) => {
+    const did = c.req.param("did");
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const verified = await verifyAgentRequest({
+      db: c.var.db,
+      method: c.req.method,
+      path: new URL(c.req.url).pathname,
+      body,
+      did,
+      ts: c.req.header("x-dg-ts") ?? null,
+      nonce: c.req.header("x-dg-nonce") ?? null,
+      sig: c.req.header("x-dg-sig") ?? null,
+    });
+    if (verified.kind !== "ok") return bad(c, `agent-auth:${verified.reason}`, 401);
+    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
+      label?: string;
+      family?: string;
+      model?: string;
+    };
+    const updated = await updateAgentMeta(c.var.db, verified.agent.did, parsed);
+    if (!updated) return bad(c, "unknown-did", 404);
+    return json(c, {
+      did: updated.did,
+      label: updated.label,
+      family: updated.family,
+      model: updated.model,
+    });
   });
 
   router.get("/api/agents/:did", async (c) => {
@@ -118,13 +179,16 @@ export function registerAgentRoutes(router: AppRouter): void {
       did: agent.did,
       rep: agent.rep,
       label: agent.label,
+      family: agent.family,
+      model: agent.model,
+      family_verified: agent.familyVerified === 1,
       banned: agent.banned === 1,
     });
   });
 
   router.get("/api/leaderboard", async (c) => {
     const rows = await c.var.db.query.agents.findMany({
-      columns: { did: true, rep: true, label: true },
+      columns: { did: true, rep: true, label: true, family: true, model: true },
       orderBy: (agents, { desc }) => [desc(agents.rep)],
       limit: 50,
     });
@@ -444,6 +508,73 @@ export function registerAgentRoutes(router: AppRouter): void {
   });
 
   // --- /patch: agent commits without a clone ------------------------------------
+
+  // Mint a short-lived Artifacts access token for an `artifacts`-backend
+  // repo. PAT `pull` grants mint `read` tokens; `push` grants (or a signed
+  // agent envelope) may mint `write`. The plaintext token is returned once
+  // and never stored or logged.
+  router.post("/api/:owner/:repo/dg/token", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    if (route.backend !== "artifacts" || !route.artifactsName) {
+      return bad(c, "not-artifacts-repo", 409);
+    }
+    const bodyBytes = new Uint8Array(await c.req.raw.arrayBuffer());
+    const parsed = JSON.parse(new TextDecoder().decode(bodyBytes) || "{}") as {
+      scope?: string;
+      ttl?: number;
+    };
+    const scope = parsed.scope === "read" ? "read" : "write";
+
+    // PAT auth carries a grant level: `pull` mints read tokens, `push` mints
+    // write. Signed agent envelopes are repo-scoped already → write ok.
+    const auth = await authenticateGitRequest(c.env, c.req.raw, route, { db: c.var.db }).catch(
+      () => null
+    );
+    let actor: string;
+    if (auth && auth.kind === "pat") {
+      if (scope === "write" && auth.verified.level !== "push") {
+        return bad(c, "push-grant-required-for-write", 403);
+      }
+      actor = auth.verified.userId;
+    } else {
+      const verified = await verifyAgentRequest({
+        db: c.var.db,
+        method: c.req.method,
+        path: new URL(c.req.url).pathname,
+        body: bodyBytes,
+        did: c.req.header("x-dg-did") ?? null,
+        ts: c.req.header("x-dg-ts") ?? null,
+        nonce: c.req.header("x-dg-nonce") ?? null,
+        sig: c.req.header("x-dg-sig") ?? null,
+      });
+      if (verified.kind !== "ok") return bad(c, "unauthorized", 401);
+      actor = verified.agent.did;
+    }
+
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.tokenMint, actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+
+    const artifacts = c.env.ARTIFACTS;
+    if (!artifacts) return bad(c, "artifacts-unavailable", 503);
+    const ttl =
+      typeof parsed.ttl === "number" && Number.isFinite(parsed.ttl)
+        ? Math.min(Math.max(Math.floor(parsed.ttl), 60), 86400)
+        : 3600;
+    try {
+      const repo = await artifacts.get(route.artifactsName);
+      const token = await repo.createToken(scope, ttl);
+      metric(c.env, "artifacts.sync", { scope: "token.mint", index: route.repositoryId });
+      return json(c, {
+        remote: route.artifactsRemote,
+        token: token.plaintext,
+        scope: token.scope,
+        expires_at: token.expiresAt,
+      });
+    } catch (e) {
+      return bad(c, `artifacts:${String(e)}`, 502);
+    }
+  });
 
   router.post("/api/:owner/:repo/dg/patch", async (c) => {
     const route = await resolveRepo(c);
@@ -838,6 +969,13 @@ export function registerAgentRoutes(router: AppRouter): void {
     if (principal instanceof Response) return principal;
     const limited = await rateLimit(c.env.ROUTES, LIMITS.vote, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
+    // Earned-rep gate — verify votes are governance; contribution is free.
+    const voter = await findRepTarget(c.var.db, principal.actor);
+    const gate = voteGateError(voter, 0);
+    if (gate === "no-identity" || gate === "insufficient-rep") {
+      return bad(c, "insufficient-rep", 403);
+    }
+    if (gate === "account-too-new") return bad(c, "account-too-new", 403);
     const parsed = JSON.parse(new TextDecoder().decode(body)) as {
       resolution_digest?: string;
       rationale?: string;
@@ -896,6 +1034,54 @@ export function registerAgentRoutes(router: AppRouter): void {
       workIntentId: parsed.work_intent_id,
     });
     return json(c, { queued: true });
+  });
+
+  // Site-smith: describe a site, get a WordPress build through the normal
+  // merge lanes. Contribution stays permissionless — no rep gate here.
+  router.post("/api/:owner/:repo/dg/sites", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.siteBuild, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
+      description?: string;
+      title?: string;
+    };
+    const description = (parsed.description ?? parsed.title ?? "").trim();
+    if (!description) return bad(c, "description required");
+    if (description.length > 8000) return bad(c, "description-too-long");
+
+    const stub = getRepoStub(c.env, route.doName);
+    const row = await stub.createWorkIntent({
+      row: {
+        id: `idea-${crypto.randomUUID().slice(0, 8)}`,
+        // The `site:` prefix is what routes this intent to site-smith —
+        // overnight sweeps ideas but skips site builds.
+        title: `site: ${description.split("\n")[0].slice(0, 150)}`,
+        body: description.slice(0, 8000),
+        createdBy: principal.actor,
+        kind: "idea",
+        sourceUri: null,
+        result: null,
+        status: "open",
+        claimedBy: null,
+        claimExpiresAt: null,
+        createdAt: Date.now(),
+        closedAt: null,
+      },
+      actor: principal.actor,
+    });
+    await c.env.REPO_TASKS_QUEUE.send({
+      kind: "site-build",
+      doId: stub.id.toString(),
+      repoId: route.doName,
+      workIntentId: row.id,
+    });
+    metric(c.env, "agent.action", { scope: "site.build", index: principal.actor });
+    return json(c, { id: row.id, status: "queued" }, 202);
   });
 
   // --- provenance export ------------------------------------------------------
@@ -1011,5 +1197,415 @@ export function registerAgentRoutes(router: AppRouter): void {
         "Cache-Control": "public, max-age=31536000, immutable",
       },
     });
+  });
+
+  // --- workspaces + arena ----------------------------------------------------
+  //
+  // Workspaces are Artifacts forks used as isolated agent sandboxes. Arena
+  // matches time-box N entrants on the same spec, judge by composite score
+  // (auto-signals + blind votes), then merge the winner into canonical.
+  // Both require an `artifacts`-backend repo — fork() is an Artifacts API.
+
+  const entryView = (
+    entry: MatchEntryRow,
+    blind: boolean,
+    viewerKey: string
+  ): Record<string, unknown> => ({
+    id: entry.id,
+    // Blind judging: the entrant's DID is masked until the match resolves
+    // or this viewer has committed a vote. `slot` stays stable per viewer.
+    entrant_did: blind ? null : entry.entrantDid,
+    slot: arenaShuffleKey(viewerKey, entry.matchId, entry.id) % 0xffff,
+    workspace: entry.workspaceName,
+    head_oid: entry.headOid,
+    push_count: entry.pushCount,
+    first_push_at: entry.firstPushAt,
+    last_push_at: entry.lastPushAt,
+    auto_score: entry.autoScore,
+    vote_count: entry.voteCount,
+    won: entry.won === 1,
+  });
+
+  /**
+   * Optional auth for read routes — returns the caller's actor key (PAT
+   * userId or agent DID) for vote-reveal/shuffle seeding, or "anon".
+   */
+  async function optionalViewer(c: AppContext, route: RepositoryRoute): Promise<string> {
+    const auth = await authenticateGitRequest(c.env, c.req.raw, route, {
+      db: c.var.db,
+    }).catch(() => null);
+    if (auth && auth.kind === "pat") return auth.verified.userId;
+    return c.req.header("x-dg-did") ?? "anon";
+  }
+
+  router.post("/api/:owner/:repo/dg/workspaces", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    if (route.backend !== "artifacts" || !route.artifactsName) {
+      return bad(c, "not-artifacts-repo", 409);
+    }
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.workspaceCreate, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+
+    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
+      work_intent_id?: string;
+    };
+    const artifacts = c.env.ARTIFACTS;
+    if (!artifacts) return bad(c, "artifacts-unavailable", 503);
+
+    const stub = getRepoStub(c.env, route.doName);
+    const wsName = `ws-${route.artifactsName}-${crypto.randomUUID().slice(0, 8)}`;
+    try {
+      const canonical = await artifacts.get(route.artifactsName);
+      // fork() returns the new repo plus its initial access token — no
+      // second RPC needed to mint one.
+      const fork = await canonical.fork(wsName);
+      const row: WorkspaceRow = {
+        artifactsName: wsName,
+        kind: "task",
+        ownerDid: principal.actor,
+        workIntentId: parsed.work_intent_id ?? null,
+        matchId: null,
+        headOid: null,
+        pushCount: 0,
+        firstPushAt: null,
+        lastPushAt: null,
+        status: "open",
+        createdAt: Date.now(),
+      };
+      const attached = await stub.attachWorkspace({ row, actor: principal.actor });
+      if (attached.status === "exists") return bad(c, "workspace-name-collision", 409);
+      metric(c.env, "arena.enter", { scope: "workspace", index: route.repositoryId });
+      return json(c, {
+        workspace: wsName,
+        remote: fork.remote,
+        token: fork.token,
+        expires_at: fork.tokenExpiresAt,
+      });
+    } catch (e) {
+      return bad(c, `artifacts:${String(e)}`, 502);
+    }
+  });
+
+  router.post("/api/:owner/:repo/dg/matches", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    if (route.backend !== "artifacts") return bad(c, "not-artifacts-repo", 409);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.matchCreate, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+
+    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
+      title?: string;
+      spec?: string;
+      window_minutes?: number;
+      judge_minutes?: number;
+      max_entrants?: number;
+      prize_rep?: number;
+    };
+    if (!parsed.title || !parsed.spec) return bad(c, "title-and-spec-required");
+    const windowMinutes = Math.min(Math.max(parsed.window_minutes ?? 60, 5), 1440);
+    const judgeMinutes = Math.min(Math.max(parsed.judge_minutes ?? 15, 1), 1440);
+    const maxEntrants = Math.min(Math.max(parsed.max_entrants ?? 4, 2), 16);
+    const prizeRep = Math.min(Math.max(parsed.prize_rep ?? 25, 0), 1000);
+    const now = Date.now();
+    const row: MatchRow = {
+      id: `match-${crypto.randomUUID().slice(0, 8)}`,
+      doName: route.doName,
+      title: parsed.title.slice(0, 200),
+      spec: parsed.spec.slice(0, 20000),
+      // Matches start building immediately; "open" is reserved for a
+      // recruiting phase if one is ever needed.
+      status: "building",
+      windowMinutes,
+      judgeMinutes,
+      maxEntrants,
+      prizeRep,
+      createdBy: principal.actor,
+      createdAt: now,
+      startedAt: now,
+      endsAt: now + windowMinutes * 60 * 1000,
+      judgeEndsAt: null,
+      winnerEntryId: null,
+    };
+    const stub = getRepoStub(c.env, route.doName);
+    await stub.createMatch({ row, actor: principal.actor });
+    // Feed index for the global /arena page — the DO stays authoritative;
+    // this row exists so the feed renders without per-repo DO fan-out.
+    await insertArenaMatchIndex(c.var.db, {
+      id: row.id,
+      repositoryId: route.repositoryId,
+      doName: route.doName,
+      ownerSlug: route.routeNamespaceSlug,
+      repoSlug: route.routeRepoSlug,
+      title: row.title,
+      status: "building",
+      entryCount: 0,
+      endsAt: row.endsAt,
+      judgeEndsAt: null,
+      winnerEntryId: null,
+      createdBy: principal.actor,
+      createdAt: now,
+    });
+    metric(c.env, "arena.enter", { scope: "match.create", index: route.repositoryId });
+    return json(c, { id: row.id, status: row.status, ends_at: row.endsAt }, 201);
+  });
+
+  router.get("/api/:owner/:repo/dg/matches", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const status = c.req.query("status");
+    const statuses = status ? [status] : ["open", "building", "judging", "resolved"];
+    const matches = await stub.listMatches(statuses);
+    return json(c, {
+      matches: matches.map((m) => ({
+        id: m.id,
+        title: m.title,
+        status: m.status,
+        ends_at: m.endsAt,
+        judge_ends_at: m.judgeEndsAt,
+        max_entrants: m.maxEntrants,
+        prize_rep: m.prizeRep,
+        created_by: m.createdBy,
+        created_at: m.createdAt,
+      })),
+    });
+  });
+
+  router.get("/api/:owner/:repo/dg/matches/:id", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const detail = await stub.getMatch(c.req.param("id"));
+    if (!detail) return bad(c, "match-not-found", 404);
+    const { match, entries, votes } = detail;
+
+    const viewerKey = await optionalViewer(c, route);
+    const voterVoted = votes.some((v) => v.voterDid === viewerKey);
+    // Blind until resolved or the viewer has locked in a vote.
+    const blind = match.status !== "resolved" && !voterVoted;
+    const ordered = [...entries].sort(
+      (a, b) =>
+        arenaShuffleKey(viewerKey, match.id, a.id) - arenaShuffleKey(viewerKey, match.id, b.id)
+    );
+    return json(c, {
+      match: {
+        id: match.id,
+        title: match.title,
+        spec: match.spec,
+        status: match.status,
+        ends_at: match.endsAt,
+        judge_ends_at: match.judgeEndsAt,
+        max_entrants: match.maxEntrants,
+        prize_rep: match.prizeRep,
+        created_by: match.createdBy,
+        winner_entry_id: match.status === "resolved" ? match.winnerEntryId : null,
+      },
+      blind,
+      voted: voterVoted,
+      entries: ordered.map((e) => entryView(e, blind, viewerKey)),
+      // Individual vote rows only become public after resolution.
+      votes:
+        match.status === "resolved"
+          ? votes.map((v) => ({ voter_did: v.voterDid, entry_id: v.entryId, stake: v.stake }))
+          : [],
+    });
+  });
+
+  router.post("/api/:owner/:repo/dg/matches/:id/enter", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    if (route.backend !== "artifacts" || !route.artifactsName) {
+      return bad(c, "not-artifacts-repo", 409);
+    }
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.matchEnter, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+
+    const artifacts = c.env.ARTIFACTS;
+    if (!artifacts) return bad(c, "artifacts-unavailable", 503);
+    const stub = getRepoStub(c.env, route.doName);
+    const matchId = c.req.param("id");
+    const wsName = `ws-${route.artifactsName}-${crypto.randomUUID().slice(0, 8)}`;
+
+    let forkRemote: string;
+    let forkToken: string;
+    let expiresAt: string;
+    try {
+      const canonical = await artifacts.get(route.artifactsName);
+      // fork() returns the new repo plus its initial access token.
+      const fork = await canonical.fork(wsName);
+      forkRemote = fork.remote;
+      forkToken = fork.token;
+      expiresAt = fork.tokenExpiresAt;
+    } catch (e) {
+      return bad(c, `artifacts:${String(e)}`, 502);
+    }
+
+    const entryId = `entry-${crypto.randomUUID().slice(0, 8)}`;
+    const entered = await stub.enterMatch({
+      matchId,
+      entryId,
+      entrantDid: principal.actor,
+      workspaceName: wsName,
+      actor: principal.actor,
+    });
+    if (entered.status !== "entered") {
+      // The DO rejected the entry — the orphan fork must not leak.
+      await artifacts.delete(wsName).catch(() => {});
+      const status = entered.status === "not-found" ? 404 : 409;
+      return bad(c, `enter:${entered.status}`, status);
+    }
+    await bumpArenaMatchEntryCount(c.var.db, matchId);
+    metric(c.env, "arena.enter", { scope: "match", index: matchId });
+    return json(
+      c,
+      {
+        entry_id: entryId,
+        workspace: wsName,
+        remote: forkRemote,
+        token: forkToken,
+        expires_at: expiresAt,
+      },
+      201
+    );
+  });
+
+  router.post("/api/:owner/:repo/dg/matches/:id/vote", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+
+    const limited = await rateLimit(c.env.ROUTES, LIMITS.matchVote, principal.actor);
+    if (!limited.ok) return bad(c, "rate-limited", 429);
+
+    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
+      entry_id?: string;
+      stake?: number;
+    };
+    if (!parsed.entry_id) return bad(c, "entry-id-required");
+    const stake = clampStake(parsed.stake);
+
+    // Earned-and-staked gate: the voter must hold rep (agents or unified
+    // identities — same currency) covering the floor plus the stake, and
+    // the account must be old enough that sockpuppets can't vote on day 0.
+    const target = await findRepTarget(c.var.db, principal.actor);
+    const gate = voteGateError(target, stake);
+    if (gate) return bad(c, gate, 403);
+
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.castMatchVote({
+      matchId: c.req.param("id"),
+      voterDid: principal.actor,
+      entryId: parsed.entry_id,
+      stake,
+    });
+    if (result.status === "duplicate") return json(c, { status: "already-voted" }, 200);
+    if (result.status === "voted") {
+      // Escrow the stake only after the DO accepted the vote — duplicates
+      // must never burn rep. Settlement happens in the arena-resolve task.
+      await adjustRep(c.var.db, principal.actor, -stake).catch(() => {});
+    }
+    if (result.status !== "voted") {
+      return bad(c, `vote:${result.status}`, result.status === "not-found" ? 404 : 409);
+    }
+    metric(c.env, "arena.vote", { scope: c.req.param("id"), index: parsed.entry_id });
+    return json(c, { status: "voted" });
+  });
+
+  // Provenance bundle — the whole match as one downloadable, signed JSON:
+  // spec, entries (revealed), votes, score breakdown, the op-log slice that
+  // mentions this match, and an HMAC envelope like /dg/export.
+  router.get("/api/:owner/:repo/dg/matches/:id/bundle", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const matchId = c.req.param("id");
+    const detail = await stub.getMatch(matchId);
+    if (!detail) return bad(c, "match-not-found", 404);
+    const { match, entries, votes } = detail;
+    if (match.status !== "resolved") return bad(c, "match-not-resolved", 409);
+
+    const opLog = await stub.listOpLog(-1);
+    const matchOps = opLog.filter((op) => {
+      const payload = JSON.parse(op.payload) as Record<string, unknown> | null;
+      return payload && payload.matchId === matchId;
+    });
+    const bundle = {
+      version: 1,
+      exported_at: Date.now(),
+      match: {
+        id: match.id,
+        title: match.title,
+        spec: match.spec,
+        status: match.status,
+        window_minutes: match.windowMinutes,
+        judge_minutes: match.judgeMinutes,
+        ends_at: match.endsAt,
+        judge_ends_at: match.judgeEndsAt,
+        winner_entry_id: match.winnerEntryId,
+        created_by: match.createdBy,
+      },
+      entries: entries.map((e) => ({
+        id: e.id,
+        entrant_did: e.entrantDid,
+        workspace: e.workspaceName,
+        head_oid: e.headOid,
+        push_count: e.pushCount,
+        first_push_at: e.firstPushAt,
+        last_push_at: e.lastPushAt,
+        auto_score: e.autoScore,
+        vote_count: e.voteCount,
+        won: e.won === 1,
+      })),
+      votes: votes.map((v) => ({
+        voter_did: v.voterDid,
+        entry_id: v.entryId,
+        stake: v.stake,
+        cast_at: v.createdAt,
+      })),
+      op_log: matchOps,
+    };
+    const bundleJson = JSON.stringify(bundle);
+    const manifestHash = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(bundleJson)
+    );
+    const kek = (c.env as { DG_KEK?: string }).DG_KEK ?? "insecure-dev-kek";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(kek) as BufferSource,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(bundleJson) as BufferSource
+    );
+    return new Response(
+      JSON.stringify({
+        manifest_sha256: bytesToHex(new Uint8Array(manifestHash)),
+        signature: `hmac-sha256:${bytesToHex(new Uint8Array(sig))}`,
+        bundle,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/x-dg-arena-bundle+json",
+          "Cache-Control": "no-store",
+        },
+      }
+    );
   });
 }

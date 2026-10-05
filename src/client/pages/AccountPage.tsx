@@ -40,7 +40,7 @@ export function AccountPage({
 }: AccountPageProps) {
   const handle = primaryNamespaceSlug ? `@${primaryNamespaceSlug}` : "Identity not yet claimed";
   return (
-    <div className="mx-auto max-w-3xl py-8">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
       <header className="mb-12">
         <p className="m-0 mb-2 text-xs font-medium uppercase tracking-widest text-accent-500 dark:text-accent-400">
           Identity

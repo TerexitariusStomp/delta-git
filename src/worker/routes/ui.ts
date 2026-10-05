@@ -1,5 +1,5 @@
 import { handleAdminPage } from "./ui/adminPage";
-import { handleAgentsPage, handleIdeasPage } from "./ui/agents";
+import { handleAgentsPage, handleIdeasPage, handleIdeasSiteBuild } from "./ui/agents";
 import { handleOwnerOverview, handleRepoOverview } from "./ui/overview";
 import { handleTree } from "./ui/tree";
 import { handleBlob } from "./ui/blob";
@@ -7,12 +7,15 @@ import { handleCommits, handleCommitFragments, handleCommitDiff, handleCommit } 
 import { handleRaw, handleRawPath } from "./ui/raw";
 import { handleRefsApi } from "./ui/refsApi";
 import { handleLeaderboard } from "./ui/leaderboard";
+import { handleArenaFeed, handleArenaMatch, handleArenaVote, handleRepoArena } from "./ui/arena";
 import type { AppRouter } from "./hono";
 
 export function registerUiRoutes(router: AppRouter) {
   // Global agent leaderboard — registered before /:owner so the literal
   // "agents" segment isn't parsed as a repo owner slug.
   router.get(`/agents`, handleLeaderboard);
+  // Global arena feed — same shadowing reason as /agents.
+  router.get(`/arena`, handleArenaFeed);
   // Owner repos list
   router.get(`/:owner`, handleOwnerOverview);
   // Repo overview page
@@ -50,6 +53,12 @@ export function registerUiRoutes(router: AppRouter) {
 
   // Idea-first UX board — registered after /agents for the same shadowing reasons
   router.get(`/:owner/:repo/ideas`, handleIdeasPage);
+  router.post(`/:owner/:repo/ideas/site`, handleIdeasSiteBuild);
+
+  // Arena — repo-scoped match list + blind-judging match detail + vote POST
+  router.get(`/:owner/:repo/arena`, handleRepoArena);
+  router.get(`/:owner/:repo/arena/:id`, handleArenaMatch);
+  router.post(`/:owner/:repo/arena/:id/vote`, handleArenaVote);
 
   // Admin dashboard for repository management
   router.get(`/:owner/:repo/admin`, handleAdminPage);

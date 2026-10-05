@@ -12,6 +12,7 @@ type CommitView = {
   firstLine: string;
   authorName: string;
   when: string;
+  whenEpoch?: number;
   isMerge?: boolean;
 };
 
@@ -24,11 +25,23 @@ export type MergeExpanderProps = {
 function MergeStatusRow({ message }: { message: string }) {
   return (
     <tr>
-      <td colSpan={4} className="text-zinc-500 dark:text-zinc-400">
+      <td colSpan={3} style={{ color: "var(--fgColor-muted)" }}>
         {message}
       </td>
     </tr>
   );
+}
+
+/** GitHub groups the commit list by author date ("Commits on Oct 5, 2026"). */
+function dayGroupLabel(commit: CommitView): string {
+  if (!commit.whenEpoch) return "Commits";
+  const d = new Date(commit.whenEpoch * 1000);
+  return `Commits on ${d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  })}`;
 }
 
 export function MergeExpanderIsland({ owner, repo, commits }: MergeExpanderProps) {
@@ -88,79 +101,95 @@ export function MergeExpanderIsland({ owner, repo, commits }: MergeExpanderProps
     };
   }
 
-  return (
-    <table
-      id="commits-table"
-      data-owner={owner}
-      data-repo={repo}
-      className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 shadow-xs dark:border-zinc-800/60"
-    >
-      <thead>
-        <tr>
-          <th>OID</th>
-          <th>Message</th>
-          <th>Author</th>
-          <th>Date</th>
-        </tr>
-      </thead>
-      <tbody>
-        {commits.length ? (
-          commits.map((commit) => {
-            const isMerge = Boolean(commit.isMerge);
-            const mergeOid = commit.oid;
-            const isExpanded = Boolean(expandedByOid[mergeOid]);
-            const isLoading = Boolean(loadingByOid[mergeOid]);
-            const mergeRows = mergeRowsByOid[mergeOid] || [];
-            const error = errorByOid[mergeOid];
-            const mergeRowClass = isMerge
-              ? "cursor-pointer bg-accent-50/40 hover:bg-accent-50/60 dark:bg-accent-900/15 dark:hover:bg-accent-900/25"
-              : "";
+  // Group consecutive commits by author-day, like GitHub's commit list.
+  const groups: { label: string; commits: CommitView[] }[] = [];
+  for (const commit of commits) {
+    const label = dayGroupLabel(commit);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) {
+      last.commits.push(commit);
+    } else {
+      groups.push({ label, commits: [commit] });
+    }
+  }
 
-            return (
-              <Fragment key={commit.oid}>
-                <CommitRow
-                  owner={owner}
-                  repo={repo}
-                  commit={commit}
-                  isMerge={isMerge}
-                  rowClass={mergeRowClass}
-                  toggleOid={isMerge ? mergeOid : undefined}
-                  mergeExpanded={isExpanded}
-                  onToggle={isMerge ? onMergeRowClick(mergeOid) : undefined}
-                />
-                {isMerge && isExpanded && isLoading ? (
-                  <MergeStatusRow message="Loading..." />
-                ) : null}
-                {isMerge && isExpanded && !isLoading && error ? (
-                  <MergeStatusRow message={`Failed to load merge commits: ${error}`} />
-                ) : null}
-                {isMerge && isExpanded && !isLoading && !error && !mergeRows.length ? (
-                  <MergeStatusRow message="(No commits to show for this merge yet)" />
-                ) : null}
-                {isMerge && isExpanded && !isLoading && !error
-                  ? mergeRows.map((entry) => (
-                      <CommitRow
-                        key={entry.oid}
-                        owner={owner}
-                        repo={repo}
-                        commit={entry}
-                        compact
-                        mergeOf={mergeOid}
-                      />
-                    ))
-                  : null}
-              </Fragment>
-            );
-          })
-        ) : (
-          <tr>
-            <td colSpan={4} className="text-zinc-500 dark:text-zinc-400">
-              (none)
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
+  return (
+    <div id="commits-table" data-owner={owner} data-repo={repo} className="mt-4 space-y-4">
+      {groups.length ? (
+        groups.map((group) => (
+          <section key={group.label} aria-label={group.label}>
+            <h3
+              className="mb-2 mt-0 flex items-center gap-2 text-sm font-semibold"
+              style={{ color: "var(--fgColor-default)" }}
+            >
+              {group.label}
+            </h3>
+            <div
+              className="overflow-hidden rounded-md"
+              style={{ border: "1px solid var(--borderColor-default)" }}
+            >
+              <table>
+                <tbody>
+                  {group.commits.map((commit) => {
+                    const isMerge = Boolean(commit.isMerge);
+                    const mergeOid = commit.oid;
+                    const isExpanded = Boolean(expandedByOid[mergeOid]);
+                    const isLoading = Boolean(loadingByOid[mergeOid]);
+                    const mergeRows = mergeRowsByOid[mergeOid] || [];
+                    const error = errorByOid[mergeOid];
+
+                    return (
+                      <Fragment key={commit.oid}>
+                        <CommitRow
+                          owner={owner}
+                          repo={repo}
+                          commit={commit}
+                          isMerge={isMerge}
+                          toggleOid={isMerge ? mergeOid : undefined}
+                          mergeExpanded={isExpanded}
+                          onToggle={isMerge ? onMergeRowClick(mergeOid) : undefined}
+                        />
+                        {isMerge && isExpanded && isLoading ? (
+                          <MergeStatusRow message="Loading…" />
+                        ) : null}
+                        {isMerge && isExpanded && !isLoading && error ? (
+                          <MergeStatusRow message={`Failed to load merge commits: ${error}`} />
+                        ) : null}
+                        {isMerge && isExpanded && !isLoading && !error && !mergeRows.length ? (
+                          <MergeStatusRow message="(No commits to show for this merge yet)" />
+                        ) : null}
+                        {isMerge && isExpanded && !isLoading && !error
+                          ? mergeRows.map((entry) => (
+                              <CommitRow
+                                key={entry.oid}
+                                owner={owner}
+                                repo={repo}
+                                commit={entry}
+                                compact
+                                mergeOf={mergeOid}
+                              />
+                            ))
+                          : null}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))
+      ) : (
+        <div
+          className="rounded-md p-6 text-center text-sm"
+          style={{
+            border: "1px solid var(--borderColor-default)",
+            color: "var(--fgColor-muted)",
+          }}
+        >
+          No commits yet
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -8,6 +8,7 @@ type BreadcrumbsProps = {
   parentHref?: string | null;
 };
 
+/** GitHub-style inline path crumbs (e.g. `src / components / file.tsx`). */
 export function Breadcrumbs({ items, parentHref }: BreadcrumbsProps) {
   if (!items?.length) {
     return null;
@@ -15,24 +16,36 @@ export function Breadcrumbs({ items, parentHref }: BreadcrumbsProps) {
 
   return (
     <nav
-      className="mb-4 flex items-center gap-2 rounded-xl bg-zinc-100 dark:bg-zinc-800/30 p-3 text-sm"
+      className="flex min-w-0 items-center gap-1.5 overflow-x-auto text-sm whitespace-nowrap"
       aria-label="Breadcrumbs"
     >
       {parentHref ? (
         <>
           <a
             href={parentHref}
-            className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="no-underline hover:underline"
+            style={{ color: "var(--fgColor-muted)" }}
+            aria-label="Parent directory"
           >
             ..
           </a>
-          <span className="text-zinc-400 dark:text-zinc-500">/</span>
+          <span style={{ color: "var(--fgColor-muted)" }}>/</span>
         </>
       ) : null}
       {items.map((item, index) => (
-        <span key={`${item.name}-${index}`}>
-          {item.href ? <a href={item.href}>{item.name}</a> : <strong>{item.name}</strong>}
-          {index < items.length - 1 ? " / " : null}
+        <span key={`${item.name}-${index}`} className="flex items-center gap-1.5">
+          {item.href ? (
+            <a href={item.href} className="no-underline hover:underline">
+              {item.name}
+            </a>
+          ) : (
+            <strong className="font-semibold" style={{ color: "var(--fgColor-default)" }}>
+              {item.name}
+            </strong>
+          )}
+          {index < items.length - 1 ? (
+            <span style={{ color: "var(--fgColor-muted)" }}>/</span>
+          ) : null}
         </span>
       ))}
     </nav>

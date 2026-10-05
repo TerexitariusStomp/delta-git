@@ -1,0 +1,1 @@
+ALTER TABLE `match_votes` ADD `stake` integer DEFAULT 0 NOT NULL;

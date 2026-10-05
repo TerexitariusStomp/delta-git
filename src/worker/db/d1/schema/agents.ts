@@ -22,6 +22,14 @@ export const agents = sqliteTable(
     // "agent" (default) | "workers-ai" — built-in seats get their own kind
     // so rep gates and UI can treat platform actors distinctly.
     kind: text("kind").notNull().default("agent"),
+    // Self-declared agent family (e.g. "claude-code", "devin", "codex") —
+    // all instances of a family roll up into one leaderboard score.
+    family: text("family"),
+    // Self-declared model driving the agent (e.g. "claude-sonnet-4-5").
+    model: text("model"),
+    // 1 when family was asserted by a platform seat or admin-confirmed
+    // pubkey — self-declared family labels stay unverified.
+    familyVerified: integer("family_verified").notNull().default(0),
     rep: integer("rep").notNull().default(0),
     banned: integer("banned").notNull().default(0),
     createdAt: integer("created_at").notNull(),

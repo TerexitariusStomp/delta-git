@@ -8,6 +8,8 @@ import { handleDeployMessage } from "./deploy";
 import { handleAdjudicateMessage } from "./adjudicate";
 import { handleWebhookMessage } from "./webhook";
 import { RepoTaskQueueMessageSchema } from "./types";
+import { handleArtifactsEventBatch } from "./artifactsEvents";
+import { handleArenaResolveMessage } from "./arena";
 
 export type { RepoTaskQueueMessage, RepositoryDeleteMessage, RouteCacheSyncMessage } from "./types";
 
@@ -22,6 +24,12 @@ export async function handleRepoTaskQueue(
   ctx: ExecutionContext
 ): Promise<void> {
   const log = createLogger(env.LOG_LEVEL, { service: "RepoTaskQueue" });
+  // The artifacts-events queue carries Cloudflare-owned payloads, not our
+  // RepoTaskQueueMessage union — dispatch on the queue name first.
+  if (batch.queue === "dg-artifacts-events") {
+    await handleArtifactsEventBatch(batch, env);
+    return;
+  }
   for (const message of batch.messages) {
     const parsed = RepoTaskQueueMessageSchema.safeParse(message.body);
     if (!parsed.success) {
@@ -59,8 +67,12 @@ export async function handleRepoTaskQueue(
       case "adjudicate":
         await handleAdjudicateMessage(message, body, env);
         break;
+      case "arena-resolve":
+        await handleArenaResolveMessage(message, body, env);
+        break;
       case "federate":
-      case "overnight": {
+      case "overnight":
+      case "site-build": {
         // RepoAgent instances are keyed by the repo's DO id.
         const agent = env.REPO_AGENT_DO.get(env.REPO_AGENT_DO.idFromName(body.doId));
         const result = await agent.runQueueTask(body);

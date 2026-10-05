@@ -144,7 +144,7 @@ describe("pack-first fetch and UI", () => {
     const treeHtml = await treeRes.text();
     expect(treeHtml).toContain("hello.txt");
     expect(treeHtml).toContain("CLAUDE.md");
-    expect(treeHtml).toContain("lucide-file-symlink");
+    expect(treeHtml).toContain("octicon-file-symlink-file");
 
     const blobRes = await workerExports.default.fetch(
       `https://example.com/${owner}/${repo}/blob?ref=main&path=${encodeURIComponent("hello.txt")}`

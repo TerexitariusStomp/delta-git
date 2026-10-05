@@ -83,6 +83,14 @@
   "ai": {
     "binding": "AI"
   },
+  // Cloudflare Artifacts: hybrid backend for opted-in repositories. The
+  // namespace ("delta-git") must exist on the account before deploy.
+  "artifacts": [
+    {
+      "binding": "ARTIFACTS",
+      "namespace": "delta-git"
+    }
+  ],
   // Analytics Engine is included with Workers Paid; `metric()` no-ops if the
   // binding is ever absent (e.g. an older deploy config).
   "analytics_engine_datasets": [
@@ -103,6 +111,15 @@
         "queue": "git-on-cloudflare-repo-maint",
         "max_batch_size": 1,
         "max_batch_timeout": 1
+      },
+      {
+        // Cloudflare lifecycle events (cf.artifacts.repo.*) are delivered to
+        // this queue via an account-level event subscription created with
+        // `wrangler queues subscription create`. Kept separate from the repo
+        // maintenance queue since the payload schema is Cloudflare-owned.
+        "queue": "dg-artifacts-events",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
       }
     ]
   },
@@ -132,6 +149,9 @@
     // Hermes browser-agent deployment origin (embed.js source for /embed/hermes).
     "HERMES_ORIGIN": "https://hermes.widespread.fyi",
     // Hosts allowed as OAuth return_to targets — wpcloud SSO handoff.
-    "ALLOWED_RETURN_HOSTS": "wpcloud.delta-git.workers.dev"
+    "ALLOWED_RETURN_HOSTS": "wpcloud.delta-git.workers.dev",
+    // Comma-separated DID/userId allowlist for global reputation admin
+    // (epoch create/close). Empty = no admins.
+    "DG_ADMIN_ACTORS": ""
   }
 }

@@ -55,6 +55,7 @@ export async function handleCommits(c: AppContext<"/:owner/:repo/commits">) {
         firstLine: (c.message || "").split(/\r?\n/, 1)[0],
         authorName: c.author?.name || "",
         when: c.author ? formatWhen(c.author.when, c.author.tz) : "",
+        whenEpoch: c.author?.when ?? c.committer?.when,
         isMerge: Array.isArray(c.parents) && c.parents.length > 1,
       }));
     };
@@ -72,6 +73,8 @@ export async function handleCommits(c: AppContext<"/:owner/:repo/commits">) {
         firstLine: string;
         authorName: string;
         when: string;
+        whenEpoch?: number;
+        isMerge?: boolean;
       }>
     >(cacheCtx, cacheKey, loader, () => {
       const isOid = OID_RE.test(ref);
@@ -109,6 +112,7 @@ export async function handleCommits(c: AppContext<"/:owner/:repo/commits">) {
         commits: list,
         pager,
         progress,
+        arena: access.route.backend === "artifacts",
       },
       {
         cacheControl: isPrivate ? "no-store" : undefined,
@@ -281,6 +285,7 @@ export async function handleCommit(c: AppContext<"/:owner/:repo/commit/:oid">) {
         title: `${commit.oid.slice(0, 7)} · ${owner}/${repo}`,
         owner,
         repo,
+        arena: route.backend === "artifacts",
         commitOid: commit.oid,
         refEnc: encodeURIComponent(commit.oid),
         progress,

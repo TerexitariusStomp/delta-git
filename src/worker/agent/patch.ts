@@ -65,7 +65,7 @@ function applyHunks(oldText: string | undefined, diff: StructuredPatch): string 
 }
 
 /** Set/replace the blob at a slash path inside a tree, producing new trees. */
-async function setTreePath(args: {
+export async function setTreePath(args: {
   env: Env;
   repoId: string;
   treeOid: string;
@@ -219,6 +219,72 @@ export async function applyUnifiedPatch(args: {
   const sig = `${args.author} ${ts} +0000`;
   const commitPayload = te.encode(
     `tree ${treeOid}\nparent ${args.baseCommitOid}\nauthor ${sig}\ncommitter ${sig}\n\n${args.message}\n`
+  );
+  const commitOid = await computeOid("commit", commitPayload);
+  objects.push({ type: "commit", payload: commitPayload, oid: commitOid });
+  return { kind: "ok", commitOid, objects };
+}
+
+/**
+ * Commit a validated file manifest directly — no diff parsing. Each
+ * manifest file replaces (or creates) its path in the base tree; paths
+ * absent from the manifest are left untouched. With no base commit the
+ * tree starts empty, so this doubles as the repo bootstrap path.
+ */
+export async function applyManifest(args: {
+  env: Env;
+  repoId: string;
+  /** Base commit to build on; omit for an empty repo. */
+  baseCommitOid?: string;
+  files: { path: string; content: string }[];
+  message: string;
+  author: string;
+  cacheCtx?: CacheContext;
+}): Promise<PatchApplyResult> {
+  const { env, repoId, cacheCtx } = args;
+  if (args.files.length === 0) return { kind: "failed", reason: "manifest-empty" };
+  if (args.files.length > MAX_PATCH_FILES)
+    return { kind: "failed", reason: "patch-too-many-files" };
+
+  const objects: NewObject[] = [];
+  let treeOid: string;
+  let parentLine = "";
+  if (args.baseCommitOid) {
+    const commitObj = await readPayload(env, repoId, args.baseCommitOid, cacheCtx);
+    if (!commitObj || commitObj.type !== "commit") {
+      return { kind: "failed", reason: "base-commit-missing" };
+    }
+    const baseCommit = parseCommitText(td.decode(commitObj.payload));
+    if (!baseCommit.tree) return { kind: "failed", reason: "base-tree-missing" };
+    treeOid = baseCommit.tree;
+    parentLine = `parent ${args.baseCommitOid}\n`;
+  } else {
+    const empty = serializeTree(new Map());
+    treeOid = await computeOid("tree", empty);
+    objects.push({ type: "tree", payload: empty, oid: treeOid });
+  }
+
+  for (const file of args.files) {
+    const payload = te.encode(file.content);
+    const blobOid = await computeOid("blob", payload);
+    objects.push({ type: "blob", payload, oid: blobOid });
+    const next = await setTreePath({
+      env,
+      repoId,
+      treeOid,
+      path: file.path,
+      entry: { mode: "100644", oid: blobOid },
+      cacheCtx,
+      objects,
+    });
+    if (next === undefined) return { kind: "failed", reason: `bad-path:${file.path}` };
+    treeOid = next;
+  }
+
+  const ts = Math.floor(Date.now() / 1000);
+  const sig = `${args.author} ${ts} +0000`;
+  const commitPayload = te.encode(
+    `tree ${treeOid}\n${parentLine}author ${sig}\ncommitter ${sig}\n\n${args.message}\n`
   );
   const commitOid = await computeOid("commit", commitPayload);
   objects.push({ type: "commit", payload: commitPayload, oid: commitOid });

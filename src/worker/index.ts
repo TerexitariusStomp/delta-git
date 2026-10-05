@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { registerGitRoutes } from "./routes/git";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerAgentRoutes } from "./routes/agent";
+import { registerReputationRoutes } from "./routes/reputation";
 import { registerApiV3Routes } from "./routes/apiv3";
 import { registerPagesRoutes } from "./routes/pages";
 import { registerArchiveRoutes } from "./routes/archive";
@@ -39,6 +40,7 @@ registerAuthRoutes(app);
 registerAtpAuthRoutes(app);
 // delta-git agent API under /api/* — registered before UI for the same reason
 registerAgentRoutes(app);
+registerReputationRoutes(app);
 registerApiV3Routes(app);
 registerXrpcRoutes(app);
 registerMcpRoutes(app);

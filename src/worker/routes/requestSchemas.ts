@@ -33,12 +33,23 @@ const NullableRepositoryVisibilitySchema = z.preprocess(
   RepositoryVisibilitySchema.nullable()
 );
 
+const RepositoryBackendSchema = z.enum(["do", "artifacts"]);
+
+// Absent → "do" (native engine stays the default); anything else invalid →
+// null so the route can 400 rather than silently creating a native repo.
+const NullableRepositoryBackendSchema = z.preprocess(
+  (value) => (value === undefined ? "do" : value === "do" || value === "artifacts" ? value : null),
+  RepositoryBackendSchema.nullable()
+);
+
 export const RepositoryCreateRequestSchema = z.preprocess(
   objectOrEmpty,
   z.object({
     namespaceSlug: LowercaseSlugInputSchema,
     slug: LowercaseSlugInputSchema,
     visibility: NullableRepositoryVisibilitySchema,
+    backend: NullableRepositoryBackendSchema,
+    description: TrimmedStringSchema.optional(),
   })
 );
 

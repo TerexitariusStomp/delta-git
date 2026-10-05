@@ -4,6 +4,7 @@ import { getConfig } from "./repoConfig";
 import { createLogger } from "@/worker/common";
 import { activeLeaseOrUndefined } from "./catalog/activity";
 import { COMPACTION_REARM_DELAY_MS } from "./catalog/shared";
+import { getDb, nextMatchDeadline } from "./db";
 
 /**
  * Plan the next alarm time purely from existing DO state and repo config.
@@ -21,6 +22,11 @@ export async function planNextAlarm(
   const store = asTypedStorage<RepoStateSchema>(state.storage);
   const cfg = getConfig(env);
 
+  let best: { when: number; reason: "compaction" | "idle" } | null = null;
+  const candidate = (when: number, reason: "compaction" | "idle") => {
+    if (!best || when < best.when) best = { when, reason };
+  };
+
   // 1) Re-arm compaction via alarms when a compaction request or lease is active.
   try {
     const [compactionWantedAt, receiveLease, compactLease] = await Promise.all([
@@ -31,34 +37,44 @@ export async function planNextAlarm(
 
     const activeReceiveLease = activeLeaseOrUndefined(receiveLease, now);
     if (activeReceiveLease) {
-      return { when: activeReceiveLease.expiresAt, reason: "compaction" };
+      candidate(activeReceiveLease.expiresAt, "compaction");
     }
 
     const activeCompactLease = activeLeaseOrUndefined(compactLease, now);
     if (activeCompactLease) {
-      return { when: activeCompactLease.expiresAt, reason: "compaction" };
+      candidate(activeCompactLease.expiresAt, "compaction");
     }
 
     if (typeof compactionWantedAt === "number") {
-      return { when: now + COMPACTION_REARM_DELAY_MS, reason: "compaction" };
+      candidate(now + COMPACTION_REARM_DELAY_MS, "compaction");
     }
   } catch (e) {
     log.warn("sched:read-compaction-state-failed", { error: String(e) });
   }
 
-  // 2) Idle cleanup planning
+  // 2) Arena match deadlines (building→judging→resolve transitions).
+  try {
+    const matchDeadline = await nextMatchDeadline(getDb(state.storage));
+    if (matchDeadline !== null) {
+      candidate(Math.max(matchDeadline, now + 5), "idle");
+    }
+  } catch (e) {
+    log.warn("sched:read-match-deadline-failed", { error: String(e) });
+  }
+
+  // 3) Idle cleanup planning
   try {
     const lastAccess = await store.get("lastAccessMs");
     // Guard against past deadlines (e.g., host slept). If an idle
     // deadline is already in the past, push it forward by its interval so we
     // do not immediately re-schedule and tight-loop alarms.
     const nextIdleAt = (lastAccess ?? now) + cfg.idleMs;
-    const when = nextIdleAt <= now ? now + cfg.idleMs : nextIdleAt;
-    return { when, reason: "idle" };
+    candidate(nextIdleAt <= now ? now + cfg.idleMs : nextIdleAt, "idle");
   } catch (e) {
     log.error("sched:plan-idle-failed", { error: String(e) });
-    return null;
   }
+
+  return best;
 }
 
 /**

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
+import { MoonIcon, SunIcon } from "@primer/octicons-react";
 
 import { highlightThemeHref } from "@/client/highlight-theme";
 import { hydrateIsland } from "@/client/hydrate";
@@ -18,8 +18,13 @@ function applyHighlightTheme(theme: "light" | "dark") {
 }
 
 function applyTheme(theme: "light" | "dark") {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.classList.toggle("dark", theme === "dark");
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  // Primer themes key off these attributes (see @primer/primitives CSS)
+  root.dataset.colorMode = theme;
+  root.dataset.lightTheme = "light";
+  root.dataset.darkTheme = "dark";
+  root.classList.toggle("dark", theme === "dark");
   applyHighlightTheme(theme);
 }
 
@@ -36,7 +41,8 @@ export function ThemeToggleIsland(_props: ThemeToggleProps) {
     <button
       type="button"
       data-theme-toggle
-      className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+      className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--control-bgColor-hover)]"
+      style={{ color: "var(--header-fgColor-default)" }}
       aria-label={`Toggle theme (current: ${theme === "dark" ? "Dark" : "Light"})`}
       onClick={() => {
         const nextTheme = theme === "dark" ? "light" : "dark";
@@ -47,8 +53,8 @@ export function ThemeToggleIsland(_props: ThemeToggleProps) {
         } catch {}
       }}
     >
-      <Sun className="icon-light h-5 w-5" aria-hidden="true" />
-      <Moon className="icon-dark h-5 w-5" aria-hidden="true" />
+      <SunIcon className="icon-light" size={16} aria-hidden="true" />
+      <MoonIcon className="icon-dark" size={16} aria-hidden="true" />
     </button>
   );
 }

@@ -23,6 +23,9 @@ export const identities = sqliteTable(
     // JSON array of bound device public keys:
     //   [{ "multibase": "z...", "curve": "k256|p256|ed25519", "revokedAt": n|null, "addedAt": n }]
     deviceKeys: text("device_keys").notNull().default("[]"),
+    // Unified reputation — same currency as agents.rep. Arena wins,
+    // adjudication, vouches, and epoch allocations all feed it.
+    rep: integer("rep").notNull().default(0),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },

@@ -23,8 +23,7 @@ const ownerDid =
   didFlagIndex >= 0 ? process.argv[didFlagIndex + 1] : "did:plc:umsyxt3vt2uysqeebatedd3i";
 const repoFlagIndex = process.argv.indexOf("--repo");
 const nsSlug = "rooted-finance";
-const repoSlug =
-  repoFlagIndex >= 0 ? process.argv[repoFlagIndex + 1] : "git-on-cloudflare";
+const repoSlug = repoFlagIndex >= 0 ? process.argv[repoFlagIndex + 1] : "git-on-cloudflare";
 const doName = `${nsSlug}/${repoSlug}`;
 const dbName = "git-on-cloudflare";
 

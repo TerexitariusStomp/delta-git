@@ -40,11 +40,13 @@
     "typescript": "^6.0.0",
     "vite": "^8.0.12",
     "vitest": "^4.1.6",
-    "wrangler": "^4.90.1"
+    "wrangler": "4.140.0"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",
     "@octokit/openapi-types": "^29.0.1",
+    "@primer/octicons-react": "19.38.0",
+    "@primer/primitives": "11.10.0",
     "chokidar": "^5.0.0",
     "commander": "^15.0.0",
     "deepmerge": "^4.3.1",

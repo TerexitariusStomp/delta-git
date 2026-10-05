@@ -79,13 +79,17 @@ export async function runOvernightPass(
     pubkeyHex: OVERNIGHT_PUBKEY_HEX,
     label: "overnight",
     kind: "workers-ai",
+    family: "overnight",
+    model: MODEL,
   }).catch(() => undefined);
   const actor =
     registered && "did" in registered ? registered.did : `did:dg:${OVERNIGHT_PUBKEY_HEX}`;
 
   const ideas = msg.workIntentId
     ? [await stub.getWorkIntent(msg.workIntentId)].filter((r) => r !== undefined)
-    : (await stub.listWorkIntentsByKind("idea")).filter((r) => r.status === "open");
+    : (await stub.listWorkIntentsByKind("idea")).filter(
+        (r) => r.status === "open" && !r.title.startsWith("site:")
+      );
   if (ideas.length === 0) return { detail: "no-open-ideas" };
 
   const results: string[] = [];

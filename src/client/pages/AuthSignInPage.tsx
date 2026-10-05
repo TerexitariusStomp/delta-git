@@ -37,7 +37,7 @@ function describeError(code: string | undefined): string | null {
 export function AuthSignInPage({ errorCode, didAuth, tesseraAuth }: AuthSignInPageProps) {
   const errorText = describeError(errorCode);
   return (
-    <div className="mx-auto max-w-md py-10">
+    <div className="mx-auto max-w-md px-4 py-10">
       <PageHeader className="!mb-4">
         <div>
           <h1 className="m-0 font-display text-3xl font-semibold text-zinc-900 dark:text-zinc-100">

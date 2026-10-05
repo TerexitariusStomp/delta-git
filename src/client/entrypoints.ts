@@ -8,6 +8,7 @@ export const clientEntrypoints = {
   adminPage: "src/client/entries/admin-page.ts",
   accountPage: "src/client/entries/account-page.ts",
   didSignin: "src/client/entries/did-signin.ts",
+  arenaMatch: "src/client/entries/arena-match.ts",
 } as const;
 
 export type ClientEntrypoint = (typeof clientEntrypoints)[keyof typeof clientEntrypoints];

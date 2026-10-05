@@ -12,7 +12,7 @@ export type ErrorPageProps = {
 
 export function ErrorPage({ message, stack, owner, repo, refEnc, path }: ErrorPageProps) {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1280px] space-y-6 px-4 py-6 sm:px-6">
       <div className="flex flex-col items-center gap-4 py-10 text-center">
         <span className="inline-grid h-14 w-14 place-items-center rounded-full bg-red-50 dark:bg-red-900/20">
           <TriangleAlert className="h-7 w-7 text-red-500 dark:text-red-400" aria-hidden="true" />

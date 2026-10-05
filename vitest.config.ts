@@ -24,6 +24,11 @@ export default defineConfig({
       singleWorker: true,
       isolatedStorage: false,
 
+      // The `ai` binding has no local emulation and would force an
+      // edge-preview remote proxy session; tests never call it, so keep the
+      // pool fully local.
+      remoteBindings: false,
+
       miniflare: {
         durableObjectsPersist: false,
         kvPersist: false,

@@ -127,11 +127,13 @@ export abstract class AgentRuntime extends DurableObject<Env> {
 import { runWorkersAiAdjudication } from "@/worker/tasks/adjudicate";
 import { runFederateTask } from "@/worker/tasks/federate";
 import { runOvernightPass } from "@/worker/agent/overnight";
+import { runSiteSmithPass } from "@/worker/agent/siteSmith";
 import { deliverWebhook } from "@/worker/agent/webhooks";
 import type {
   AdjudicateQueueMessage,
   FederateQueueMessage,
   OvernightQueueMessage,
+  SiteBuildQueueMessage,
   WebhookQueueMessage,
 } from "@/worker/tasks/types";
 
@@ -175,6 +177,11 @@ export class RepoAgent extends AgentRuntime {
     if (kind === "overnight") {
       const msg = body as OvernightQueueMessage;
       const outcome = await runOvernightPass(this.env, msg);
+      return { action: "ack", detail: outcome.detail };
+    }
+    if (kind === "site-build") {
+      const msg = body as SiteBuildQueueMessage;
+      const outcome = await runSiteSmithPass(this.env, msg);
       return { action: "ack", detail: outcome.detail };
     }
     return { action: "ack", detail: `ignored:${kind}` };

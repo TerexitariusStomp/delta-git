@@ -140,6 +140,21 @@ export async function deleteRepositoryById(db: Db, repositoryId: string): Promis
   return result.length === 1;
 }
 
+// Caller must verify membership before calling. Empty/whitespace input
+// normalizes to NULL so clearing the field removes the description.
+export async function updateRepositoryDescription(
+  db: Db,
+  repositoryId: string,
+  description: string | null,
+  now: number
+): Promise<void> {
+  const normalized = description?.trim() ? description.trim() : null;
+  await db
+    .update(repositories)
+    .set({ description: normalized, updatedAt: now })
+    .where(eq(repositories.id, repositoryId));
+}
+
 export type UpdateRepositoryVisibilityResult =
   | { ok: true; previous: RepositoryVisibility; current: RepositoryVisibility }
   | { ok: false; reason: "not-found" };

@@ -30,6 +30,15 @@ export async function findIdentityByHandle(
   return rows[0];
 }
 
+/** Reverse bridge: session user id → DID identity (for reputation keys). */
+export async function findIdentityByUserId(
+  db: Db,
+  userId: string
+): Promise<IdentityRow | undefined> {
+  const rows = await db.select().from(identities).where(eq(identities.userId, userId)).limit(1);
+  return rows[0];
+}
+
 async function findUserBySub(db: Db, sub: string): Promise<UserRow | undefined> {
   const rows = await db.select().from(users).where(eq(users.tesseraSub, sub)).limit(1);
   return rows[0];
@@ -75,6 +84,7 @@ export async function ensureIdentity(
     userId: user.id,
     handle,
     deviceKeys: args.deviceKeys ?? "[]",
+    rep: 0,
     createdAt: now,
     updatedAt: now,
   };

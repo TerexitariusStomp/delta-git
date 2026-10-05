@@ -15,17 +15,18 @@ export function AppLayout({ children, currentView, viewer }: AppLayoutProps) {
     <>
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[200] focus:rounded-lg focus:bg-zinc-900 focus:px-4 focus:py-2 focus:text-accent-400 focus:ring-2 focus:ring-accent-500/50"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[200] focus:rounded-md focus:px-4 focus:py-2"
+        style={{
+          backgroundColor: "var(--bgColor-accent-emphasis)",
+          color: "var(--fgColor-onEmphasis)",
+        }}
       >
         Skip to content
       </a>
-      <div className="relative z-10 flex min-h-screen flex-col sm:h-screen">
+      <div className="flex min-h-screen flex-col">
         <Header currentView={currentView} viewer={viewer ?? null} />
-        <main
-          id="main-content"
-          className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:overflow-y-auto sm:px-6 min-w-0"
-        >
-          <div className="animate-slide-up">{children}</div>
+        <main id="main-content" className="w-full flex-1 min-w-0">
+          {children}
         </main>
         <Footer />
       </div>

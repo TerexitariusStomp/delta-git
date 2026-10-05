@@ -15,6 +15,10 @@ import { badRequest, isRequestPrivate, loadUiRepoActivity, resolveUiRepoAccess }
 import type { AppContext } from "../hono";
 import { renderUiDocumentResponse } from "../uiResponse";
 import type { ReadPathResult } from "@/worker/git";
+import { resolveRef, readCommitInfo, listPathsLastChange } from "@/worker/git";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
+import { parseMirrorTargets, radicleGatewayUrl } from "./overview";
+import type { FileRow } from "@/client/components/file-table";
 
 export async function handleTree(c: AppContext<"/:owner/:repo/tree">) {
   const env = c.env;
@@ -162,6 +166,43 @@ export async function handleTree(c: AppContext<"/:owner/:repo/tree">) {
           : null;
       const progress = await loadUiRepoActivity(env, access);
       const viewer = access.viewer;
+
+      // Per-row "last changed" data (bounded first-parent walk, cached
+      // internally on the resolved head OID) + the head commit bar shown atop
+      // the file table.
+      const wanted = (result.entries || []).map((e: TreeEntry) => ({
+        name: e.name,
+        isDir: isTreeMode(e.mode),
+      }));
+      const lastChange = await listPathsLastChange(env, repoId, ref, path, wanted, cacheCtx);
+      const headOid = await resolveRef(env, repoId, ref, cacheCtx).catch(() => undefined);
+      const headCommitInfo = headOid
+        ? await readCommitInfo(env, repoId, headOid, cacheCtx).catch(() => null)
+        : null;
+      const headCommit = headCommitInfo
+        ? {
+            oid: headCommitInfo.oid,
+            subject: headCommitInfo.message.split("\n", 1)[0] ?? "",
+            when: headCommitInfo.author?.when ?? headCommitInfo.committer?.when ?? 0,
+            author: headCommitInfo.author?.name ?? headCommitInfo.committer?.name,
+          }
+        : null;
+      const fileRows: FileRow[] = entries.map((e) => ({
+        name: e.name,
+        href: e.href,
+        isDir: e.isDir,
+        isSymlink: e.isSymlink,
+        iconName: e.iconName,
+        lastChange: lastChange?.entries[e.name],
+      }));
+
+      const repoRow = await findRepositoryByDoName(c.var.db, repoId);
+      const mirrors = parseMirrorTargets(repoRow?.mirrorTargets ?? null);
+      const radTarget = mirrors.find((m) => m.url.startsWith("rad:") || m.name === "radicle");
+      const licenseFile = (result.entries || []).find(
+        (e: TreeEntry) => !isTreeMode(e.mode) && /^(licen[sc]e|copying)/i.test(e.name)
+      )?.name;
+
       return renderUiDocumentResponse(
         env,
         "tree",
@@ -170,10 +211,22 @@ export async function handleTree(c: AppContext<"/:owner/:repo/tree">) {
           owner,
           repo,
           refEnc: encodeURIComponent(ref),
+          refShort: ref,
           progress,
           breadcrumbs,
           parentHref,
+          currentPath: path,
           entries,
+          fileRows,
+          headCommit: headCommit ?? undefined,
+          commitCount: lastChange?.commitCount,
+          visibility: route.visibility,
+          description: repoRow?.description ?? "",
+          arena: route.backend === "artifacts",
+          repoDid: repoRow?.did ?? undefined,
+          radicleUrl: radTarget ? radicleGatewayUrl(radTarget.url) : undefined,
+          cloneUrl: `${new URL(c.req.url).origin}/${owner}/${repo}`,
+          licenseFile,
         },
         {
           cacheControl: isPrivate ? "no-store" : undefined,

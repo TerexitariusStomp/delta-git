@@ -115,6 +115,32 @@ export const OvernightQueueMessageSchema = z.object({
 
 export type OvernightQueueMessage = z.infer<typeof OvernightQueueMessageSchema>;
 
+// Arena resolution: a match's judging window expired → the task computes
+// composite scores (auto-signals + votes), marks the winner, applies rep
+// deltas, and pushes the winning head to the canonical remote.
+export const ArenaResolveQueueMessageSchema = z.object({
+  kind: z.literal("arena-resolve"),
+  // Repo DO id (hex) — the canonical repo that owns the match.
+  doId: z.string(),
+  // Repo DO *name* — required for object reads (idFromName routing).
+  repoId: z.string().optional(),
+  matchId: z.string(),
+});
+
+export type ArenaResolveQueueMessage = z.infer<typeof ArenaResolveQueueMessageSchema>;
+
+// Site-smith build: the work intent's body is a natural-language site
+// description; the seat generates a WordPress Playground blueprint + block
+// theme + static mirror and lands it via the normal merge lanes.
+export const SiteBuildQueueMessageSchema = z.object({
+  kind: z.literal("site-build"),
+  doId: z.string(),
+  repoId: z.string().optional(),
+  workIntentId: z.string(),
+});
+
+export type SiteBuildQueueMessage = z.infer<typeof SiteBuildQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
@@ -126,6 +152,8 @@ export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   AdjudicateQueueMessageSchema,
   FederateQueueMessageSchema,
   OvernightQueueMessageSchema,
+  ArenaResolveQueueMessageSchema,
+  SiteBuildQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;

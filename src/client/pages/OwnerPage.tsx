@@ -1,11 +1,9 @@
-import { Folder, Lock } from "lucide-react";
-
-import { EmptyState } from "@/client/components/EmptyState";
-import { PageHeader } from "@/client/components/ui/page-header";
+import { RepoIcon, RepoLockedIcon } from "@primer/octicons-react";
 
 export type OwnerPageRepo = {
   slug: string;
   visibility: "public" | "private";
+  description?: string;
 };
 
 export type OwnerPageProps = {
@@ -13,66 +11,92 @@ export type OwnerPageProps = {
   repos: OwnerPageRepo[];
 };
 
+/** GitHub profile-style page: owner name + repository list rows. */
 export function OwnerPage({ owner, repos }: OwnerPageProps) {
   return (
-    <div>
-      <PageHeader>
-        <div>
-          <span className="mb-1 inline-block text-xs font-semibold uppercase tracking-wider text-accent-500 dark:text-accent-400">
-            Owner
-          </span>
-          <div className="font-display text-2xl font-bold tracking-tight">{owner}</div>
+    <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6">
+      <div
+        className="mb-6 flex items-center gap-3 border-b pb-4"
+        style={{ borderColor: "var(--borderColor-muted)" }}
+      >
+        <span
+          className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-full"
+          style={{
+            backgroundColor: "var(--bgColor-muted)",
+            border: "1px solid var(--borderColor-default)",
+            color: "var(--fgColor-muted)",
+          }}
+          aria-hidden="true"
+        >
+          <RepoIcon size={20} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="m-0 text-xl font-semibold" style={{ color: "var(--fgColor-default)" }}>
+            {owner}
+          </h1>
+          <p className="m-0 text-sm" style={{ color: "var(--fgColor-muted)" }}>
+            {repos.length} {repos.length === 1 ? "repository" : "repositories"}
+          </p>
         </div>
-        <div></div>
-      </PageHeader>
-      <h2>Repositories</h2>
-      <div className="mt-6 grid gap-6 md:grid-cols-2">
-        {repos.length ? (
-          repos.map((repo, i) => {
-            const isPrivate = repo.visibility === "private";
-            const Icon = isPrivate ? Lock : Folder;
-            return (
-              <a
-                key={repo.slug}
-                href={`/${owner}/${repo.slug}`}
-                className="group block animate-slide-up opacity-0 rounded-2xl border border-zinc-300 dark:border-zinc-800/60 bg-white shadow-sm dark:bg-zinc-900/50 dark:shadow-none p-5 hover:-translate-y-0.5 transition-transform cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-700/60 hover:shadow-md"
-                style={{ animationDelay: `${Math.min(i, 7) * 60}ms` }}
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`inline-grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-zinc-100 transition-colors group-hover:bg-accent-50 dark:bg-zinc-800 dark:group-hover:bg-accent-900/20 ${
-                      isPrivate
-                        ? "text-amber-700 group-hover:text-amber-700 dark:text-amber-400 dark:group-hover:text-amber-400"
-                        : "text-zinc-500 group-hover:text-accent-500 dark:text-zinc-400 dark:group-hover:text-accent-400"
-                    }`}
-                    aria-label={isPrivate ? "Private repository" : undefined}
-                  >
-                    <Icon className="h-[1.1rem] w-[1.1rem]" aria-hidden="true" />
-                  </span>
-                  <div className="text-lg font-medium">
-                    <span className="text-zinc-500 dark:text-zinc-400">{owner}</span>
-                    <span className="mx-1 text-zinc-300 dark:text-zinc-600">/</span>
-                    <span className="transition-colors group-hover:text-accent-500 dark:group-hover:text-accent-400">
-                      {repo.slug}
-                    </span>
-                  </div>
-                </div>
-              </a>
-            );
-          })
-        ) : (
-          <div className="col-span-full">
-            <EmptyState
-              icon={
-                <Folder className="h-7 w-7 text-zinc-500 dark:text-zinc-400" aria-hidden="true" />
-              }
-              title="No repositories yet"
-              detail="Push a repository to get started."
-              large
-            />
-          </div>
-        )}
       </div>
+
+      <h2 className="m-0 mb-3 text-base font-semibold" style={{ color: "var(--fgColor-default)" }}>
+        Repositories
+      </h2>
+      {repos.length ? (
+        <ul
+          className="m-0 list-none divide-y rounded-md p-0"
+          style={{ border: "1px solid var(--borderColor-default)" }}
+        >
+          {repos.map((repo) => (
+            <li key={repo.slug} className="px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span style={{ color: "var(--fgColor-muted)" }} aria-hidden="true">
+                  {repo.visibility === "private" ? (
+                    <RepoLockedIcon size={16} />
+                  ) : (
+                    <RepoIcon size={16} />
+                  )}
+                </span>
+                <a
+                  href={`/${owner}/${repo.slug}`}
+                  className="font-semibold no-underline hover:underline"
+                  style={{ color: "var(--fgColor-link)" }}
+                >
+                  {owner}/{repo.slug}
+                </a>
+                <span
+                  className="rounded-full border px-[7px] py-px text-xs leading-[18px] font-medium"
+                  style={{
+                    borderColor: "var(--borderColor-default)",
+                    color: "var(--fgColor-muted)",
+                  }}
+                >
+                  {repo.visibility === "private" ? "Private" : "Public"}
+                </span>
+              </div>
+              {repo.description ? (
+                <p className="m-0 mt-1 truncate text-sm" style={{ color: "var(--fgColor-muted)" }}>
+                  {repo.description}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div
+          className="rounded-md p-10 text-center"
+          style={{ border: "1px solid var(--borderColor-default)" }}
+        >
+          <RepoIcon size={32} aria-hidden="true" />
+          <p className="m-0 mt-2 font-semibold" style={{ color: "var(--fgColor-default)" }}>
+            No repositories yet
+          </p>
+          <p className="m-0 mt-1 text-sm" style={{ color: "var(--fgColor-muted)" }}>
+            Push a repository to get started.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

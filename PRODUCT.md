@@ -30,15 +30,16 @@ This is a tool that does one thing well and knows it. The interface should feel 
 **Anti-references:**
 
 - Not another SaaS dashboard (no onboarding funnels, no pricing tiers, no "get started free" hero)
-- Not GitHub's dense enterprise UI (information density for density's sake)
 - Not Vercel's marketing gloss (style over substance)
 - Not generic admin templates (card grids with icons and shadows)
 
+**Update (GitHub-faithful pivot):** the UI now deliberately clones GitHub's chrome — its information architecture is the most familiar repo-browsing UX there is. We adopt GitHub's own open-source design system (Primer: `@primer/react`, `@primer/primitives`, `@primer/octicons-react`, all MIT) rather than eyeballing it. GitHub's _density_ remains the anti-reference, not its vocabulary: no Star/Watch/Fork counts that don't exist, no upsell surfaces, no dashboard chrome beyond what the data supports.
+
 **Theme:** Dark-primary with light mode toggle. Dark mode is the default and the design target — developers browsing repos late in the terminal-adjacent context. Light mode is a courtesy, not the hero.
 
-**Color:** Indigo accent palette (`#6366f1` base), can shift slightly within the indigo family. Zinc neutrals with brand-tinted undertones. Lifted canvas (`#221f21`) for comfortable reading. Accent used sparingly — its power comes from rarity.
+**Color:** Primer semantic tokens (`--fgColor-*`, `--bgColor-*`, `--borderColor-*` from `@primer/primitives`) drive both themes via `data-color-mode`; our Tailwind tokens alias onto them. GitHub blue (`#0969da` light / `#4493f8` dark links, `#1f883d`/`#238636` primary buttons).
 
-**Typography:** Hanken Grotesk (body), IBM Plex Serif (display/editorial), JetBrains Mono (code). These are committed choices. The serif display font is the personality injection — it signals "this was chosen, not defaulted."
+**Typography:** GitHub's system stack for UI chrome (matching the clone), JetBrains Mono for code, IBM Plex Serif retained only where delta-git's own voice shows through (homepage hero).
 
 **Constraints:**
 
