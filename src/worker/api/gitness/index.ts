@@ -26,6 +26,7 @@ import { validateSlugForRoute } from "@/shared/slugs";
 import { generatePatPlaintext, hashPatPlaintext } from "@/worker/auth/pat";
 import { newPrefixedId } from "@/worker/common";
 import { numericId, gErr, gNotFound, normalizeIdentifier } from "./shared";
+import { readUserFavorites, writeUserFavorites } from "./stores";
 import { registerGitnessSpaces } from "./spaces";
 import { registerGitnessGitdata } from "./gitdata";
 import { registerGitnessPullreqs } from "./pullreqs";
@@ -117,6 +118,41 @@ export function registerGitnessApi(router: AppRouter) {
         expires_at: expiresAt,
       },
     });
+  });
+
+  // Favorites — the repo-header star toggle + list `is_favorite` flag.
+  // Real per-user KV records (`gfav:{userId}`); only REPOSITORY resources
+  // are meaningful to this SPA surface.
+  router.post("/api/v1/user/favorite", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const body = (await c.req.json().catch(() => null)) as {
+      resource_id?: number;
+      resource_type?: string;
+    } | null;
+    if (!body?.resource_id || body.resource_type !== "REPOSITORY") {
+      return gErr(c, 400, "expected {resource_type: 'REPOSITORY', resource_id}");
+    }
+    const favs = await readUserFavorites(c.env, viewer.userId);
+    if (!favs.some((f) => f.resource_type === "REPOSITORY" && f.resource_id === body.resource_id)) {
+      favs.push({ resource_type: "REPOSITORY", resource_id: body.resource_id });
+      await writeUserFavorites(c.env, viewer.userId, favs);
+    }
+    return c.json({});
+  });
+
+  router.delete("/api/v1/user/favorite/:resource_id", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const resourceId = parseInt(c.req.param("resource_id"), 10);
+    const resourceType = c.req.query("resource_type") ?? "REPOSITORY";
+    if (Number.isNaN(resourceId)) return gErr(c, 400, "invalid resource_id");
+    const favs = await readUserFavorites(c.env, viewer.userId);
+    const next = favs.filter(
+      (f) => !(f.resource_type === resourceType && f.resource_id === resourceId)
+    );
+    await writeUserFavorites(c.env, viewer.userId, next);
+    return c.json({});
   });
 
   router.delete("/api/v1/user/tokens/:id", async (c) => {

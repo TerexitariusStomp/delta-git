@@ -2,7 +2,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { env, exports as workerExports } from "cloudflare:workers";
 
 import { ensureD1Migrations } from "./util/d1Setup";
-import { setupRepoForTests } from "./util/repoSeed";
 
 beforeAll(async () => {
   await ensureD1Migrations(env);

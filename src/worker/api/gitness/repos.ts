@@ -67,7 +67,12 @@ import {
   requireWriter,
   resolveGitnessRepo,
 } from "./shared";
-import { normalizeIdentifier, type GitnessContext, type RepoAccessOk } from "./shared";
+import {
+  favoriteRepoIds,
+  normalizeIdentifier,
+  type GitnessContext,
+  type RepoAccessOk,
+} from "./shared";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { readTree } from "@/worker/git/operations/read";
 
@@ -133,6 +138,8 @@ export function toGitnessRepo(
     openPulls?: number;
     mergedPulls?: number;
     closedPulls?: number;
+    /** Numeric repo ids the viewer starred — powers `is_favorite`. */
+    favorites?: Set<number>;
   }
 ) {
   const path = `${nsSlug}/${row.slug}`;
@@ -155,6 +162,7 @@ export function toGitnessRepo(
         ? extra.openPulls + (extra.mergedPulls ?? 0) + (extra.closedPulls ?? 0)
         : undefined,
     num_forks: 0,
+    is_favorite: extra?.favorites?.has(numericId(row.id)) ?? false,
     created: row.createdAt,
     updated: row.updatedAt,
     // EnumRepoState is `number | null` upstream; gitness emits 0 for active.
@@ -923,9 +931,9 @@ export function registerGitnessRepos(router: AppRouter) {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
     const stub = getRepoStub(c.env, access.route.doName);
-    const intents: Awaited<ReturnType<typeof stub.listMergeIntents>> = await stub
+    const intents = await stub
       .listMergeIntents(["open"])
-      .catch(() => []);
+      .catch((): Awaited<ReturnType<typeof stub.listMergeIntents>> => [] as never);
     const labels = await readRepoLabels(c.env, access.route.doName);
     const assignments: { label_id: number; pullreq_number: number }[] = [];
     for (const intent of intents) {
@@ -1487,12 +1495,14 @@ export function registerGitnessRepos(router: AppRouter) {
     ]);
     if (!row) return gNotFound(c, "repository");
     const merged = done.filter((i) => i.status === "merged").length;
+    const favorites = await favoriteRepoIds(c.env, access.viewer?.userId);
     return c.json(
       toGitnessRepo(row, ref.split("/")[0], {
         isEmpty: refs.length === 0,
         openPulls: open.length,
         mergedPulls: merged,
         closedPulls: done.length - merged,
+        favorites,
       })
     );
   });

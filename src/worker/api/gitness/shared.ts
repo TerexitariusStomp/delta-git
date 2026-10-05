@@ -21,8 +21,19 @@ import { isValidOwnerRepo } from "@/shared/web";
 import { resolveUiRepoAccess } from "@/worker/routes/ui/helpers";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { viewerIsNamespaceMember } from "@/worker/auth/pat";
+import { readUserFavorites } from "./stores";
 
 export type GitnessContext = AppContext;
+
+/**
+ * Repo ids the viewer starred — one KV read per request, shared by every
+ * `toGitnessRepo` call in that response so `is_favorite` is consistent.
+ */
+export async function favoriteRepoIds(env: Env, userId: string | undefined): Promise<Set<number>> {
+  if (!userId) return new Set();
+  const favs = await readUserFavorites(env, userId);
+  return new Set(favs.filter((f) => f.resource_type === "REPOSITORY").map((f) => f.resource_id));
+}
 
 // ---------------------------------------------------------------------------
 // Errors

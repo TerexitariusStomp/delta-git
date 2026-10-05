@@ -65,6 +65,12 @@ export const RESERVED_SLUGS: readonly string[] = [
   "cloud-costs",
   "incidents",
   "dashboards",
+  "user-groups",
+  "service-accounts",
+  "resource-groups",
+  "roles",
+  "search",
+  "create",
 ];
 
 const reservedSet: ReadonlySet<string> = new Set(RESERVED_SLUGS);

@@ -62,7 +62,7 @@ describe("repo read disclosure (GET /api/v1/repos/:ref)", () => {
     const owner = `dis-act-${Math.random().toString(36).slice(2, 8)}`;
     const repo = "site";
     const seeded = await setupRepoForTests(env, owner, repo, { visibility: "public" });
-    for (const headers of [{}, { Cookie: seeded.cookieHeader }]) {
+    for (const headers of [{} as Record<string, string>, { Cookie: seeded.cookieHeader }]) {
       const res = await workerExports.default.fetch(repoApi(owner, repo), { headers });
       expect(res.status).toBe(200);
       const body = (await res.json()) as Record<string, unknown>;

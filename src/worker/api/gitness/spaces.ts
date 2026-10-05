@@ -40,6 +40,7 @@ import { isValidOwnerRepo } from "@/shared/web";
 import { validateSlugForRoute } from "@/shared/slugs";
 import { getRepoStub } from "@/worker/common";
 import {
+  favoriteRepoIds,
   gErr,
   gNotFound,
   normalizeIdentifier,
@@ -270,7 +271,8 @@ export function registerGitnessSpaces(router: AppRouter) {
     const filtered = query ? rows.filter((r) => r.slug.toLowerCase().includes(query)) : rows;
     const page = pageParams(c);
     setPageHeaders(c, page, filtered.length);
-    return c.json(paginate(filtered, page).map((r) => toGitnessRepo(r, ns.slug)));
+    const favorites = await favoriteRepoIds(c.env, viewer?.userId);
+    return c.json(paginate(filtered, page).map((r) => toGitnessRepo(r, ns.slug, { favorites })));
   });
 
   router.get("/api/v1/spaces/:space_ref{.+}/members", async (c) => {

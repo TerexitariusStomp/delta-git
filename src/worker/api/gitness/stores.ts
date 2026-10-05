@@ -196,6 +196,26 @@ export async function writeRepoTemplates(env: Env, doName: string, templates: Re
 }
 
 // ---------------------------------------------------------------------------
+// User favorites — the repo-header star toggle and the repo list's
+// `is_favorite` flag. One JSON array per user; resource ids are the
+// numeric ids the facade already emits (`numericId`).
+// ---------------------------------------------------------------------------
+
+export interface FavoriteRef {
+  resource_type: string;
+  resource_id: number;
+}
+
+export async function readUserFavorites(env: Env, userId: string): Promise<FavoriteRef[]> {
+  const raw = await env.ROUTES.get(`gfav:${userId}`, "json").catch(() => null);
+  return (raw as FavoriteRef[] | null) ?? [];
+}
+
+export async function writeUserFavorites(env: Env, userId: string, favs: FavoriteRef[]) {
+  await env.ROUTES.put(`gfav:${userId}`, JSON.stringify(favs));
+}
+
+// ---------------------------------------------------------------------------
 // Repo security settings — secret-scanning enforcement is real on the
 // receive path; the toggle here is persisted state the settings page reads
 // and writes.
