@@ -28,6 +28,9 @@ export interface Env {
   DG_SESSION_SECRET?: string;   // shared with the forge — verifies dg_token sign-in handoffs
   DEPLOY_HOOK_SECRET?: string;  // verifies delta-git webhook signatures (svix v1 scheme)
   FORGE_PAT?: string;           // optional basic-auth token for private repo archive fetches
+  // platform rate limiting (unsafe.bindings ratelimit; optional — the
+  // api: lane falls back to the D1 counter when it isn't configured)
+  RATE_LIMIT_API?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
   // paid-tier bindings (env.paid)
   TENANT?: DurableObjectNamespace;
   PROVISION?: Queue;

@@ -27,6 +27,19 @@
     "COORDINATOR_URL": "wss://coordinator.localchimera.com"
   },
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  // Platform rate limiter for the 60s api: lane — global edge-consistent
+  // counter; ratelimit.ts falls back to its D1 counter without it. The
+  // hourly support: lane can't be expressed by the binding (≤60s only).
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "RATE_LIMIT_API",
+        "type": "ratelimit",
+        "namespace_id": "wpcloud-api",
+        "simple": { "limit": 300, "period": 60 }
+      }
+    ]
+  },
   "triggers": {
     // free tier: 5 cron triggers
     "crons": ["*/5 * * * *"]
@@ -57,6 +70,16 @@
         "COORDINATOR_URL": "wss://coordinator.localchimera.com"
       },
       "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+      "unsafe": {
+        "bindings": [
+          {
+            "name": "RATE_LIMIT_API",
+            "type": "ratelimit",
+            "namespace_id": "wpcloud-api",
+            "simple": { "limit": 300, "period": 60 }
+          }
+        ]
+      },
       "triggers": { "crons": ["*/5 * * * *"] },
       "durable_objects": {
         "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }]

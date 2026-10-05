@@ -12,6 +12,7 @@
   "dependencies": {
     "aws4fetch": "^1.0.20",
     "itty-router": "^5.0.18",
+    "modern-tar": "^0.8.5",
     "viem": "^2.21.0"
   },
   "devDependencies": {

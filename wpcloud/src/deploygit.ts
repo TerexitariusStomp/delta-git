@@ -1,4 +1,5 @@
 import { Router } from "itty-router";
+import { createTarDecoder } from "modern-tar";
 import type { Env } from "./env";
 import { whoami } from "./auth";
 import { planFor } from "./plans";
@@ -24,79 +25,10 @@ const json = (d: unknown, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { "content-type": "application/json" } });
 
 const te = new TextEncoder();
-const td = new TextDecoder();
 
 const MAX_FILES = 5_000;
 const MAX_BYTES = 200 * 1024 * 1024;
 const MAX_FILE = 64 * 1024 * 1024;
-
-// ---- tar reader (ustar + GNU longname/longlink) ----
-
-class TarReader {
-  private reader: ReadableStreamDefaultReader<Uint8Array>;
-  private buf = new Uint8Array(0);
-  private done = false;
-
-  constructor(body: ReadableStream<Uint8Array>) {
-    this.reader = body.getReader();
-  }
-
-  private async fill(n: number): Promise<boolean> {
-    while (this.buf.length < n && !this.done) {
-      const { value, done } = await this.reader.read();
-      if (done) { this.done = true; break; }
-      const next = new Uint8Array(this.buf.length + value.length);
-      next.set(this.buf); next.set(value, this.buf.length);
-      this.buf = next;
-    }
-    return this.buf.length >= n;
-  }
-
-  private take(n: number): Uint8Array {
-    const out = this.buf.subarray(0, n);
-    this.buf = this.buf.subarray(n);
-    return out;
-  }
-
-  private octal(h: Uint8Array, off: number, len: number): number {
-    const s = td.decode(h.subarray(off, off + len)).replace(/\0.*$/s, "").trim();
-    return s ? parseInt(s, 8) : 0;
-  }
-
-  private str(h: Uint8Array, off: number, len: number): string {
-    const end = h.indexOf(0, off);
-    return td.decode(h.subarray(off, end === -1 || end > off + len ? off + len : end));
-  }
-
-  /** Iterate file/dir entries; returns null entries for anything unreadable. */
-  async *entries(): AsyncGenerator<{ name: string; type: string; size: number; link: string; body: Uint8Array | null }> {
-    let longname: string | undefined;
-    let longlink: string | undefined;
-    for (;;) {
-      if (!(await this.fill(512))) return;
-      const h = this.take(512);
-      if (h.every((b) => b === 0)) return; // end-of-archive
-      const size = this.octal(h, 124, 12);
-      const type = String.fromCharCode(h[156]);
-      let name = this.str(h, 0, 100);
-      const magic = this.str(h, 257, 5);
-      if (magic === "ustar") {
-        const prefix = this.str(h, 345, 155);
-        if (prefix) name = `${prefix}/${name}`;
-      }
-      let link = this.str(h, 157, 100);
-      if (name) { name = longname ?? name; longname = undefined; }
-      if (link) { link = longlink ?? link; longlink = undefined; }
-      const body = size > 0 && (await this.fill(size)) ? this.take(size) : size === 0 ? new Uint8Array(0) : null;
-      const pad = (512 - (size % 512)) % 512;
-      if (pad && (await this.fill(pad))) this.take(pad);
-      if (type === "L") { longname = body ? td.decode(body).replace(/\0+$/, "") : undefined; continue; }
-      if (type === "K") { longlink = body ? td.decode(body).replace(/\0+$/, "") : undefined; continue; }
-      if (type === "x" || type === "g") continue; // pax headers — body already consumed
-      yield { name, type, size, link, body };
-    }
-  }
-}
 
 // Tar paths must stay inside the archive root — reject traversal and
 // absolute paths rather than trying to rescue them.
@@ -141,9 +73,13 @@ export async function deployFromGit(
 
   const files: { path: string; size: number; sha: string }[] = [];
   let bytesTotal = 0;
-  const reader = new TarReader(res.body);
-  for await (const e of reader.entries()) {
-    let path = cleanPath(e.name);
+  // modern-tar's streaming decoder handles ustar prefixes, GNU longname/
+  // longlink and PAX headers — only regular files carry content through.
+  const entries = res.body.pipeThrough(createTarDecoder()).getReader();
+  for (;;) {
+    const { value: e, done } = await entries.read();
+    if (done) break;
+    let path = cleanPath(e.header.name);
     if (!path) continue;
     // prefix deploys only keep files under <root>/, re-rooted at "/".
     if (root) {
@@ -152,15 +88,16 @@ export async function deployFromGit(
       if (!path) continue;
     }
     // dirs/symlinks carry no content — the artifact model is files only
-    if (e.type !== "0" && e.type !== "" && e.type !== "\0") continue;
-    if (!e.body) return { ok: false, status: 502, error: "truncated archive" };
-    if (e.size > MAX_FILE) return { ok: false, status: 413, error: "file too large" };
-    bytesTotal += e.size;
+    if (e.header.type !== "file") continue;
+    if (e.header.size > MAX_FILE) return { ok: false, status: 413, error: "file too large" };
+    bytesTotal += e.header.size;
     if (bytesTotal > MAX_BYTES) return { ok: false, status: 413, error: "archive too large" };
     if (files.length >= MAX_FILES) return { ok: false, status: 413, error: "too many files" };
-    const sha = await sha256Hex(e.body);
-    files.push({ path, size: e.size, sha });
-    await env.ARTIFACTS.put(`sites/${site.id}/artifacts/${commit ?? "head"}/${path}`, e.body);
+    const body = await new Response(e.body).arrayBuffer().then((b) => new Uint8Array(b)).catch(() => null);
+    if (!body) return { ok: false, status: 502, error: "truncated archive" };
+    const sha = await sha256Hex(body);
+    files.push({ path, size: e.header.size, sha });
+    await env.ARTIFACTS.put(`sites/${site.id}/artifacts/${commit ?? "head"}/${path}`, body);
   }
   if (!files.length) return { ok: false, status: 422, error: "archive contained no files" };
 

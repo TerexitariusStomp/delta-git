@@ -30,7 +30,7 @@ export default {
       return new Response(JSON.stringify({ answer: await supportAnswer(env, q ?? "") }), { headers: { "content-type": "application/json" } });
     }
     if (url.pathname.startsWith("/api/")) {
-      if (!(await rateLimit(env, `api:${ip}`, 300, 60))) return new Response("rate limited", { status: 429 });
+      if (!(await rateLimit(env, `api:${ip}`, 300, 60, "RATE_LIMIT_API"))) return new Response("rate limited", { status: 429 });
       for (const r of ROUTERS) {
         const res = await r.fetch(req, env, ctx);
         if (res && res.status !== 404) return res;
