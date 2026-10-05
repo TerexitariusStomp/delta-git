@@ -7,6 +7,7 @@ import { handleRepositoryDeleteMessage } from "./repositoryDelete";
 import { handleDeployMessage } from "./deploy";
 import { handleAdjudicateMessage } from "./adjudicate";
 import { handleWebhookMessage } from "./webhook";
+import { handlePipelineTriggerMessage } from "./pipeline";
 import { RepoTaskQueueMessageSchema } from "./types";
 import { handleArtifactsEventBatch } from "./artifactsEvents";
 import { handleArenaResolveMessage } from "./arena";
@@ -69,6 +70,9 @@ export async function handleRepoTaskQueue(
         break;
       case "arena-resolve":
         await handleArenaResolveMessage(message, body, env);
+        break;
+      case "pipeline-trigger":
+        await handlePipelineTriggerMessage(message, body, env);
         break;
       case "federate":
       case "overnight":

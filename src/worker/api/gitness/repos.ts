@@ -1312,8 +1312,9 @@ export function registerGitnessRepos(router: AppRouter) {
 
   // --- pipelines ----------------------------------------------------------------
 
-  // Pipeline definitions are real records; executions are genuinely empty —
-  // no runner is bound to this backend.
+  // Pipeline definitions are real records; executions are created by the
+  // push trigger and manual runs, and claimed by delegate runners via the
+  // /dg/runner protocol.
   router.get("/api/v1/repos/:repo_ref{.+}/pipelines", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
@@ -1326,7 +1327,10 @@ export function registerGitnessRepos(router: AppRouter) {
     const body = (await c.req.json().catch(() => null)) as {
       identifier?: string;
       config_path?: string;
+      default_branch?: string;
       description?: string;
+      on_push?: boolean;
+      branches?: string[];
     } | null;
     if (!body?.identifier?.trim()) return gErr(c, 400, "identifier required");
     const pipes = await readRepoPipelines(c.env, gate.route.doName);
@@ -1337,7 +1341,10 @@ export function registerGitnessRepos(router: AppRouter) {
       id: (pipes.at(-1)?.id ?? 0) + 1,
       identifier: body.identifier.trim(),
       config_path: body.config_path ?? `.harness/${body.identifier.trim()}.yaml`,
+      default_branch: body.default_branch ?? "main",
       description: body.description,
+      on_push: body.on_push === true,
+      branches: Array.isArray(body.branches) ? body.branches : undefined,
       created: Date.now(),
       updated: Date.now(),
     };
@@ -1369,7 +1376,7 @@ export function registerGitnessRepos(router: AppRouter) {
     const result = await readPath(
       c.env,
       access.route.doName,
-      "main",
+      pipe.default_branch ?? "main",
       pipe.config_path,
       access.cacheCtx
     ).catch(() => null);
@@ -1391,11 +1398,8 @@ export function registerGitnessRepos(router: AppRouter) {
     return c.json({});
   });
 
-  router.get("/api/v1/repos/:repo_ref{.+}/pipelines/:pipeline_id/executions", async (c) => {
-    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
-    if (access.kind !== "ok") return access.response;
-    return c.json([]);
-  });
+  // Executions live in api/gitness/executions.ts (registered before this
+  // module so its `/executions` tails win over nothing here).
 
   // --- variables (repo secrets) --------------------------------------------------
 

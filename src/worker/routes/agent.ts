@@ -34,6 +34,13 @@ import { attemptMerge, mergeDryRun } from "@/worker/merge/engine";
 import { writeServerPack } from "@/worker/merge/packWriter";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { encryptRepoSecret } from "@/worker/agent/secrets";
+import {
+  appendRepoExecutionLogs,
+  readRepoExecutionLogs,
+  readRepoExecutions,
+  readRepoPipelines,
+  updateRepoExecution,
+} from "@/worker/api/gitness/stores";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { ensureArtifactsPushSubscription } from "@/worker/tasks/artifactsSubscriptions";
 import {
@@ -1687,5 +1694,264 @@ export function registerAgentRoutes(router: AppRouter): void {
         },
       }
     );
+  });
+
+  // --- delegate CI runner protocol -------------------------------------------
+  //
+  // Executions spawn as `pending` records (push trigger or manual run). A
+  // runner on client infra claims the oldest pending exec, reports the
+  // stage/step graph it resolved from the pipeline yaml, streams log lines,
+  // and completes the record. The server never executes job code and never
+  // sees runner secrets — consistent with the sealed-secret custody model.
+
+  type ExecRef = { pipeline_id?: number; number?: number };
+
+  function parseExecRef(parsed: unknown): { pipelineId: number; num: number } | null {
+    const exec = (parsed as { exec?: ExecRef } | null)?.exec;
+    const pipelineId = exec?.pipeline_id;
+    const num = exec?.number;
+    if (!Number.isInteger(pipelineId) || !Number.isInteger(num)) return null;
+    return { pipelineId: pipelineId as number, num: num as number };
+  }
+
+  // Claim: atomically-ish transition oldest pending exec → running for this
+  // runner. Two racing runners can both read `pending` — last write wins;
+  // the loser sees its claim response's `claimed_by` differ from its name
+  // and backs off (idempotent re-claim covers it).
+  router.post("/api/:owner/:repo/dg/runner/claim", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = parseJsonBody(body, z.object({ runner: z.string().optional() })) ?? {};
+    const runner = parsed.runner ?? principal.agent?.did ?? principal.actor;
+
+    const execs = await readRepoExecutions(c.env, route.doName);
+    const candidate = execs.find((e) => e.status === "pending");
+    if (!candidate) return json(c, { execution: null });
+    const updated = await updateRepoExecution(
+      c.env,
+      route.doName,
+      candidate.pipeline_id,
+      candidate.number,
+      (exec) => {
+        if (exec.status !== "pending") return exec;
+        return { ...exec, status: "running", runner, heartbeat: Date.now(), started: Date.now() };
+      }
+    );
+    if (!updated || updated.runner !== runner) {
+      return json(c, { execution: null, reason: "claim lost" });
+    }
+    const pipe = (await readRepoPipelines(c.env, route.doName)).find(
+      (p) => p.id === updated.pipeline_id
+    );
+    c.var.logFor({ service: "Runner" }).info("runner:claimed", {
+      repoId: route.doName,
+      number: updated.number,
+      runner,
+    });
+    return json(c, {
+      execution: updated,
+      pipeline: pipe
+        ? { id: pipe.id, identifier: pipe.identifier, config_path: pipe.config_path }
+        : null,
+      repo: {
+        owner: route.routeNamespaceSlug,
+        repo: route.routeRepoSlug,
+        clone_url: `/${route.routeNamespaceSlug}/${route.routeRepoSlug}`,
+      },
+    });
+  });
+
+  // Report: the runner resolved the pipeline yaml into stages/steps.
+  router.post("/api/:owner/:repo/dg/runner/report", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = parseJsonBody(
+      body,
+      z.object({
+        exec: z.object({ pipeline_id: z.number(), number: z.number() }),
+        stages: z.array(
+          z.object({
+            name: z.string(),
+            steps: z.array(z.object({ name: z.string() })).default([]),
+          })
+        ),
+      })
+    );
+    if (!parsed) return bad(c, "exec + stages required");
+    const updated = await updateRepoExecution(
+      c.env,
+      route.doName,
+      parsed.exec.pipeline_id,
+      parsed.exec.number,
+      (exec) => {
+        if (exec.status !== "running") return exec;
+        return {
+          ...exec,
+          heartbeat: Date.now(),
+          stages: parsed.stages.map((s, i) => ({
+            number: i + 1,
+            name: s.name,
+            status: "running" as const,
+            steps: s.steps.map((st, j) => ({
+              number: j + 1,
+              name: st.name,
+              status: "running" as const,
+            })),
+          })),
+        };
+      }
+    );
+    if (!updated) return bad(c, "execution not found", 404);
+    return json(c, { ok: true });
+  });
+
+  // Log: append step log lines.
+  router.post("/api/:owner/:repo/dg/runner/log", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = parseJsonBody(
+      body,
+      z.object({
+        exec: z.object({ pipeline_id: z.number(), number: z.number() }),
+        stage: z.number(),
+        step: z.number(),
+        lines: z.array(z.string()).max(500),
+      })
+    );
+    if (!parsed) return bad(c, "exec + stage + step + lines required");
+    const existing = await readRepoExecutionLogs(
+      c.env,
+      route.doName,
+      parsed.exec.pipeline_id,
+      parsed.exec.number
+    );
+    const base = existing.length;
+    await appendRepoExecutionLogs(
+      c.env,
+      route.doName,
+      parsed.exec.pipeline_id,
+      parsed.exec.number,
+      parsed.lines.map((line, i) => ({
+        stage: parsed.stage,
+        step: parsed.step,
+        pos: base + i + 1,
+        time: Date.now(),
+        line,
+      }))
+    );
+    return json(c, { ok: true });
+  });
+
+  // Heartbeat: keep a running exec alive.
+  router.post("/api/:owner/:repo/dg/runner/heartbeat", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const ref = parseExecRef(
+      parseJsonBody(
+        body,
+        z.object({ exec: z.object({ pipeline_id: z.number(), number: z.number() }) })
+      )
+    );
+    if (!ref) return bad(c, "exec required");
+    const updated = await updateRepoExecution(
+      c.env,
+      route.doName,
+      ref.pipelineId,
+      ref.num,
+      (exec) => (exec.status === "running" ? { ...exec, heartbeat: Date.now() } : exec)
+    );
+    if (!updated) return bad(c, "execution not found", 404);
+    return json(c, { ok: true, status: updated.status });
+  });
+
+  // Complete: final status + per-stage/step outcomes.
+  router.post("/api/:owner/:repo/dg/runner/complete", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = parseJsonBody(
+      body,
+      z.object({
+        exec: z.object({ pipeline_id: z.number(), number: z.number() }),
+        status: z.enum(["success", "failure", "error", "killed", "skipped"]),
+        error: z.string().optional(),
+        stages: z
+          .array(
+            z.object({
+              number: z.number(),
+              status: z.enum(["success", "failure", "error", "killed", "skipped"]),
+              exit_code: z.number().optional(),
+              steps: z
+                .array(
+                  z.object({
+                    number: z.number(),
+                    status: z.enum(["success", "failure", "error", "killed", "skipped"]),
+                    exit_code: z.number().optional(),
+                  })
+                )
+                .default([]),
+            })
+          )
+          .optional(),
+      })
+    );
+    if (!parsed) return bad(c, "exec + status required");
+    const updated = await updateRepoExecution(
+      c.env,
+      route.doName,
+      parsed.exec.pipeline_id,
+      parsed.exec.number,
+      (exec) => {
+        if (exec.status !== "running" && exec.status !== "pending") return exec;
+        const now = Date.now();
+        const stages = exec.stages.map((s) => {
+          const reported = parsed.stages?.find((r) => r.number === s.number);
+          return {
+            ...s,
+            status: reported?.status ?? (parsed.status === "success" ? "success" : s.status),
+            exit_code: reported?.exit_code,
+            stopped: now,
+            steps: s.steps.map((st) => {
+              const rep = reported?.steps?.find((r) => r.number === st.number);
+              return {
+                ...st,
+                status:
+                  rep?.status ?? (parsed.status === "success" ? ("success" as const) : st.status),
+                exit_code: rep?.exit_code,
+                stopped: now,
+              };
+            }),
+          };
+        });
+        return {
+          ...exec,
+          status: parsed.status,
+          error: parsed.error,
+          finished: now,
+          stages,
+        };
+      }
+    );
+    if (!updated) return bad(c, "execution not found", 404);
+    c.var.logFor({ service: "Runner" }).info("runner:completed", {
+      repoId: route.doName,
+      number: updated.number,
+      status: updated.status,
+    });
+    return json(c, { ok: true, status: updated.status });
   });
 }

@@ -12,6 +12,7 @@ import {
 } from "@/worker/git/pack/indexer";
 import { doPrefix, r2PackKey } from "@/worker/keys";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
+import { enqueuePipelineTrigger } from "@/worker/tasks/pipeline";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { chargeStorageQuota, metric } from "@/worker/agent/abuse";
 import { deleteStagedPack, stagePackToR2, type StagedPackUpload } from "./r2Upload";
@@ -449,6 +450,17 @@ export async function executeReceivePipeline(
       // repos without configured targets, so enqueue unconditionally.
       args.ctx.waitUntil(
         enqueueFederatePush(
+          args.env,
+          args.stub.id.toString(),
+          args.repoId,
+          command.ref,
+          command.newOid
+        ).catch(() => {})
+      );
+      // CI push trigger: spawn pending executions for `on_push` pipelines.
+      // The task no-ops when the repo has none.
+      args.ctx.waitUntil(
+        enqueuePipelineTrigger(
           args.env,
           args.stub.id.toString(),
           args.repoId,

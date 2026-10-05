@@ -3,13 +3,7 @@ import { Navigate, redirect } from 'react-router-dom'
 import { Breadcrumb, Layout, Sidebar } from '@harnessio/ui/components'
 import { ComponentProvider } from '@harnessio/ui/context'
 import { getTrimmedSha } from '@harnessio/ui/utils'
-import {
-  EmptyPage,
-  ProfileSettingsLayout,
-  RepoSettingsLayout,
-  SandboxLayout,
-  WebhookSettingsLayout
-} from '@harnessio/views'
+import { EmptyPage, ProfileSettingsLayout, RepoSettingsLayout, WebhookSettingsLayout } from '@harnessio/views'
 
 import { FeatureGuard } from './components-v2/feature-guard'
 import { AppShellMFE } from './components-v2/mfe/app-shell'
@@ -67,6 +61,9 @@ import { CommitDiffContainer } from './pages-v2/repo/repo-commit-details-diff'
 import RepoCommitsPage from './pages-v2/repo/repo-commits'
 import { CreateRepo } from './pages-v2/repo/repo-create-page'
 import RepoExecutionListPage from './pages-v2/repo/repo-execution-list'
+import RepoExecutionDetailsPage from './pages-v2/repo/repo-execution-details'
+import RepoPipelineEditPage from './pages-v2/repo/repo-pipeline-edit'
+import RepoPipelineListPage from './pages-v2/repo/repo-pipeline-list'
 import RepoForkPage from './pages-v2/repo/repo-fork.tsx'
 import { ImportMultipleRepos } from './pages-v2/repo/repo-import-multiple-container'
 import { ImportRepo } from './pages-v2/repo/repo-import-page'
@@ -515,16 +512,6 @@ export const repoRoutes: CustomRouteObject[] = [
                       pageTitle: Page.Changes,
                       publicAccess: true
                     }
-                  },
-                  {
-                    path: 'checks',
-                    element: <EmptyPage pathName="PR Checks" />,
-                    handle: {
-                      breadcrumb: () => <span>{Page.Checks}</span>,
-                      routeName: RouteConstants.toPullRequestChecks,
-                      pageTitle: Page.Checks,
-                      publicAccess: true
-                    }
                   }
                 ]
               }
@@ -539,7 +526,7 @@ export const repoRoutes: CustomRouteObject[] = [
             children: [
               {
                 index: true,
-                element: <>RepoPipelineListPage</>,
+                element: <RepoPipelineListPage />,
                 handle: {
                   pageTitle: Page.Pipelines
                 }
@@ -560,7 +547,7 @@ export const repoRoutes: CustomRouteObject[] = [
                   },
                   {
                     path: 'edit',
-                    element: <>PipelineEditPage</>,
+                    element: <RepoPipelineEditPage />,
                     handle: {
                       breadcrumb: () => <span>Edit</span>,
                       routeName: RouteConstants.toPipelineEdit
@@ -575,7 +562,7 @@ export const repoRoutes: CustomRouteObject[] = [
                       { index: true, element: <RepoExecutionListPage />, handle: { pageTitle: Page.Executions } },
                       {
                         path: ':executionId',
-                        element: <>Execution Details Page</>,
+                        element: <RepoExecutionDetailsPage />,
                         handle: {
                           breadcrumb: ({ executionId }: { executionId: string }) => <span>{executionId}</span>,
                           routeName: RouteConstants.toExecution
@@ -855,15 +842,6 @@ export const repoRoutes: CustomRouteObject[] = [
     ]
   },
   {
-    path: 'pipelines',
-    element: <>ProjectPipelineListPage</>,
-    handle: {
-      breadcrumb: () => <span>{Page.Pipelines}</span>,
-      pageTitle: Page.Pipelines
-    },
-    children: []
-  },
-  {
     path: 'search',
     element: <SearchPage />,
     handle: {
@@ -940,311 +918,11 @@ export const routes: CustomRouteObject[] = [
         }
       },
       {
-        path: 'repos',
-        element: (
-          <SandboxLayout.Main>
-            <h1>Repositories</h1>
-          </SandboxLayout.Main>
-        ),
-        handle: {
-          breadcrumb: () => <span>{Page.Repositories}</span>,
-          routeName: RouteConstants.toRepositories,
-          pageTitle: Page.Repositories
-        }
-      },
-      {
-        path: 'pipelines',
-        element: (
-          <SandboxLayout.Main>
-            <h1>Pipelines</h1>
-          </SandboxLayout.Main>
-        ),
-        handle: {
-          breadcrumb: () => <span>{Page.Pipelines}</span>,
-          routeName: RouteConstants.toPipelines,
-          pageTitle: Page.Pipelines
-        }
-      },
-      {
-        path: 'executions',
-        element: (
-          <SandboxLayout.Main>
-            <h1>Executions</h1>
-          </SandboxLayout.Main>
-        ),
-        handle: {
-          breadcrumb: () => <span>{Page.Executions}</span>,
-          routeName: RouteConstants.toExecutions,
-          pageTitle: Page.Executions
-        }
-      },
-      {
-        path: 'databases',
-        element: (
-          <SandboxLayout.Main>
-            <h1>Databases</h1>
-          </SandboxLayout.Main>
-        ),
-        handle: {
-          breadcrumb: () => <span>Databases</span>,
-          routeName: RouteConstants.toDatabases,
-          pageTitle: 'Databases'
-        }
-      },
-      {
-        path: 'chaos',
-        element: <EmptyPage pathName="Chaos Engineering" />,
-        handle: {
-          routeName: RouteConstants.toChaos,
-          pageTitle: 'Chaos Engineering'
-        }
-      },
-      {
-        path: 'artifacts',
-        element: <EmptyPage pathName="Artifacts" />,
-        handle: {
-          routeName: RouteConstants.toArtifacts,
-          pageTitle: 'Artifacts'
-        }
-      },
-      {
         path: 'secrets',
         element: <SecretsVaultPage />,
         handle: {
           routeName: RouteConstants.toSecrets,
           pageTitle: 'Secrets'
-        }
-      },
-      {
-        path: 'connectors',
-        element: <EmptyPage pathName="Connectors" />,
-        handle: {
-          routeName: RouteConstants.toConnectors,
-          pageTitle: 'Connectors'
-        }
-      },
-      {
-        path: 'continuous-delivery-gitops',
-        element: <EmptyPage pathName="Continuous Delivery GitOps" />,
-        handle: {
-          routeName: RouteConstants.toGitOps,
-          pageTitle: 'Continuous Delivery GitOps'
-        }
-      },
-      {
-        path: 'continuous-integration',
-        element: <EmptyPage pathName="Continuous Integration" />,
-        handle: {
-          routeName: RouteConstants.toCI,
-          pageTitle: 'Continuous Integration'
-        }
-      },
-      {
-        path: 'feature-flags',
-        element: <EmptyPage pathName="Feature Flags" />,
-        handle: {
-          routeName: RouteConstants.toFeatureFlags,
-          pageTitle: 'Feature Flags'
-        }
-      },
-      {
-        path: 'notifications',
-        element: <EmptyPage pathName="Notifications" />,
-        handle: {
-          routeName: RouteConstants.toNotifications,
-          pageTitle: 'Notifications'
-        }
-      },
-      {
-        path: 'environments',
-        element: <EmptyPage pathName="Environments" />,
-        handle: {
-          routeName: RouteConstants.toEnvironments,
-          pageTitle: 'Environments'
-        }
-      },
-      {
-        path: 'delegates',
-        element: <EmptyPage pathName="File Store" />,
-        handle: {
-          routeName: RouteConstants.toFileStore,
-          pageTitle: 'File Store'
-        }
-      },
-      {
-        path: 'file-store',
-        element: <EmptyPage pathName="Delegates" />,
-        handle: {
-          routeName: RouteConstants.toDelegates,
-          pageTitle: 'Delegates'
-        }
-      },
-      {
-        path: 'templates',
-        element: <EmptyPage pathName="Templates" />,
-        handle: {
-          routeName: RouteConstants.toTemplates,
-          pageTitle: 'Templates'
-        }
-      },
-      {
-        path: 'variables',
-        element: <EmptyPage pathName="Variables" />,
-        handle: {
-          routeName: RouteConstants.toVariables,
-          pageTitle: 'Variables'
-        }
-      },
-      {
-        path: 'slo-downtime',
-        element: <EmptyPage pathName="SLO Downtime" />,
-        handle: {
-          routeName: RouteConstants.toSloDowntime,
-          pageTitle: 'SLO Downtime'
-        }
-      },
-      {
-        path: 'discovery',
-        element: <EmptyPage pathName="Discovery" />,
-        handle: {
-          routeName: RouteConstants.toDiscovery,
-          pageTitle: 'Discovery'
-        }
-      },
-      {
-        path: 'monitored-services',
-        element: <EmptyPage pathName="Monitored Services" />,
-        handle: {
-          routeName: RouteConstants.toMonitoredServices,
-          pageTitle: 'Monitored Services'
-        }
-      },
-      {
-        path: 'overrides',
-        element: <EmptyPage pathName="Overrides" />,
-        handle: {
-          routeName: RouteConstants.toOverrides,
-          pageTitle: 'Overrides'
-        }
-      },
-      {
-        path: 'certificates',
-        element: <EmptyPage pathName="Certificates" />,
-        handle: {
-          routeName: RouteConstants.toCertificates,
-          pageTitle: 'Certificates'
-        }
-      },
-      {
-        path: 'policies',
-        element: <EmptyPage pathName="Policies" />,
-        handle: {
-          routeName: RouteConstants.toPolicies,
-          pageTitle: 'Policies'
-        }
-      },
-      {
-        path: 'freeze-windows',
-        element: <EmptyPage pathName="Freeze Windows" />,
-        handle: {
-          routeName: RouteConstants.toFreezeWindows,
-          pageTitle: 'Freeze Windows'
-        }
-      },
-      {
-        path: 'external-tickets',
-        element: <EmptyPage pathName="External Tickets" />,
-        handle: {
-          routeName: RouteConstants.toExternalTickets,
-          pageTitle: 'External Tickets'
-        }
-      },
-      {
-        path: 'infrastructure-as-code',
-        element: <EmptyPage pathName="Infrastructure as Code" />,
-        handle: {
-          routeName: RouteConstants.toInfrastructureAsCode,
-          pageTitle: 'Infrastructure as Code'
-        }
-      },
-      {
-        path: 'service-reliability',
-        element: <EmptyPage pathName="Service Reliability" />,
-        handle: {
-          routeName: RouteConstants.toServiceReliability,
-          pageTitle: 'Service Reliability'
-        }
-      },
-      {
-        path: 'developer/portal',
-        element: <EmptyPage pathName="Internal Developer Portal" />,
-        handle: {
-          routeName: RouteConstants.toDevPortal,
-          pageTitle: 'Internal Developer Portal'
-        }
-      },
-      {
-        path: 'developer/environments',
-        element: <EmptyPage pathName="Environments" />,
-        handle: {
-          routeName: RouteConstants.toDevEnvironments,
-          pageTitle: 'Environments'
-        }
-      },
-      {
-        path: 'developer/insights',
-        element: <EmptyPage pathName="Software Engineering Insights" />,
-        handle: {
-          routeName: RouteConstants.toDevInsights,
-          pageTitle: 'Software Engineering Insights'
-        }
-      },
-      {
-        path: 'code-repository',
-        element: <EmptyPage pathName="Code Repository" />,
-        handle: {
-          routeName: RouteConstants.toCode,
-          pageTitle: 'Code Repository'
-        }
-      },
-      {
-        path: 'supply-chain',
-        element: <EmptyPage pathName="Software Supply Chain Assurance" />,
-        handle: {
-          routeName: RouteConstants.toSupplyChain,
-          pageTitle: 'Software Supply Chain Assurance'
-        }
-      },
-      {
-        path: 'security-tests',
-        element: <EmptyPage pathName="Security Testing Orchestration" />,
-        handle: {
-          routeName: RouteConstants.toSecurityTests,
-          pageTitle: 'Security Testing Orchestration'
-        }
-      },
-      {
-        path: 'cloud-costs',
-        element: <EmptyPage pathName="Cloud Cost Management" />,
-        handle: {
-          routeName: RouteConstants.toCloudCosts,
-          pageTitle: 'Cloud Cost Management'
-        }
-      },
-      {
-        path: 'incidents',
-        element: <EmptyPage pathName="Incidents" />,
-        handle: {
-          routeName: RouteConstants.toIncidents,
-          pageTitle: 'Incidents'
-        }
-      },
-      {
-        path: 'dashboards',
-        element: <EmptyPage pathName="Dashboards" />,
-        handle: {
-          routeName: RouteConstants.toDashboards,
-          pageTitle: 'Dashboards'
         }
       },
       {

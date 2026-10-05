@@ -32,6 +32,7 @@ import { registerGitnessGitdata } from "./gitdata";
 import { registerGitnessPullreqs } from "./pullreqs";
 import { registerGitnessRepos } from "./repos";
 import { registerGitnessSearch } from "./search";
+import { registerGitnessExecutions } from "./executions";
 
 const GITIGNORE_PRESETS = ["Node", "Python", "Go", "Rust", "Java", "C++"];
 const LICENSE_PRESETS = ["MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause", "ISC"];
@@ -52,6 +53,7 @@ export function registerGitnessApi(router: AppRouter) {
   // Search claims `/api/v1/search` and `/repos/{ref}/+/...` tails — register
   // before the greedy suffix routes below.
   registerGitnessSearch(router);
+  registerGitnessExecutions(router);
   // Pullreqs before gitdata: gitdata's greedy `:repo_ref{.+}` suffix routes
   // (e.g. `/activities`) would otherwise swallow `/pullreq/:n/...` paths.
   registerGitnessPullreqs(router);

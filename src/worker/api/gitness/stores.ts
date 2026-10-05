@@ -77,14 +77,33 @@ export function ruleBlocksRef(rules: RepoRule[], ref: string, verb: "update" | "
 }
 
 // ---------------------------------------------------------------------------
-// Pipelines (definitions only — no execution engine is bound)
+// Pipelines
 // ---------------------------------------------------------------------------
+
+/** A declared pipeline trigger — `push` events are honored by the queue task. */
+export interface RepoPipelineTrigger {
+  identifier: string;
+  /** push | pull_request | cron (cron records persist; scheduling is a gap). */
+  event: string;
+  /** Glob-ish branch filter (bare names or `*`-suffix prefixes). */
+  branch_scope?: string;
+  cron?: string;
+  enabled: boolean;
+  created: number;
+}
 
 export interface RepoPipeline {
   id: number;
   identifier: string;
   config_path: string;
+  /** Branch the pipeline yaml and manual runs target (defaults to main). */
+  default_branch?: string;
   description?: string;
+  /** Push trigger — when true, every advancing head ref spawns an execution. */
+  on_push?: boolean;
+  /** Optional branch allow-list for the push trigger (bare names). */
+  branches?: string[];
+  triggers?: RepoPipelineTrigger[];
   created: number;
   updated: number;
 }
@@ -96,6 +115,138 @@ export async function readRepoPipelines(env: Env, doName: string): Promise<RepoP
 
 export async function writeRepoPipelines(env: Env, doName: string, pipes: RepoPipeline[]) {
   await env.ROUTES.put(`gpipes:${doName}`, JSON.stringify(pipes));
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline executions — real records written by the runner protocol
+// (/api/{owner}/{repo}/dg/runner/*) and the push trigger. The list record
+// holds execution metadata; log lines live per-execution under a second key
+// so list reads stay small.
+// ---------------------------------------------------------------------------
+
+export type ExecutionStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failure"
+  | "error"
+  | "killed"
+  | "skipped";
+
+export interface RepoExecutionStep {
+  number: number;
+  name: string;
+  status: ExecutionStatus;
+  exit_code?: number;
+  started?: number;
+  stopped?: number;
+}
+
+export interface RepoExecutionStage {
+  number: number;
+  name: string;
+  status: ExecutionStatus;
+  exit_code?: number;
+  started?: number;
+  stopped?: number;
+  steps: RepoExecutionStep[];
+}
+
+export interface RepoExecution {
+  /** Monotonic per-pipeline number — matches gitness `execution_number`. */
+  number: number;
+  pipeline_id: number;
+  pipeline_uid: string;
+  status: ExecutionStatus;
+  /** push | manual | cron */
+  event: string;
+  ref: string;
+  after?: string;
+  before?: string;
+  message?: string;
+  author_name?: string;
+  author_email?: string;
+  /** Runner that claimed this execution; set on claim. */
+  runner?: string;
+  /** Last runner heartbeat (ms) — stale heartbeats mark the exec `error`. */
+  heartbeat?: number;
+  error?: string;
+  created: number;
+  started?: number;
+  finished?: number;
+  stages: RepoExecutionStage[];
+}
+
+export interface RepoExecutionLogLine {
+  stage: number;
+  step: number;
+  /** Line number within the step. */
+  pos: number;
+  time: number;
+  line: string;
+}
+
+const MAX_EXECUTIONS = 100;
+const MAX_LOG_LINES = 2000;
+
+export async function readRepoExecutions(env: Env, doName: string): Promise<RepoExecution[]> {
+  const raw = await env.ROUTES.get(`gexecs:${doName}`, "json").catch(() => null);
+  return (raw as RepoExecution[] | null) ?? [];
+}
+
+export async function writeRepoExecutions(env: Env, doName: string, execs: RepoExecution[]) {
+  // Newest-first, bounded — old executions age off the tail.
+  await env.ROUTES.put(`gexecs:${doName}`, JSON.stringify(execs.slice(0, MAX_EXECUTIONS)));
+}
+
+/** Read-mutate-write a single execution by pipeline+number. */
+export async function updateRepoExecution(
+  env: Env,
+  doName: string,
+  pipelineId: number,
+  num: number,
+  mutate: (exec: RepoExecution) => RepoExecution | null
+): Promise<RepoExecution | null> {
+  const execs = await readRepoExecutions(env, doName);
+  const idx = execs.findIndex((e) => e.pipeline_id === pipelineId && e.number === num);
+  if (idx < 0) return null;
+  const next = mutate(execs[idx]);
+  if (!next) return null;
+  execs[idx] = next;
+  await writeRepoExecutions(env, doName, execs);
+  return next;
+}
+
+/** Next execution number for a pipeline (max existing + 1). */
+export function nextExecutionNumber(execs: RepoExecution[], pipelineId: number): number {
+  let max = 0;
+  for (const e of execs) if (e.pipeline_id === pipelineId && e.number > max) max = e.number;
+  return max + 1;
+}
+
+export async function readRepoExecutionLogs(
+  env: Env,
+  doName: string,
+  pipelineId: number,
+  num: number
+): Promise<RepoExecutionLogLine[]> {
+  const raw = await env.ROUTES.get(`gexeclogs:${doName}:${pipelineId}:${num}`, "json").catch(
+    () => null
+  );
+  return (raw as RepoExecutionLogLine[] | null) ?? [];
+}
+
+export async function appendRepoExecutionLogs(
+  env: Env,
+  doName: string,
+  pipelineId: number,
+  num: number,
+  lines: RepoExecutionLogLine[]
+): Promise<RepoExecutionLogLine[]> {
+  const existing = await readRepoExecutionLogs(env, doName, pipelineId, num);
+  const next = [...existing, ...lines].slice(-MAX_LOG_LINES);
+  await env.ROUTES.put(`gexeclogs:${doName}:${pipelineId}:${num}`, JSON.stringify(next));
+  return next;
 }
 
 // ---------------------------------------------------------------------------

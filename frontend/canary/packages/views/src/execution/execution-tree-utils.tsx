@@ -5,7 +5,7 @@ import { ExecutionState } from '@views/repo/pull-request'
 import { getFormattedDuration } from '@harnessio/ui/utils'
 import { Execution, Stage, Step } from './types'
 
-const mapCiStatusToExecutionState = (status: CiStatus): ExecutionState => {
+export const mapCiStatusToExecutionState = (status: CiStatus): ExecutionState => {
   switch (status) {
     case 'blocked':
       return ExecutionState.BLOCKED

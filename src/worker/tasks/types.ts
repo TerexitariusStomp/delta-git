@@ -141,6 +141,18 @@ export const SiteBuildQueueMessageSchema = z.object({
 
 export type SiteBuildQueueMessage = z.infer<typeof SiteBuildQueueMessageSchema>;
 
+// CI trigger: a ref advanced → spawn pending executions for every pipeline
+// on that repo with `on_push` (and a matching branch filter, if set).
+export const PipelineTriggerQueueMessageSchema = z.object({
+  kind: z.literal("pipeline-trigger"),
+  doId: z.string(),
+  repoId: z.string(),
+  ref: z.string(),
+  sha: z.string(),
+});
+
+export type PipelineTriggerQueueMessage = z.infer<typeof PipelineTriggerQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
@@ -154,6 +166,7 @@ export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   OvernightQueueMessageSchema,
   ArenaResolveQueueMessageSchema,
   SiteBuildQueueMessageSchema,
+  PipelineTriggerQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;
