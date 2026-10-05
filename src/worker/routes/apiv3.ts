@@ -7,7 +7,7 @@ import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
 import { isValidOwnerRepo } from "@/shared/web";
 import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
-import { isTreeMode, parseTree } from "@/worker/merge/tree";
+import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 
 // GitHub REST v3 compatibility shim — the high-traffic subset that lets

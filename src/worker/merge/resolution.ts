@@ -10,7 +10,7 @@ import {
   readCommit,
   type ConflictResolver,
 } from "./engine";
-import { serializeTree } from "./tree";
+import { serializeTree } from "@/worker/git/core/tree";
 import { writeServerPack, type NewObject } from "./packWriter";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
 

@@ -1,7 +1,7 @@
 import { readObject } from "@/worker/git/object-store/store";
 import { parseCommitText } from "@/worker/git/core";
 import { buildPackV2 } from "@/worker/git/pack/build";
-import { parseTree, isTreeMode } from "@/worker/merge/tree";
+import { parseTree, isTreeMode } from "@/worker/git/core/tree";
 import { readCommit } from "@/worker/merge/engine";
 
 // Smart-HTTP receive-pack push client (protocol v0/v1 framing).

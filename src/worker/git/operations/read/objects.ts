@@ -4,6 +4,7 @@ import type { TreeEntry } from "./types";
 import { buildObjectCacheKey, cacheOrLoadObject } from "@/worker/cache";
 import { createBlobFromBytes, createLogger } from "@/worker/common";
 import { readObject } from "@/worker/git/object-store";
+import { parseTree as coreParseTree } from "@/worker/git/core/tree";
 
 type LooseObjectRead = {
   type: string;
@@ -19,25 +20,10 @@ function ensureMemo(cacheCtx: CacheContext | undefined, repoId: string) {
   if (!cacheCtx.memo.repoId) cacheCtx.memo.repoId = repoId;
 }
 
+// Array-form view over the canonical codec in git/core/tree.ts — the read
+// path iterates entries rather than looking them up by name.
 export function parseTree(buf: Uint8Array): TreeEntry[] {
-  const td = new TextDecoder();
-  const out: TreeEntry[] = [];
-  let i = 0;
-  while (i < buf.length) {
-    let sp = i;
-    while (sp < buf.length && buf[sp] !== 0x20) sp++;
-    if (sp >= buf.length) break;
-    const mode = td.decode(buf.subarray(i, sp));
-    let nul = sp + 1;
-    while (nul < buf.length && buf[nul] !== 0x00) nul++;
-    if (nul + 20 > buf.length) break;
-    const name = td.decode(buf.subarray(sp + 1, nul));
-    const oidBytes = buf.subarray(nul + 1, nul + 21);
-    const oid = [...oidBytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-    out.push({ mode, name, oid });
-    i = nul + 21;
-  }
-  return out;
+  return [...coreParseTree(buf).values()];
 }
 
 /**

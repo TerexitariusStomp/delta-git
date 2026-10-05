@@ -7,7 +7,7 @@ import { resolveRepositoryRoute, type RepositoryRoute } from "@/worker/repositor
 import { authenticateGitRequest, getBasicCredentials } from "@/worker/auth/gitAuth";
 import { createTarPacker } from "modern-tar";
 import { isValidOwnerRepo } from "@/shared/web";
-import { isTreeMode, parseTree } from "@/worker/merge/tree";
+import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { parseCommitText, parseTagTarget } from "@/worker/git/core";
 
 // Repository archive export — the seam that makes forge-hosted repos deployable

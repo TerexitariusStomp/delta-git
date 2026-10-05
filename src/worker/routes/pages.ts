@@ -6,7 +6,7 @@ import { readObject } from "@/worker/git/object-store/store";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
-import { isTreeMode } from "@/worker/merge/tree";
+import { isTreeMode } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 import lookupMime from "mime";
 

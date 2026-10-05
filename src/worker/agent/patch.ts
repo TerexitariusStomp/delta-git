@@ -4,7 +4,7 @@ import type { NewObject } from "@/worker/merge/packWriter";
 import { applyPatch, parsePatch, type StructuredPatch } from "diff";
 import { computeOid, parseCommitText } from "@/worker/git/core";
 import { readObject } from "@/worker/git/object-store/store";
-import { isTreeMode, parseTree, serializeTree, type Tree } from "@/worker/merge/tree";
+import { isTreeMode, parseTree, serializeTree, type Tree } from "@/worker/git/core/tree";
 
 // `POST /patch`: apply a unified diff to a base commit entirely server-side.
 //

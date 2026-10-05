@@ -8,6 +8,8 @@ import type {
   WorkspaceRow,
 } from "@/worker/do/repo/db/schema";
 
+import { z } from "zod";
+
 import { getRepoStub } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
@@ -57,6 +59,97 @@ function json(c: AppContext, body: unknown, status = 200): Response {
 
 function bad(c: AppContext, reason: string, status = 400): Response {
   return json(c, { error: reason }, status);
+}
+
+// Request-body schemas — zod replaces `JSON.parse(...) as {...}` casts so
+// malformed JSON and wrong-shaped fields fail instead of trusting the
+// cast. Fields stay optional here because each route has its own
+// "x required" check + error message; schemas just guarantee the shape.
+const agentMetaBody = z.object({
+  label: z.string().optional(),
+  family: z.string().optional(),
+  model: z.string().optional(),
+});
+const mergeVoteBody = z.object({
+  resolution: z
+    .object({
+      files: z.record(
+        z.string(),
+        z.object({ content_b64: z.string().optional(), delete: z.boolean().optional() })
+      ),
+      base_oid: z.string().optional(),
+    })
+    .optional(),
+  rationale: z.string().optional(),
+});
+const statusBody = z.object({
+  sha: z.string().optional(),
+  state: z.string().optional(),
+  context: z.string().optional(),
+  description: z.string().optional(),
+  target_url: z.string().optional(),
+});
+const webhookBody = z.object({
+  url: z.string().optional(),
+  events: z.array(z.string()).optional(),
+  secret: z.string().optional(),
+});
+const secretValueBody = z.object({ value: z.string().optional() });
+const tokenMintBody = z.object({ scope: z.string().optional(), ttl: z.number().optional() });
+const patchBody = z.object({
+  base_ref: z.string().optional(),
+  patch: z.string().optional(),
+  message: z.string().optional(),
+  author: z.string().optional(),
+});
+const dryRunBody = z.object({ ref: z.string().optional(), delta_oid: z.string().optional() });
+const importBody = z.object({ url: z.string().optional(), branch: z.string().optional() });
+const workIntentBody = z.object({ title: z.string().optional(), body: z.string().optional() });
+const ideaBody = z.object({
+  title: z.string().optional(),
+  body: z.string().optional(),
+  source_uri: z.string().optional(),
+});
+const ideaImportBody = z.object({ url: z.string().optional(), title: z.string().optional() });
+const ideaVerifyBody = z.object({
+  resolution_digest: z.string().optional(),
+  rationale: z.string().optional(),
+});
+const overnightBody = z.object({ work_intent_id: z.string().optional() });
+const siteBuildBody = z.object({
+  description: z.string().optional(),
+  title: z.string().optional(),
+});
+const workspaceBody = z.object({ work_intent_id: z.string().optional() });
+const matchCreateBody = z.object({
+  title: z.string().optional(),
+  spec: z.string().optional(),
+  window_minutes: z.number().optional(),
+  judge_minutes: z.number().optional(),
+  max_entrants: z.number().optional(),
+  prize_rep: z.number().optional(),
+});
+const matchVoteBody = z.object({ entry_id: z.string().optional(), stake: z.number().optional() });
+
+/**
+ * Buffer a buffered request body through a zod schema. Empty bodies decode
+ * as `{}` (the old `|| "{}"` convention); malformed JSON or a shape the
+ * schema rejects returns null — routes turn that into a 400.
+ */
+function parseJsonBody<S extends z.ZodType>(
+  body: Uint8Array,
+  schema: S
+): z.infer<S> | null {
+  let raw: unknown = {};
+  if (body.length > 0) {
+    try {
+      raw = JSON.parse(new TextDecoder().decode(body));
+    } catch {
+      return null;
+    }
+  }
+  const parsed = schema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 async function resolveRepo(c: AppContext): Promise<RepositoryRoute | null> {
@@ -157,11 +250,8 @@ export function registerAgentRoutes(router: AppRouter): void {
       sig: c.req.header("x-dg-sig") ?? null,
     });
     if (verified.kind !== "ok") return bad(c, `agent-auth:${verified.reason}`, 401);
-    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
-      label?: string;
-      family?: string;
-      model?: string;
-    };
+    const parsed = parseJsonBody(body, agentMetaBody);
+    if (!parsed) return bad(c, "invalid-body");
     const updated = await updateAgentMeta(c.var.db, verified.agent.did, parsed);
     if (!updated) return bad(c, "unknown-did", 404);
     return json(c, {
@@ -252,14 +342,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     if (!principal.agent) return bad(c, "agent-signature-required", 401);
     if (principal.agent.rep < ADJUDICATOR_MIN_REP) return bad(c, "insufficient-rep", 403);
 
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      resolution?: {
-        files: Record<string, { content_b64?: string; delete?: boolean }>;
-        base_oid?: string;
-      };
-      rationale?: string;
-    };
-    if (!parsed.resolution?.files) return bad(c, "resolution.files required");
+    const parsed = parseJsonBody(body, mergeVoteBody);
+    if (!parsed?.resolution?.files) return bad(c, "resolution.files required");
 
     const canonical = JSON.stringify(parsed.resolution);
     const digestBytes = await crypto.subtle.digest(
@@ -387,14 +471,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      sha?: string;
-      state?: string;
-      context?: string;
-      description?: string;
-      target_url?: string;
-    };
-    if (!parsed.sha || !parsed.state || !parsed.context) {
+    const parsed = parseJsonBody(body, statusBody);
+    if (!parsed?.sha || !parsed.state || !parsed.context) {
       return bad(c, "sha, state, context required");
     }
     if (!["pending", "success", "failure", "error"].includes(parsed.state)) {
@@ -442,12 +520,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      url?: string;
-      events?: string[];
-      secret?: string;
-    };
-    if (!parsed.url || !/^https:\/\//.test(parsed.url)) return bad(c, "https url required");
+    const parsed = parseJsonBody(body, webhookBody);
+    if (!parsed?.url || !/^https:\/\//.test(parsed.url)) return bad(c, "https url required");
     const stub = getRepoStub(c.env, route.doName);
     const id = `wh-${crypto.randomUUID().slice(0, 8)}`;
     await stub.addWebhookSub({
@@ -483,8 +557,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as { value?: string };
-    if (!parsed.value) return bad(c, "value required");
+    const parsed = parseJsonBody(body, secretValueBody);
+    if (!parsed?.value) return bad(c, "value required");
     const name = c.req.param("name").toUpperCase();
     if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(name)) return bad(c, "invalid secret name");
     const ciphertext = await encryptRepoSecret(c.env, parsed.value);
@@ -520,10 +594,7 @@ export function registerAgentRoutes(router: AppRouter): void {
       return bad(c, "not-artifacts-repo", 409);
     }
     const bodyBytes = new Uint8Array(await c.req.raw.arrayBuffer());
-    const parsed = JSON.parse(new TextDecoder().decode(bodyBytes) || "{}") as {
-      scope?: string;
-      ttl?: number;
-    };
+    const parsed = parseJsonBody(bodyBytes, tokenMintBody) ?? {};
     const scope = parsed.scope === "read" ? "read" : "write";
 
     // PAT auth carries a grant level: `pull` mints read tokens, `push` mints
@@ -582,13 +653,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      base_ref?: string;
-      patch?: string;
-      message?: string;
-      author?: string;
-    };
-    if (!parsed.patch || !parsed.message) return bad(c, "patch + message required");
+    const parsed = parseJsonBody(body, patchBody);
+    if (!parsed?.patch || !parsed.message) return bad(c, "patch + message required");
     const secretFindings = scanTextForSecrets(parsed.patch);
     if (secretFindings.length > 0) {
       return bad(c, `push-protection: ${secretFindings.map((f) => f.name).join(", ")}`, 422);
@@ -662,11 +728,14 @@ export function registerAgentRoutes(router: AppRouter): void {
   router.post("/api/:owner/:repo/dg/merge/dryrun", async (c) => {
     const route = await resolveRepo(c);
     if (!route) return bad(c, "not-found", 404);
-    const parsed = await c.req.json<{ ref?: string; delta_oid?: string }>().catch(() => null);
-    if (!parsed?.delta_oid) return bad(c, "delta_oid required");
-    const targetRef = parsed.ref?.startsWith("refs/")
-      ? parsed.ref
-      : `refs/heads/${parsed.ref ?? "main"}`;
+    // Body isn't buffered for auth on this route, so parse straight off the
+    // request stream — empty/malformed decodes to the same required-field 400.
+    const parsedJson = await c.req.json().catch(() => null);
+    const parsed = dryRunBody.safeParse(parsedJson ?? {});
+    if (!parsed.success || !parsed.data.delta_oid) return bad(c, "delta_oid required");
+    const targetRef = parsed.data.ref?.startsWith("refs/")
+      ? parsed.data.ref
+      : `refs/heads/${parsed.data.ref ?? "main"}`;
     const stub = getRepoStub(c.env, route.doName);
     const { refs } = await stub.getHeadAndRefs();
     const base = refs.find((r) => r.name === targetRef);
@@ -676,7 +745,7 @@ export function registerAgentRoutes(router: AppRouter): void {
       repoId: route.doName,
       targetRef,
       baseOid: base.oid,
-      deltaOid: parsed.delta_oid,
+      deltaOid: parsed.data.delta_oid,
       cacheCtx: c.var.cacheCtx,
     });
     if ("error" in result) return bad(c, result.error, 422);
@@ -728,11 +797,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      url?: string;
-      branch?: string;
-    };
-    if (!parsed.url) return bad(c, "url required");
+    const parsed = parseJsonBody(body, importBody);
+    if (!parsed?.url) return bad(c, "url required");
     const stub = getRepoStub(c.env, route.doName);
     const { importRemoteRepo } = await import("@/worker/agent/importer");
     const outcome = await importRemoteRepo({
@@ -778,11 +844,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      title?: string;
-      body?: string;
-    };
-    if (!parsed.title?.trim()) return bad(c, "title required");
+    const parsed = parseJsonBody(body, workIntentBody);
+    if (!parsed?.title?.trim()) return bad(c, "title required");
     const stub = getRepoStub(c.env, route.doName);
     const row = await stub.createWorkIntent({
       row: {
@@ -873,12 +936,9 @@ export function registerAgentRoutes(router: AppRouter): void {
     if (principal instanceof Response) return principal;
     const limited = await rateLimit(c.env, LIMITS.ideaPost, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      title?: string;
-      body?: string;
-      source_uri?: string;
-    };
-    if (!parsed.title?.trim() && !parsed.body?.trim()) return bad(c, "title-or-body required");
+    const parsed = parseJsonBody(body, ideaBody);
+    if (!parsed || (!parsed.title?.trim() && !parsed.body?.trim()))
+      return bad(c, "title-or-body required");
     const stub = getRepoStub(c.env, route.doName);
     const row = await stub.createWorkIntent({
       row: {
@@ -911,11 +971,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     if (principal instanceof Response) return principal;
     const limited = await rateLimit(c.env, LIMITS.ideaImport, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      url?: string;
-      title?: string;
-    };
-    if (!parsed.url) return bad(c, "url required");
+    const parsed = parseJsonBody(body, ideaImportBody);
+    if (!parsed?.url) return bad(c, "url required");
 
     let title = parsed.title?.trim() ?? "";
     let text = "";
@@ -976,11 +1033,8 @@ export function registerAgentRoutes(router: AppRouter): void {
       return bad(c, "insufficient-rep", 403);
     }
     if (gate === "account-too-new") return bad(c, "account-too-new", 403);
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      resolution_digest?: string;
-      rationale?: string;
-    };
-    if (!parsed.resolution_digest) return bad(c, "resolution_digest required");
+    const parsed = parseJsonBody(body, ideaVerifyBody);
+    if (!parsed?.resolution_digest) return bad(c, "resolution_digest required");
     const stub = getRepoStub(c.env, route.doName);
     const digest = parsed.resolution_digest.slice(0, 200);
     const digestBytes = await crypto.subtle.digest(
@@ -1023,10 +1077,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
     const stub = getRepoStub(c.env, route.doName);
-    const parsed =
-      body.length > 0
-        ? (JSON.parse(new TextDecoder().decode(body)) as { work_intent_id?: string })
-        : {};
+    const parsed = parseJsonBody(body, overnightBody) ?? {};
     await c.env.REPO_TASKS_QUEUE.send({
       kind: "overnight",
       doId: stub.id.toString(),
@@ -1046,10 +1097,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     if (principal instanceof Response) return principal;
     const limited = await rateLimit(c.env, LIMITS.siteBuild, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as {
-      description?: string;
-      title?: string;
-    };
+    const parsed = parseJsonBody(body, siteBuildBody) ?? {};
     const description = (parsed.description ?? parsed.title ?? "").trim();
     if (!description) return bad(c, "description required");
     if (description.length > 8000) return bad(c, "description-too-long");
@@ -1250,9 +1298,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const limited = await rateLimit(c.env, LIMITS.workspaceCreate, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
-    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
-      work_intent_id?: string;
-    };
+    const parsed = parseJsonBody(body, workspaceBody) ?? {};
     const artifacts = c.env.ARTIFACTS;
     if (!artifacts) return bad(c, "artifacts-unavailable", 503);
 
@@ -1300,15 +1346,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const limited = await rateLimit(c.env, LIMITS.matchCreate, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
-    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
-      title?: string;
-      spec?: string;
-      window_minutes?: number;
-      judge_minutes?: number;
-      max_entrants?: number;
-      prize_rep?: number;
-    };
-    if (!parsed.title || !parsed.spec) return bad(c, "title-and-spec-required");
+    const parsed = parseJsonBody(body, matchCreateBody);
+    if (!parsed?.title || !parsed.spec) return bad(c, "title-and-spec-required");
     const windowMinutes = Math.min(Math.max(parsed.window_minutes ?? 60, 5), 1440);
     const judgeMinutes = Math.min(Math.max(parsed.judge_minutes ?? 15, 1), 1440);
     const maxEntrants = Math.min(Math.max(parsed.max_entrants ?? 4, 2), 16);
@@ -1489,11 +1528,8 @@ export function registerAgentRoutes(router: AppRouter): void {
     const limited = await rateLimit(c.env, LIMITS.matchVote, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
-    const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
-      entry_id?: string;
-      stake?: number;
-    };
-    if (!parsed.entry_id) return bad(c, "entry-id-required");
+    const parsed = parseJsonBody(body, matchVoteBody);
+    if (!parsed?.entry_id) return bad(c, "entry-id-required");
     const stake = clampStake(parsed.stake);
 
     // Earned-and-staked gate: the voter must hold rep (agents or unified

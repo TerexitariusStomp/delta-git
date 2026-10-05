@@ -7,7 +7,7 @@ import { readObject } from "@/worker/git/object-store/store";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { mergeFileContents } from "./file";
 import { writeServerPack, type NewObject } from "./packWriter";
-import { isTreeMode, parseTree, serializeTree, type Tree, type TreeEntry } from "./tree";
+import { isTreeMode, parseTree, serializeTree, type Tree, type TreeEntry } from "@/worker/git/core/tree";
 import { writeMergeAttestation } from "@/worker/agent/attest";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
 import { createLogger } from "@/worker/common/logger";

@@ -1,7 +1,9 @@
 import { bytesToHex, hexToBytes } from "@/worker/common/hex";
 
-// Full tree entry codec — the core repo only ships a child-oid parser, so the
-// merge engine needs its own read/write of "<mode> <name>\0<20-byte-oid>" rows.
+// Canonical tree codec — "<mode> <name>\0<20-byte-oid>" rows. Map-keyed for
+// the merge/patch engines; callers wanting the array form can spread
+// `.values()`. `parseTreeChildOids` in object-parse.ts is the lighter
+// hot-path variant for pack indexing that skips mode/name decoding.
 
 export type TreeEntry = {
   /** Octal mode string as stored in the tree, e.g. "100644", "40000", "100755". */

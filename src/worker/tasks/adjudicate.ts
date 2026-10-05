@@ -3,7 +3,7 @@ import type { RepoQueueMessageHandle, AdjudicateQueueMessage } from "./types";
 import { createLogger, getRepoStubByDoId } from "@/worker/common";
 import { readObject } from "@/worker/git/object-store/store";
 import { resolvePathEntry } from "@/worker/agent/patch";
-import { isTreeMode } from "@/worker/merge/tree";
+import { isTreeMode } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 import { registerAgent } from "@/worker/agent/auth";
 import { doPrefix } from "@/worker/keys";

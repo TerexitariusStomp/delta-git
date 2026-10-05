@@ -10,7 +10,7 @@ import { createDb } from "@/worker/db/d1/client";
 import { bytesToHex } from "@/worker/common/hex";
 import { readObject } from "@/worker/git/object-store/store";
 import { parseCommitText } from "@/worker/git/core";
-import { isTreeMode, parseTree } from "@/worker/merge/tree";
+import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { extractFileManifest, validateManifest, type SiteManifest } from "@/worker/agent/manifest";
 import {
   SITE_SMITH_MODEL,
