@@ -184,6 +184,9 @@
     "ALLOWED_RETURN_HOSTS": "wpcloud.delta-git.workers.dev",
     // Comma-separated DID/userId allowlist for global reputation admin
     // (epoch create/close). Empty = no admins.
-    "DG_ADMIN_ACTORS": ""
+    "DG_ADMIN_ACTORS": "",
+    // Cloudflare account id — used with the CF_API_TOKEN secret by the
+    // deploy-on-commit lane and per-repo Artifacts event subscriptions.
+    "CF_ACCOUNT_ID": "ddf0cf5b4491ba59765378877fe8c697"
   }
 }

@@ -58,7 +58,7 @@ quota rejections. Query with the Analytics Engine SQL API; `?query=` the
 | -------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `SESSION_SECRET`                 | HMAC key for `dg_session` (DID) + tessera session JWTs                      | rotate → all sessions invalidated                        |
 | `DG_KEK`                         | repo secret encryption at rest (DO `repo_secrets`) + provenance-bundle HMAC | rotate requires re-encrypting stored secrets             |
-| `CF_API_TOKEN` / `CF_ACCOUNT_ID` | wrangler deploy + Workers-AI remote binding                                 | rotate at Cloudflare dashboard                           |
+| `CF_API_TOKEN` / `CF_ACCOUNT_ID` | wrangler deploy + Workers-AI remote binding + Artifacts event subscriptions | rotate at Cloudflare dashboard                           |
 | `TESSERA_OIDC_*`                 | legacy tessera OIDC client (only when `TESSERA_AUTH=on`)                    | rotate at issuer                                         |
 | `HERMES_ORIGIN`                  | allowed origin for `/embed/hermes`                                          | config, not a secret value                               |
 | PATs                             | per-user git push credentials (D1 `personal_access_tokens`, argon2 hash)    | user-revocable, never shown after issue                  |
@@ -87,6 +87,29 @@ npm run db:generate               # after editing src/worker/do/repo/db/schema.t
 not be found`, the configured `database_id` does not exist on this account —
 run `wrangler d1 create delta-git`, update `wrangler.jsonc`, re-apply, then
 reseed the `ROUTES` route-cache sync.
+
+## Artifacts event subscriptions
+
+`cf.artifacts.repo.pushed` events reach the `dg-artifacts-events` queue
+consumer (`tasks/artifactsEvents.ts`) through **per-repo subscriptions** —
+Cloudflare scopes `artifacts.repo` subscriptions to one repo each, so
+`tasks/artifactsSubscriptions.ts` calls the event-subscriptions API via
+`ctx.waitUntil` whenever an Artifacts repo is created (canonical `dg-*` repos
+in `authRepositories.ts`, `ws-*` workspace forks in `agent.ts` workspace
+create + match enter).
+
+- Auth: `CF_ACCOUNT_ID` var + `CF_API_TOKEN` secret (same credentials as the
+  deploy lane; the token needs Event Subscriptions write on the account).
+  Missing credentials → the helper no-ops (dev/test), pull-sync paths stay
+  correct without events.
+- Idempotent: the API rejects a second subscription on the same
+  (source, destination) pair, which the helper treats as already-subscribed.
+- One-time bootstrap: repos created before this shipped need subscriptions
+  backfilled manually —
+  `POST /accounts/{id}/event_subscriptions/subscriptions` with
+  `source: {type:"artifacts.repo", namespace:"delta-git", repo_name:<dg-*>}`,
+  `events:["pushed"]`, `destination:{type:"queues.queue", queue_id}`).
+- Stale subscriptions on deleted repos are inert — no cleanup needed.
 
 ## Disaster recovery
 

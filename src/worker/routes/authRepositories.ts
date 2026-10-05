@@ -10,6 +10,7 @@ import {
   updateRepositoryVisibility,
 } from "@/worker/db/d1/dal";
 import { sameOriginViolation } from "@/worker/auth/origin";
+import { ensureArtifactsPushSubscription } from "@/worker/tasks/artifactsSubscriptions";
 import { loadViewer } from "@/worker/auth/session";
 import { viewerIsNamespaceMember } from "@/worker/auth/pat";
 import type { AppRouter } from "./hono";
@@ -152,6 +153,11 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
       namespaceSlug: namespaceValidation.slug,
       repoSlug: slugValidation.slug,
     });
+    if (artifactsName) {
+      // Per-repo `pushed` event subscription — deferred so the create
+      // response isn't gated on the Cloudflare API round trip.
+      ensureArtifactsPushSubscription(c.executionCtx, c.env, artifactsName);
+    }
     log.info("repo-create:ok", {
       userId: viewer.userId,
       repositoryId: inserted.id,
