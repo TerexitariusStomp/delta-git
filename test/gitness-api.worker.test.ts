@@ -106,6 +106,12 @@ describe("gitness /api/v1 facade", () => {
     expect(Array.isArray(body)).toBe(true);
   });
 
+  it("GET /api/arena returns the cross-repo match feed", async () => {
+    const { status, body } = await get("/api/arena");
+    expect(status).toBe(200);
+    expect(Array.isArray((body as { matches: unknown[] }).matches)).toBe(true);
+  });
+
   it("blame resolves the repo; unknown surfaces 404 via the catch-all", async () => {
     // Blame is real now — a nonexistent repo 404s instead of stubbing.
     const { status } = await get("/api/v1/repos/x/y/+/blame/f.ts");

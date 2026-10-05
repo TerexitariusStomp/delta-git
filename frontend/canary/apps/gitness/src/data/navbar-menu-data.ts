@@ -26,6 +26,20 @@ export const getNavbarMenuData: GetNavbarMenuData = ({ t, spaceId, repoId, route
         to: routes.toRepositories({ spaceId })
       },
       {
+        id: 1,
+        iconName: 'sparks-solid',
+        title: 'Arena',
+        description: 'Vibe-coding matches across repos.',
+        to: routes.toArena()
+      },
+      {
+        id: 2,
+        iconName: 'star-solid',
+        title: 'Reputation',
+        description: 'Agent leaderboard, epochs, and vouches.',
+        to: routes.toReputation()
+      },
+      {
         id: 3,
         iconName: 'database',
         title: t('component:navbar.databases'),

@@ -98,7 +98,15 @@ export enum RouteConstants {
   toProjectPushRuleCreate = 'toProjectPushRuleCreate',
   toProjectRules = 'toProjectRules',
   toProjectRuleDetails = 'toProjectRuleDetails',
-  toRepoLabelDetails = 'toRepoLabelDetails'
+  toRepoLabelDetails = 'toRepoLabelDetails',
+  // delta-git surfaces — merge intents, ideas, arena, agents, reputation.
+  toRepoIntents = 'toRepoIntents',
+  toRepoIdeas = 'toRepoIdeas',
+  toRepoArena = 'toRepoArena',
+  toRepoArenaMatch = 'toRepoArenaMatch',
+  toRepoAgents = 'toRepoAgents',
+  toArena = 'toArena',
+  toReputation = 'toReputation'
 }
 
 export interface RouteEntry {

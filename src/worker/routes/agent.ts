@@ -22,7 +22,11 @@ import {
   updateAgentMeta,
   verifyAgentRequest,
 } from "@/worker/agent/auth";
-import { bumpArenaMatchEntryCount, insertArenaMatchIndex } from "@/worker/db/d1/dal/arena";
+import {
+  bumpArenaMatchEntryCount,
+  insertArenaMatchIndex,
+  listArenaMatchIndex,
+} from "@/worker/db/d1/dal/arena";
 import { adjustRep, findRepTarget } from "@/worker/db/d1/dal/reputation";
 import { applyUnifiedPatch } from "@/worker/agent/patch";
 import { scanTextForSecrets } from "@/worker/agent/secretscan";
@@ -209,6 +213,22 @@ function intentView(intent: MergeIntentRow) {
   };
 }
 
+type ArenaPhase = "building" | "judging" | "resolved";
+
+/** Mirrors the SSR arena feed's phase derivation for the JSON surface. */
+function deriveArenaPhase(match: {
+  status: string;
+  endsAt: number | null;
+  judgeEndsAt: number | null;
+  winnerEntryId: string | null;
+}): ArenaPhase {
+  if (match.status === "resolved" || match.status === "expired") return "resolved";
+  if (match.status === "judging" || (match.endsAt ?? Infinity) <= Date.now()) {
+    return "judging";
+  }
+  return "building";
+}
+
 export function registerAgentRoutes(router: AppRouter): void {
   // --- agent registry -----------------------------------------------------
 
@@ -282,6 +302,26 @@ export function registerAgentRoutes(router: AppRouter): void {
       limit: 50,
     });
     return json(c, { agents: rows });
+  });
+
+  // Cross-repo match feed — the same D1 `arena_matches` index the SSR /arena
+  // page reads, exposed as JSON for the SPA's delta views.
+  router.get("/api/arena", async (c) => {
+    const rows = await listArenaMatchIndex(c.var.db, 50);
+    return json(c, {
+      matches: rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        owner_slug: row.ownerSlug,
+        repo_slug: row.repoSlug,
+        phase: deriveArenaPhase(row),
+        entry_count: row.entryCount,
+        ends_at: row.endsAt,
+        judge_ends_at: row.judgeEndsAt,
+        created_by: row.createdBy,
+        created_at: row.createdAt,
+      })),
+    });
   });
 
   // --- merge intents --------------------------------------------------------

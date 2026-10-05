@@ -106,6 +106,12 @@ const RepoLayout = () => {
               filesPath={routes.toRepoFiles({ spaceId, repoId, '*': filesPathRef })}
               commitsPath={toRepoCommits({ spaceId, repoId, fullGitRef, gitRefName: commitsPathRef })}
               isRepoEmpty={!!repoData?.is_empty}
+              deltaPaths={{
+                intents: routes.toRepoIntents({ spaceId, repoId }),
+                ideas: routes.toRepoIdeas({ spaceId, repoId }),
+                arena: routes.toRepoArena({ spaceId, repoId }),
+                agents: routes.toRepoAgents({ spaceId, repoId })
+              }}
             />
           </SubHeaderWrapper>
         </>

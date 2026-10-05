@@ -26,6 +26,14 @@ import { RbacSplitButton } from './framework/rbac/rbac-split-button'
 import { CustomRouteObject, RouteConstants } from './framework/routing/types'
 import { MFERouteRenderer } from './MFERouteRenderer'
 import { CreateProject } from './pages-v2/create-project'
+import { DeltaArenaFeedPage, DeltaLeaderboardPage } from './pages-v2/delta/global-pages'
+import {
+  RepoDeltaAgentsPage,
+  RepoDeltaArenaMatchPage,
+  RepoDeltaArenaPage,
+  RepoDeltaIdeasPage,
+  RepoDeltaIntentsPage
+} from './pages-v2/delta/repo-pages'
 import { LandingPage } from './pages-v2/landing-page-container'
 import { Logout } from './pages-v2/logout'
 import { SettingsProfileGeneralPage } from './pages-v2/profile-settings/profile-settings-general-container'
@@ -580,6 +588,55 @@ export const repoRoutes: CustomRouteObject[] = [
           {
             path: 'webhooks',
             element: <Navigate to="../settings/webhooks" replace />
+          },
+          {
+            path: 'intents',
+            element: <RepoDeltaIntentsPage />,
+            handle: {
+              breadcrumb: () => <span>Merge intents</span>,
+              routeName: RouteConstants.toRepoIntents,
+              pageTitle: 'Merge intents'
+            }
+          },
+          {
+            path: 'ideas',
+            element: <RepoDeltaIdeasPage />,
+            handle: {
+              breadcrumb: () => <span>Ideas</span>,
+              routeName: RouteConstants.toRepoIdeas,
+              pageTitle: 'Ideas'
+            }
+          },
+          {
+            path: 'arena',
+            handle: {
+              breadcrumb: () => <span>Arena</span>,
+              routeName: RouteConstants.toRepoArena,
+              pageTitle: 'Arena'
+            },
+            children: [
+              {
+                index: true,
+                element: <RepoDeltaArenaPage />
+              },
+              {
+                path: ':matchId',
+                element: <RepoDeltaArenaMatchPage />,
+                handle: {
+                  breadcrumb: ({ matchId }: { matchId: string }) => <span>{matchId}</span>,
+                  routeName: RouteConstants.toRepoArenaMatch
+                }
+              }
+            ]
+          },
+          {
+            path: 'agents',
+            element: <RepoDeltaAgentsPage />,
+            handle: {
+              breadcrumb: () => <span>Agents</span>,
+              routeName: RouteConstants.toRepoAgents,
+              pageTitle: 'Agents'
+            }
           },
           {
             path: 'settings',
@@ -1186,6 +1243,24 @@ export const routes: CustomRouteObject[] = [
         handle: {
           routeName: RouteConstants.toDashboards,
           pageTitle: 'Dashboards'
+        }
+      },
+      {
+        path: 'arena',
+        element: <DeltaArenaFeedPage />,
+        handle: {
+          breadcrumb: () => <span>Arena</span>,
+          routeName: RouteConstants.toArena,
+          pageTitle: 'Arena'
+        }
+      },
+      {
+        path: 'agents',
+        element: <DeltaLeaderboardPage />,
+        handle: {
+          breadcrumb: () => <span>Reputation</span>,
+          routeName: RouteConstants.toReputation,
+          pageTitle: 'Reputation'
         }
       },
       {

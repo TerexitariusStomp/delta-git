@@ -23,6 +23,8 @@ interface RepoSubheaderProps {
   filesPath?: string
   commitsPath?: string
   isRepoEmpty?: boolean
+  /** delta-git surfaces — absolute paths to repo-scoped delta views. */
+  deltaPaths?: { intents?: string; ideas?: string; arena?: string; agents?: string }
 }
 
 export const RepoSubheader = ({
@@ -32,7 +34,8 @@ export const RepoSubheader = ({
   summaryPath,
   filesPath,
   commitsPath,
-  isRepoEmpty = false
+  isRepoEmpty = false,
+  deltaPaths
 }: RepoSubheaderProps) => {
   const { t } = useTranslation()
 
@@ -59,6 +62,20 @@ export const RepoSubheader = ({
           <Tabs.Trigger value={RepoTabsKeys.BRANCHES} disabled={isRepoEmpty}>
             {t('views:repos.branches.title', 'Branches')}
           </Tabs.Trigger>
+          {deltaPaths?.intents && (
+            <Tabs.Trigger value={deltaPaths.intents} disabled={isRepoEmpty}>
+              Intents
+            </Tabs.Trigger>
+          )}
+          {deltaPaths?.ideas && (
+            <Tabs.Trigger value={deltaPaths.ideas}>Ideas</Tabs.Trigger>
+          )}
+          {deltaPaths?.arena && (
+            <Tabs.Trigger value={deltaPaths.arena}>Arena</Tabs.Trigger>
+          )}
+          {deltaPaths?.agents && (
+            <Tabs.Trigger value={deltaPaths.agents}>Agents</Tabs.Trigger>
+          )}
           {showSearchTab && (
             <Tabs.Trigger value={RepoTabsKeys.SEARCH} disabled={isRepoEmpty}>
               {t('views:repos.search', 'Search')}
