@@ -45,9 +45,9 @@ function workspaceDedupePlugin(): Plugin {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // delta-git: served under /app/* by the forge worker (basename matches
-  // the createBrowserRouter basename patch in src/App.tsx).
-  base: '/app/',
+  // delta-git: served at the site root by the forge worker (basename
+  // matches the createBrowserRouter basename in src/App.tsx).
+  base: '/',
   plugins: [
     workspaceDedupePlugin(),
     react(),

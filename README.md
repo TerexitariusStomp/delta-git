@@ -118,7 +118,7 @@ Host unlimited private Git repositories at the edge with <50ms response times gl
 - **Two-tier caching** reducing latency from 200ms to <50ms for hot paths
 - **Streaming pack assembly** from R2 with range reads for efficient clones
 - **Streaming push pipeline** with atomic pack ingress and queue-driven compaction
-- **Modern web UI** with Tailwind CSS v4, React SSR, and focused client islands
+- **Gitness-based web UI** — vendored Apache-2.0 Harness SPA (`frontend/canary/`) served at `/` with a GitHub-style theme, backed by a real `/api/v1` facade over delta-git primitives
 - **Interactive merge commit exploration** - expand merge commits to see side branch history
 - **Safer raw views**: `text/plain` for `/raw` by default and same‑origin Referer check for `/rawpath` to prevent hotlinking
 
@@ -130,7 +130,7 @@ git clone https://github.com/zllovesuki/git-on-cloudflare
 cd git-on-cloudflare
 npm install
 
-# Start locally with Vite + Workers SSR (no Docker required)
+# Start locally with Vite + Workers (no Docker required)
 npm run dev
 
 # Push any repo to it
@@ -167,7 +167,7 @@ This is a complete Git Smart HTTP v2 server built on Cloudflare's edge primitive
 - Complete Git pack protocol v2 with `ls-refs` and `fetch` commands
 - Streaming receive writes packs directly to R2 with atomic metadata commit
 - Tessera OIDC browser sessions and personal access tokens for Git pushes
-- Modern web UI with Tailwind CSS v4, React page components, and worker-side SSR
+- Web UI is the vendored Gitness SPA at `/` (GitHub-reskinned); SSR remains only for auth/404/error chrome
 - SQLite-backed metadata inside Durable Objects using `drizzle-orm/durable-sqlite`
 - Structured JSON logging with `LOG_LEVEL` (debug/info/warn/error)
 

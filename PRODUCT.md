@@ -44,7 +44,7 @@ This is a tool that does one thing well and knows it. The interface should feel 
 **Constraints:**
 
 - Part of devbin.tools ecosystem — shared shell conventions per frontend-spec.md
-- SSR + islands architecture — no SPA patterns, minimal client JS
+- Vendored Gitness SPA (React, `/` mount) reskinned toward GitHub via `--cn-*` token overrides; only auth/404/error remain SSR islands
 - Tailwind v4 CSS-native config, no CSS-in-JS
 - Performance-sensitive: no heavy background effects, respect `prefers-reduced-motion`
 - Accessibility: lifted canvas for astigmatism, font-weight 450, WCAG AA minimum

@@ -1,4 +1,3 @@
-import type { TokensIslandSummary } from "@/client/islands/tokens";
 import type { AppContext } from "./hono";
 import type { RouteCacheSyncMessage } from "@/worker/tasks/queue";
 
@@ -38,6 +37,26 @@ export function enqueueRouteCacheSync(
 // fetched in two batched queries (one per grant table) and grouped by PAT
 // id, so an arbitrary number of tokens still costs the same fixed number
 // of round trips.
+type Level = "pull" | "push";
+
+// Wire shape returned by `/auth/api/tokens`. Formerly defined alongside the
+// account-page island; kept here after the SPA cutover retired that island.
+export type TokensIslandSummary = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: number;
+  expiresAt?: number | null;
+  revokedAt?: number | null;
+  lastUsedAt?: number | null;
+  namespaceGrants: Array<{ namespaceSlug: string; level: Level }>;
+  repoGrants: Array<{
+    namespaceSlug: string;
+    repoSlug: string;
+    level: Level;
+  }>;
+};
+
 export async function summarizeTokens(
   db: Db,
   tokens: PersonalAccessTokenRow[]

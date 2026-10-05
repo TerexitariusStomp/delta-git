@@ -281,7 +281,7 @@ describe("public->private visibility flip changes anonymous read response", () =
     await ensureD1Migrations(env);
   });
 
-  it("anonymous overview is 200 while public, 404 after flip; member overview stays 200", async () => {
+  it("anonymous facade read is 200 while public, 404 after flip; member read stays 200", async () => {
     const ns = `flip-${Math.random().toString(36).slice(2, 8)}`;
     const member = await createMember(ns);
     const seed = await seedRepo(env, {
@@ -291,7 +291,11 @@ describe("public->private visibility flip changes anonymous read response", () =
       visibility: "public",
     });
 
-    const anonPublic = await workerExports.default.fetch(`https://example.com/${ns}/site`);
+    // The overview URL now serves the SPA shell to everyone (no repo data is
+    // in it); the data-disclosure invariant lives on the facade read.
+    const repoApi = `https://example.com/api/v1/repos/${ns}/site/+`;
+
+    const anonPublic = await workerExports.default.fetch(repoApi);
     expect(anonPublic.status).toBe(200);
 
     const flipRes = await workerExports.default.fetch(
@@ -308,12 +312,13 @@ describe("public->private visibility flip changes anonymous read response", () =
     );
     expect(flipRes.status).toBe(200);
 
-    const anonPrivate = await workerExports.default.fetch(`https://example.com/${ns}/site`);
+    const anonPrivate = await workerExports.default.fetch(repoApi);
     expect(anonPrivate.status).toBe(404);
 
-    const memberPrivate = await workerExports.default.fetch(`https://example.com/${ns}/site`, {
+    const memberPrivate = await workerExports.default.fetch(repoApi, {
       headers: { Cookie: member.cookieHeader },
     });
     expect(memberPrivate.status).toBe(200);
+    expect(memberPrivate.headers.get("Cache-Control")).toBe("no-store");
   });
 });

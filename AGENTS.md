@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository is a Git Smart HTTP v2 server implemented on Cloudflare Workers with Durable Objects, R2, KV, React SSR, and a small amount of client-side hydration.
+This repository is a Git Smart HTTP v2 server implemented on Cloudflare Workers with Durable Objects, R2, KV, and the vendored Gitness SPA (`frontend/canary/`, Apache-2.0) served at the site root over an `/api/v1` facade. A small SSR surface remains for `/auth`, 404, and error pages.
 
 Write changes against the current source tree, not the docs alone. Some documentation is slightly behind the live layout.
 
@@ -78,7 +78,7 @@ Write changes against the current source tree, not the docs alone. Some document
 
 - Runtime: Cloudflare Workers with `nodejs_als`
 - Language: TypeScript ESM, strict mode
-- UI: React 19 SSR via `react-dom/server`, client islands, Tailwind CSS v4, Vite
+- UI: vendored Gitness SPA (React 17, `frontend/canary/apps/gitness`) + React 19 SSR for auth/404/error; Tailwind CSS v4, Vite
 - Storage: Durable Object storage, Durable Object SQLite via `drizzle-orm/durable-sqlite`, R2, KV
 - Routing: `itty-router`
 - Path alias: `@/*` maps to `src/*`
@@ -103,10 +103,13 @@ Write changes against the current source tree, not the docs alone. Some document
 - `src/worker/git/core/`: low-level Git protocol parsing and object helpers
 - `src/worker/git/operations/`: fetch, read-path logic, streaming upload-pack implementation
 - `src/worker/git/pack/`: pack assembly, pack indexing, pack metadata helpers
-- `src/client/pages/`: route-level React pages
+- `src/client/pages/`: retained SSR pages (auth sign-in, 404, error)
 - `src/client/components/`: shared SSR components
-- `src/client/islands/`: client-only interactive modules
+- `src/client/islands/`: client-only interactive modules (did-signin, shell)
 - `src/client/entries/`: Vite client entrypoints used by SSR pages
+- `frontend/canary/`: vendored Harness/Gitness SPA workspace (Apache-2.0)
+- `src/worker/api/gitness/`: `/api/v1` facade — translates the SPA's API onto delta-git primitives
+- `src/worker/routes/spa.ts`: SPA asset serving + client-route fallback (registered last)
 - `src/shared/web/`: browser-safe request parsing, formatting, MIME/JSON helpers
 - `src/worker/common/`: Worker response, logging, compression, stubs, progress helpers
 - `test/`: Vitest worker integration tests and Node unit tests
@@ -122,7 +125,7 @@ Write changes against the current source tree, not the docs alone. Some document
 - Receive uses a lease model: one active receive lease at a time, acquired via `beginReceive()` and committed via `finalizeReceive()`. Concurrent pushes receive `503 Retry-After: 10`.
 - Git fetch paths are streaming-sensitive. Avoid unnecessary buffering on upload-pack and pack assembly paths.
 - Git pushes require a D1-backed PAT with `level = "push"`; HTTP Basic username must match the route namespace slug.
-- UI rendering goes through `renderUiView()` and the view registry in `src/client/server/registry.tsx`. New pages should plug into that system rather than inventing a parallel renderer.
+- The SPA owns all page routing; `registerSpaRoutes` in `src/worker/routes/spa.ts` must stay registered last and must never shadow `/api`, `/auth`, `/xrpc`, `/mcp`, `/info`, `/objects`, or `/.well-known` paths. SSR rendering (auth/404/error only) goes through `renderUiView()` and the view registry in `src/client/server/registry.tsx`.
 
 ## Normal Workflow For Agents
 
@@ -194,17 +197,18 @@ Do not edit generated migrations under `drizzle/repo-do/` manually. Treat `src/w
   run the targeted Node Vitest test plus `npm run typecheck`
 - UI-only SSR/component changes:
   run `npm run typecheck`; if route behavior changed, add relevant worker coverage
+- SPA changes (`frontend/canary/`):
+  run `npm run build:spa` and the worker tests that cover `/api/v1` or SPA routing
 - SQLite schema or DAL changes:
   run `npm run db:generate`, `npm run typecheck`, and the worker tests that cover the affected flow
 
 ## UI Notes
 
 - Design context (audience, brand personality, aesthetic direction, color/typography choices) lives in `PRODUCT.md` at the project root. Read it before making visual or UX decisions.
-- SSR pages live in `src/client/pages/`.
-- Shared shell/document logic lives in `src/client/server/`.
-- Client interactivity should stay in focused islands under `src/client/islands/`.
-- If a page needs client code, wire it through `src/client/entrypoints.ts` and `src/client/server/registry.tsx`.
-- Shared CSS starts at `src/client/styles.css`, which imports `src/client/styles/app.css`.
+- The user-facing UI is the vendored Gitness SPA at `/` — repo, space, PR, and delta surfaces live under `frontend/canary/apps/gitness/src/` (delta views in `pages-v2/delta/`).
+- The GitHub reskin is token-driven: edit `frontend/canary/apps/gitness/src/delta/github-theme.css`, never the generated design-system CSS.
+- SSR pages (auth sign-in, 404, error) live in `src/client/pages/`; shared shell/document logic in `src/client/server/`; islands in `src/client/islands/`; entrypoints wired through `src/client/entrypoints.ts` and `src/client/server/registry.tsx`.
+- Shared SSR CSS starts at `src/client/styles.css`, which imports `src/client/styles/app.css`.
 
 ## Testing Notes
 
@@ -217,7 +221,7 @@ Do not edit generated migrations under `drizzle/repo-do/` manually. Treat `src/w
 
 - When adding a route, modify the owning module under `src/worker/routes/` and keep registration order safe.
 - When adding repo metadata, decide whether it belongs in DO storage or SQLite; if SQLite, add schema and DAL changes together.
-- When adding a new page, register it in `src/client/server/registry.tsx` and add a client entrypoint only if hydration is actually needed.
+- New user-facing pages go in the SPA (`frontend/canary/apps/gitness/src/routes.tsx`); the SSR registry is only for auth/error chrome.
 - When changing pack or fetch behavior, look for existing worker tests before writing new code; the repo already has strong coverage for those paths.
 
 ## Avoid

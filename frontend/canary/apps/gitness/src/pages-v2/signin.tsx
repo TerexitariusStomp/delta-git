@@ -1,37 +1,14 @@
-import { FC } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { FC, useEffect } from 'react'
 
-import { useOnLoginMutation } from '@harnessio/code-service-client'
-import { SignInData, SignInPage } from '@harnessio/views'
-
-import { useRoutes } from '../framework/context/NavigationContext'
-
+/**
+ * delta-git bridge: auth lives in the SSR `/auth` flow (DID sign-in + tessera
+ * OIDC), not gitness password auth — `/api/v1/login` only succeeds when a
+ * session already exists. Bounce straight there and let it return with a
+ * sealed session cookie.
+ */
 export const SignIn: FC = () => {
-  const routes = useRoutes()
-  const navigate = useNavigate()
-  const {
-    mutate: login,
-    isLoading,
-    error
-  } = useOnLoginMutation(
-    { queryParams: { include_cookie: true } },
-    {
-      onSuccess: () => navigate(routes.toHome()) // Redirect to Home page
-    }
-  )
-
-  return (
-    <SignInPage
-      isLoading={isLoading}
-      handleSignIn={(data: SignInData) => {
-        login({
-          body: {
-            login_identifier: data.email,
-            password: data.password
-          }
-        })
-      }}
-      error={error?.message}
-    />
-  )
+  useEffect(() => {
+    window.location.assign('/auth')
+  }, [])
+  return null
 }

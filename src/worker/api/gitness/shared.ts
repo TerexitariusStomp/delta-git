@@ -70,6 +70,9 @@ export async function resolveGitnessRepo(
     responseShape: "json",
   });
   if (access.kind !== "ok") return { kind: "response", response: access.response };
+  // Private-repo access marks the request's cache context private; the
+  // `/api/v1` middleware in index.ts stamps `Cache-Control: no-store` on the
+  // outgoing response.
   return {
     kind: "ok",
     route: access.route,

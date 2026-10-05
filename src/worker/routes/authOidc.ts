@@ -38,11 +38,11 @@ import { renderUiDocumentResponse } from "./uiResponse";
 import { errorRedirect, safeRedirect } from "./authShared";
 
 export function registerAuthOidcRoutes(router: AppRouter) {
-  // GET /auth: anonymous sees the sign-in page; signed-in goes to account.
+  // GET /auth: anonymous sees the sign-in page; signed-in goes to the SPA.
   router.get(`/auth`, async (c) => {
     try {
       const viewer = await loadViewer(c);
-      if (viewer) return safeRedirect(c, "/auth/account");
+      if (viewer) return safeRedirect(c, "/");
       const errorCode = c.req.query("error") ?? undefined;
       return await renderUiDocumentResponse(
         c.env,
@@ -259,7 +259,7 @@ export function registerAuthOidcRoutes(router: AppRouter) {
     clearOidcTransactionCookie(c);
 
     log.info("oidc:callback-success", { userId, claimedNamespaceSlug });
-    return safeRedirect(c, "/auth/account");
+    return safeRedirect(c, "/");
   });
 
   router.post(`/auth/sign-out`, async (c) => {

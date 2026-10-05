@@ -24,7 +24,7 @@ export default function App() {
     responseInterceptor: (response: Response) => {
       switch (response.status) {
         case 401:
-          window.location.href = '/app/signin'
+          window.location.href = '/signin'
           break
       }
       return response
@@ -32,7 +32,7 @@ export default function App() {
   })
 
   // Router Configuration
-  const router = createBrowserRouter(routes, { basename: '/app' })
+  const router = createBrowserRouter(routes, { basename: '/' })
 
   const { t } = useTranslationStore()
 

@@ -39,6 +39,8 @@ import {
   gErr,
   gNotFound,
   numericId,
+  type GitnessContext,
+  type RepoAccessOk,
   pageParams,
   paginate,
   parseRepoRef,
@@ -291,6 +293,74 @@ async function resolveRangeTrees(
 // routes
 // ---------------------------------------------------------------------------
 
+async function listContent(c: GitnessContext, access: RepoAccessOk, path: string) {
+  const ref = c.req.query("git_ref") || "main";
+  const result = await readPath(c.env, access.route.doName, ref, path, access.cacheCtx).catch(
+    () => null
+  );
+  if (!result) return gNotFound(c, "path");
+
+  if (result.type === "blob") {
+    // Chunked base64 — spread-calling fromCharCode on a large payload
+    // overflows the argument limit.
+    let bin = "";
+    const CHUNK = 8192;
+    for (let i = 0; i < result.content.length; i += CHUNK) {
+      bin += String.fromCharCode(...result.content.subarray(i, i + CHUNK));
+    }
+    return c.json({
+      type: "file",
+      name: path.split("/").pop() ?? path,
+      path,
+      sha: result.oid,
+      content: {
+        encoding: "base64",
+        data: btoa(bin),
+        size: result.size ?? result.content.length,
+      },
+    });
+  }
+
+  // Directory listing. `latest_commit` per entry comes from the bounded
+  // last-change walk — the SSR file table used the same source.
+  const wanted = result.entries.map((e) => ({ name: e.name, isDir: isTreeMode(e.mode) }));
+  const lastChange = await listPathsLastChange(
+    c.env,
+    access.route.doName,
+    ref,
+    path,
+    wanted,
+    access.cacheCtx
+  ).catch(() => null);
+  const entries = result.entries.map((e) => {
+    const lc = lastChange?.entries[e.name];
+    return {
+      name: e.name,
+      path: path ? `${path}/${e.name}` : e.name,
+      sha: e.oid,
+      type: isTreeMode(e.mode) ? "dir" : isSymlinkMode(e.mode) ? "symlink" : "file",
+      latest_commit: lc
+        ? {
+            sha: lc.oid,
+            title: lc.subject,
+            message: lc.subject,
+            author: {
+              identity: { name: lc.author ?? "", email: "" },
+              when: new Date(lc.when * 1000).toISOString(),
+            },
+          }
+        : undefined,
+    };
+  });
+  const name = path.split("/").pop() ?? "";
+  return c.json({
+    type: "dir",
+    name,
+    path,
+    content: { entries },
+  });
+}
+
 export function registerGitnessGitdata(router: AppRouter) {
   // --- refs ---------------------------------------------------------------
 
@@ -525,75 +595,19 @@ export function registerGitnessGitdata(router: AppRouter) {
 
   // --- content / trees --------------------------------------------------------
 
+  // The SPA requests the root listing as `/content` with no path segment —
+  // `:path{.+}` requires one, so register the bare route explicitly.
+  router.get("/api/v1/repos/:repo_ref{.+}/content", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    return listContent(c, access, "");
+  });
+
   router.get("/api/v1/repos/:repo_ref{.+}/content/:path{.+}", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
-    const ref = c.req.query("git_ref") || "main";
     const path = c.req.param("path").replace(/\/+$/, "");
-    const result = await readPath(c.env, access.route.doName, ref, path, access.cacheCtx).catch(
-      () => null
-    );
-    if (!result) return gNotFound(c, "path");
-
-    if (result.type === "blob") {
-      // Chunked base64 — spread-calling fromCharCode on a large payload
-      // overflows the argument limit.
-      let bin = "";
-      const CHUNK = 8192;
-      for (let i = 0; i < result.content.length; i += CHUNK) {
-        bin += String.fromCharCode(...result.content.subarray(i, i + CHUNK));
-      }
-      return c.json({
-        type: "file",
-        name: path.split("/").pop() ?? path,
-        path,
-        sha: result.oid,
-        content: {
-          encoding: "base64",
-          data: btoa(bin),
-          size: result.size ?? result.content.length,
-        },
-      });
-    }
-
-    // Directory listing. `latest_commit` per entry comes from the bounded
-    // last-change walk — the SSR file table uses the same source.
-    const wanted = result.entries.map((e) => ({ name: e.name, isDir: isTreeMode(e.mode) }));
-    const lastChange = await listPathsLastChange(
-      c.env,
-      access.route.doName,
-      ref,
-      path,
-      wanted,
-      access.cacheCtx
-    ).catch(() => null);
-    const entries = result.entries.map((e) => {
-      const lc = lastChange?.entries[e.name];
-      return {
-        name: e.name,
-        path: path ? `${path}/${e.name}` : e.name,
-        sha: e.oid,
-        type: isTreeMode(e.mode) ? "dir" : isSymlinkMode(e.mode) ? "symlink" : "file",
-        latest_commit: lc
-          ? {
-              sha: lc.oid,
-              title: lc.subject,
-              message: lc.subject,
-              author: {
-                identity: { name: lc.author ?? "", email: "" },
-                when: new Date(lc.when * 1000).toISOString(),
-              },
-            }
-          : undefined,
-      };
-    });
-    const name = path.split("/").pop() ?? "";
-    return c.json({
-      type: "dir",
-      name,
-      path,
-      content: { entries },
-    });
+    return listContent(c, access, path);
   });
 
   router.get("/api/v1/repos/:repo_ref{.+}/raw/:path{.+}", async (c) => {

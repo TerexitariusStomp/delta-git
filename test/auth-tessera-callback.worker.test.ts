@@ -93,7 +93,7 @@ describe("/auth/callback", () => {
     const cookie = await buildTransactionCookie(state, "nonce-1", "verifier-1");
     const res = await callCallback({ state, cookie });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/auth/account");
+    expect(res.headers.get("location")).toBe("/");
     const cookies = res.headers.get("set-cookie") ?? "";
     expect(cookies).toContain(`${SESSION_COOKIE_HEADER_NAME}=goc_sess_`);
     const db = createDb(env.DB);
@@ -129,7 +129,7 @@ describe("/auth/callback", () => {
     const cookie = await buildTransactionCookie(state, "nonce-2", "verifier-2");
     const res = await callCallback({ state, cookie });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/auth/account");
+    expect(res.headers.get("location")).toBe("/");
     const dbAfter = createDb(env.DB);
     const user = await findUserByTesseraSub(dbAfter, sub);
     expect(user).toBeDefined();
@@ -146,7 +146,7 @@ describe("/auth/callback", () => {
     const cookie = await buildTransactionCookie(state, "nonce-3", "verifier-3");
     const res = await callCallback({ state, cookie });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/auth/account");
+    expect(res.headers.get("location")).toBe("/");
     const db = createDb(env.DB);
     const user = await findUserByTesseraSub(db, sub);
     expect(user).toBeDefined();

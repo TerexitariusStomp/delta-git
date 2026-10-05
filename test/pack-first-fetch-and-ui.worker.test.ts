@@ -124,43 +124,49 @@ async function seedPackedOnlyRepo(repoId: string) {
 }
 
 describe("pack-first fetch and UI", () => {
-  it("serves UI routes from packs after loose copies are deleted", async () => {
+  it("serves read APIs from packs after loose copies are deleted", async () => {
     const owner = "o";
     const repo = uniqueRepoId("pack-first-ui");
     await setupRepoForTests(env, owner, repo);
     const repoId = `${owner}/${repo}`;
     const { commit2, blob2 } = await seedPackedOnlyRepo(repoId);
+    const api = `https://example.com/api/v1/repos/${owner}/${repo}/+`;
 
+    // Retained raw endpoint.
     const rawRes = await workerExports.default.fetch(
       `https://example.com/${owner}/${repo}/raw?oid=${encodeURIComponent(blob2.oid)}&name=hello.txt`
     );
     expect(rawRes.status).toBe(200);
     expect(await rawRes.text()).toBe("hello from v2\n");
 
-    const treeRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/tree?ref=main`
-    );
+    // Directory listing through the facade.
+    const treeRes = await workerExports.default.fetch(`${api}/content?git_ref=main`);
     expect(treeRes.status).toBe(200);
-    const treeHtml = await treeRes.text();
-    expect(treeHtml).toContain("hello.txt");
-    expect(treeHtml).toContain("CLAUDE.md");
-    expect(treeHtml).toContain("octicon-file-symlink-file");
+    const treeJson = (await treeRes.json()) as {
+      content?: { entries?: Array<{ name: string; type: string }> };
+    };
+    const names = (treeJson.content?.entries ?? []).map((e) => e.name);
+    expect(names).toContain("hello.txt");
+    expect(names).toContain("CLAUDE.md");
 
-    const blobRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/blob?ref=main&path=${encodeURIComponent("hello.txt")}`
-    );
+    // Blob content through the facade (base64 body).
+    const blobRes = await workerExports.default.fetch(`${api}/content/hello.txt?git_ref=main`);
     expect(blobRes.status).toBe(200);
-    expect(await blobRes.text()).toContain("hello from v2");
+    const blobJson = (await blobRes.json()) as {
+      type: string;
+      content?: { encoding: string; data: string };
+    };
+    expect(blobJson.type).toBe("file");
+    expect(atob(blobJson.content?.data ?? "")).toBe("hello from v2\n");
 
-    const commitRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commit/${commit2.oid}`
-    );
+    // Commit metadata through the facade.
+    const commitRes = await workerExports.default.fetch(`${api}/commits/${commit2.oid}`);
     expect(commitRes.status).toBe(200);
-    expect(await commitRes.text()).toContain("second commit");
+    const commitJson = (await commitRes.json()) as { title?: string; message?: string };
+    expect(commitJson.title ?? commitJson.message ?? "").toContain("second commit");
 
-    const diffRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commit/${commit2.oid}/diff?path=${encodeURIComponent("hello.txt")}`
-    );
+    // Commit diff through the facade (unified text).
+    const diffRes = await workerExports.default.fetch(`${api}/commits/${commit2.oid}/diff`);
     expect(diffRes.status).toBe(200);
     expect(await diffRes.text()).toContain("hello.txt");
   });

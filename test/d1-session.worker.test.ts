@@ -112,13 +112,16 @@ describe("D1 Sessions middleware", () => {
     await setupRepoForTests(env, owner, "repo");
     const probe = instrument();
 
-    const res = await workerExports.default.fetch(`https://example.com/${owner}`);
+    // Post-cutover `/${owner}` is a static SPA route that never touches D1,
+    // so the probe goes through the gitness facade repo lookup instead —
+    // it runs `findNamespaceBySlug` + repository queries through `c.var.db`.
+    const res = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${owner}/repo/+`
+    );
     expect(res.status).toBe(200);
     expect(probe.anchors).toHaveLength(1);
-    // The owner-overview handler runs `findNamespaceBySlug` and at least
-    // one repository query through `c.var.db`, so the wrapped session
-    // sees prepares. If the middleware had used `env.DB` directly, the
-    // counter would still be zero.
+    // The wrapped session sees prepares. If the middleware had used `env.DB`
+    // directly, the counter would still be zero.
     expect(probe.sessionPrepareCalls).toBeGreaterThan(0);
     expect(probe.getBookmarkCalls).toBe(1);
   });

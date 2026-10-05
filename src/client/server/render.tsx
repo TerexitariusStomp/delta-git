@@ -6,14 +6,6 @@ import { Document } from "./document";
 import { getViewDefinition } from "./registry";
 import type { Viewer } from "./viewer";
 
-function needsHighlightTheme(name: string, data: Record<string, unknown>): boolean {
-  return (
-    name === "blob" ||
-    name === "commit" ||
-    (name === "overview" && typeof data.readmeMd === "string" && data.readmeMd.length > 0)
-  );
-}
-
 export type RenderUiViewOptions = {
   // The signed-in viewer (if any) is computed by the Worker route handler
   // and threaded through the SSR shell. The renderer stays presentational
@@ -43,7 +35,8 @@ export async function renderUiView(
     <Document
       title={(data.title as string | undefined) || definition.title}
       assets={assets}
-      needsHighlight={needsHighlightTheme(name, data)}
+      // No remaining SSR view renders code — blob/commit/overview moved to the SPA.
+      needsHighlight={false}
     >
       <AppLayout currentView={name} viewer={options.viewer ?? null}>
         {page}

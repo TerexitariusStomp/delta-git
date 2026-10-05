@@ -323,7 +323,7 @@ describe("commit diff v1", () => {
     expect(patch.patch).toBeUndefined();
   });
 
-  it("returns lazy patch JSON for a commit path", async () => {
+  it("serves unified diff text for a commit via the facade", async () => {
     const owner = "o";
     const repo = uniqueRepoId("r-diff-route-patch");
     await setupRepoForTests(env, owner, repo);
@@ -338,26 +338,22 @@ describe("commit diff v1", () => {
     await setMainRef(getStub, commit.oid);
     await packAll(repoId, getStub, [readme, tree, commit]);
 
+    // The SSR `/commit/:oid/diff?path=` JSON route retired with the SPA
+    // cutover; the facade serves the same diff as unified text.
     const res = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commit/${commit.oid}/diff?path=${encodeURIComponent("README.md")}`
+      `https://example.com/api/v1/repos/${owner}/${repo}/+/commits/${commit.oid}/diff`
     );
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toContain("application/json");
+    expect(res.headers.get("Content-Type")).toContain("text/plain");
 
-    const payload = (await res.json()) as {
-      path: string;
-      changeType: string;
-      patch?: string;
-    };
-    expect(payload.path).toBe("README.md");
-    expect(payload.changeType).toBe("A");
-    expect(payload.patch).toContain("--- /dev/null");
-    expect(payload.patch).toContain("+++ b/README.md");
-    expect(payload.patch).toContain("+hello");
+    const patch = await res.text();
+    expect(patch).toContain("README.md");
+    expect(patch).toContain("+++ b/README.md");
+    expect(patch).toContain("+hello");
   });
 
-  it("commit page renders files changed and first-parent note for merge commits", async () => {
+  it("diffs a merge commit against its first parent via the facade", async () => {
     const owner = "o";
     const repo = uniqueRepoId("r-diff-route");
     await setupRepoForTests(env, owner, repo);
@@ -413,19 +409,18 @@ describe("commit diff v1", () => {
       mergeCommit,
     ]);
 
+    // First-parent semantics live at the facade now: a merge commit's diff
+    // compares against parents[0], so the second parent's file shows up as
+    // an addition while first-parent content does not.
     const res = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commit/${mergeCommit.oid}`
+      `https://example.com/api/v1/repos/${owner}/${repo}/+/commits/${mergeCommit.oid}/diff`
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toContain("text/html");
+    expect(res.headers.get("Content-Type")).toContain("text/plain");
 
-    const html = await res.text();
-    expect(html).toContain("Files changed");
-    expect(html).toContain("Compared against first parent");
-    expect(html).toContain("Show patch");
-    expect(html).toContain("beta.txt");
-    expect(html).toContain(
-      `/${owner}/${repo}/blob?ref=${encodeURIComponent(mergeCommit.oid)}&amp;path=beta.txt`
-    );
+    const patch = await res.text();
+    expect(patch).toContain("beta.txt");
+    expect(patch).toContain("+++ b/beta.txt");
+    expect(patch).not.toContain("alpha.txt");
   });
 });

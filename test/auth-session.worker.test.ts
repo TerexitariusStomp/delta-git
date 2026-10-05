@@ -68,14 +68,14 @@ async function signIn(sub: string, preferredUsername?: string): Promise<string> 
 }
 
 describe("session lifecycle", () => {
-  it("issues a session cookie that authorizes /auth/account", async () => {
+  it("issues a session cookie that authorizes /api/v1/user", async () => {
     const token = await signIn("sub-session-1", "session-rachel");
-    const res = await workerExports.default.fetch("https://example.com/auth/account", {
+    const res = await workerExports.default.fetch("https://example.com/api/v1/user", {
       headers: { Cookie: sessionCookieHeader(token) },
     });
     expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("@session-rachel");
+    const body = (await res.json()) as { display_name?: string };
+    expect(body.display_name).toBe("session-rachel");
   });
 
   it("/auth/account redirects to /auth when no cookie is present", async () => {
@@ -97,11 +97,14 @@ describe("session lifecycle", () => {
       redirect: "manual",
     });
     expect(res.status).toBe(403);
-    // Cookie remains valid for /auth/account.
+    // Cookie remains valid — /auth/account redirects signed-in viewers to the
+    // SPA profile page rather than 302ing back to /auth.
     const followup = await workerExports.default.fetch("https://example.com/auth/account", {
       headers: { Cookie: sessionCookieHeader(token) },
+      redirect: "manual",
     });
-    expect(followup.status).toBe(200);
+    expect(followup.status).toBe(302);
+    expect(followup.headers.get("location")).toBe("/profile-settings/general");
   });
 
   it("clears the browser cookie on same-origin sign-out", async () => {
@@ -125,7 +128,8 @@ describe("session lifecycle", () => {
       headers: { Cookie: sessionCookieHeader(token) },
       redirect: "manual",
     });
-    expect(followup.status).toBe(200);
+    expect(followup.status).toBe(302);
+    expect(followup.headers.get("location")).toBe("/profile-settings/general");
   });
 
   it("treats a malformed session cookie as anonymous", async () => {

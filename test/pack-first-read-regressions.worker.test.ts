@@ -14,7 +14,7 @@ import { setupRepoForTests } from "./util/repoSeed";
 import { buildFetchBody, findBytes } from "./util/fetch-protocol";
 
 describe("pack-first read-path regressions", () => {
-  it("serves UI routes from packs after all loose copies are deleted", async () => {
+  it("serves facade and raw routes from packs after all loose copies are deleted", async () => {
     const owner = "o";
     const repo = uniqueRepoId("pack-first-ui");
     await setupRepoForTests(env, owner, repo);
@@ -26,17 +26,23 @@ describe("pack-first read-path regressions", () => {
     await callStubWithRetry(getStub, (stub) => stub.getActivePackCatalog());
     await deleteLooseObjectCopies(env, getStub, seeded.objectOids);
 
-    const treeRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/tree?ref=main`
-    );
-    expect(treeRes.status).toBe(200);
-    expect(await treeRes.text()).toContain("hello.txt");
+    // SSR tree/blob/commit pages are retired; the same read paths back the
+    // gitness facade content/commit endpoints the SPA calls.
+    const api = `https://example.com/api/v1/repos/${owner}/${repo}/+`;
 
-    const blobRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/blob?ref=main&path=${encodeURIComponent("hello.txt")}`
-    );
+    const treeRes = await workerExports.default.fetch(`${api}/content?git_ref=main`);
+    expect(treeRes.status).toBe(200);
+    const treeJson = (await treeRes.json()) as {
+      content?: { entries?: Array<{ name: string }> };
+    };
+    expect((treeJson.content?.entries ?? []).map((e) => e.name)).toContain("hello.txt");
+
+    const blobRes = await workerExports.default.fetch(`${api}/content/hello.txt?git_ref=main`);
     expect(blobRes.status).toBe(200);
-    expect(await blobRes.text()).toContain("hello from packed storage");
+    const blobJson = (await blobRes.json()) as {
+      content?: { encoding: string; data: string };
+    };
+    expect(atob(blobJson.content?.data ?? "")).toContain("hello from packed storage");
 
     const rawRes = await workerExports.default.fetch(
       `https://example.com/${owner}/${repo}/raw?oid=${encodeURIComponent(seeded.blob.oid)}&name=hello.txt`
@@ -56,22 +62,19 @@ describe("pack-first read-path regressions", () => {
     expect(await rawPathRes.text()).toBe("hello from packed storage\n");
 
     const commitRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commit/${encodeURIComponent(seeded.commit.oid)}`
+      `${api}/commits/${encodeURIComponent(seeded.commit.oid)}`
     );
     expect(commitRes.status).toBe(200);
-    expect(await commitRes.text()).toContain("packed commit");
+    const commitJson = (await commitRes.json()) as { title?: string; message?: string };
+    expect(commitJson.title ?? commitJson.message ?? "").toContain("packed commit");
 
     const diffRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commit/${encodeURIComponent(seeded.commit.oid)}/diff?path=${encodeURIComponent("hello.txt")}`
+      `${api}/commits/${encodeURIComponent(seeded.commit.oid)}/diff`
     );
     expect(diffRes.status).toBe(200);
-    const diff = (await diffRes.json()) as {
-      changeType: string;
-      patch?: string;
-    };
-    expect(diff.changeType).toBe("A");
-    expect(diff.patch).toContain("+++ b/hello.txt");
-    expect(diff.patch).toContain("+hello from packed storage");
+    const diffText = await diffRes.text();
+    expect(diffText).toContain("+++ b/hello.txt");
+    expect(diffText).toContain("+hello from packed storage");
   });
 
   it("serves fetch from packs after all loose copies are deleted", async () => {
@@ -174,21 +177,25 @@ describe("pack-first read-path regressions", () => {
       mergeCommit.oid,
     ]);
 
-    const commitsRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commits?ref=main`
-    );
-    expect(commitsRes.status).toBe(200);
-    const commitsHtml = await commitsRes.text();
-    expect(commitsHtml).toContain("merge commit");
-    expect(commitsHtml).toContain("mainline");
+    const api = `https://example.com/api/v1/repos/${owner}/${repo}/+`;
 
-    const fragmentsRes = await workerExports.default.fetch(
-      `https://example.com/${owner}/${repo}/commits/fragments/${encodeURIComponent(mergeCommit.oid)}?limit=10`
-    );
-    expect(fragmentsRes.status).toBe(200);
-    const payload = (await fragmentsRes.json()) as {
-      commits: Array<{ firstLine: string }>;
+    const commitsRes = await workerExports.default.fetch(`${api}/commits?git_ref=main`);
+    expect(commitsRes.status).toBe(200);
+    const commitsJson = (await commitsRes.json()) as {
+      commits?: Array<{ title?: string; message?: string }>;
     };
-    expect(payload.commits.some((commit) => commit.firstLine === "side branch")).toBe(true);
+    const messages = (commitsJson.commits ?? []).map((c) => c.title ?? c.message ?? "");
+    expect(messages.some((m) => m.includes("merge commit"))).toBe(true);
+    expect(messages.some((m) => m.includes("mainline"))).toBe(true);
+
+    // The retired fragments endpoint walked all ancestors; the facade commits
+    // list is first-parent (the SPA's log view). A merged side commit is
+    // still resolvable directly by SHA from pack storage.
+    const sideRes = await workerExports.default.fetch(
+      `${api}/commits/${encodeURIComponent(sideCommit.oid)}`
+    );
+    expect(sideRes.status).toBe(200);
+    const sideJson = (await sideRes.json()) as { title?: string; message?: string };
+    expect(sideJson.title ?? sideJson.message ?? "").toContain("side branch");
   });
 });

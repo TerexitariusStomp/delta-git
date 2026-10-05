@@ -3,15 +3,12 @@ import type { AppContext, AppRouter } from "./hono";
 // Gitness SPA serving + client-route fallback.
 //
 // The SPA build (frontend/canary/apps/gitness/dist) is copied into
-// `dist/client/app/` by `scripts/copy-spa.mjs`, so the ASSETS binding serves
-// its files at `/app/*`. Anything under `/app/` that isn't a real asset is a
-// client-side route — hand it `/app/index.html` and let react-router take it.
-// Mounted under a dedicated prefix so it can't shadow SSR routes during the
-// migration; at cutover the basename flips to `/` and this replaces the UI
-// route table wholesale.
+// `dist/client/` by `scripts/copy-spa.mjs`, so the ASSETS binding serves its
+// files at the site root. Any GET that reaches here — i.e. matched no API,
+// git, auth, or asset path — is a client-side route: hand it `/index.html`
+// and let react-router take it. Registered last in index.ts.
 
-const SPA_PREFIX = "/app";
-const SPA_INDEX = `${SPA_PREFIX}/index.html`;
+const SPA_INDEX = "/index.html";
 
 async function spaIndex(c: AppContext) {
   const indexUrl = new URL(SPA_INDEX, c.req.url);
@@ -28,11 +25,82 @@ async function spaIndex(c: AppContext) {
   });
 }
 
+// Pre-cutover URL scheme was `/:owner/:repo/<feature>`; the SPA uses
+// `/:spaceId/repos/:repoId/<feature>`. Redirect the old bookmarrks and
+// in-flight links rather than 404ing them.
+const LEGACY_FEATURE_MAP: Record<string, string> = {
+  tree: "files",
+  blob: "files",
+  admin: "settings",
+};
+
+// Path segments that are space-level SPA routes, not repo names — without
+// this guard `/acme/repos` would loop through `/:owner/:repo` forever.
+const SPACE_SEGMENTS = new Set([
+  "repos",
+  "settings",
+  "pipelines",
+  "search",
+  "manage-repositories",
+  "pulls",
+]);
+
+function legacyRepoRedirect(c: AppContext, feature?: string) {
+  const owner = c.req.param("owner")!;
+  const repo = c.req.param("repo")!;
+  if (!feature) {
+    return c.redirect(`/${owner}/repos/${repo}`, 301);
+  }
+  // `feature` may carry a suffix (e.g. `commit/<oid>/diff`) — split off the
+  // first segment for mapping and re-append the rest verbatim.
+  const [head, ...rest] = feature.split("/");
+  const mapped = LEGACY_FEATURE_MAP[head] ?? head;
+  const suffix = rest.length ? `/${rest.join("/")}` : "";
+  return c.redirect(`/${owner}/repos/${repo}/${mapped}${suffix}`, 301);
+}
+
+// Namespaces that must never receive the SPA fallback — a GET that reached
+// this router under one of these prefixes matched no real route, so the
+// correct response is the SSR 404 (via `c.notFound()`), not index.html.
+const NON_SPA_PREFIXES = [
+  "/api/",
+  "/auth",
+  "/xrpc/",
+  "/mcp",
+  "/info/",
+  "/objects/",
+  "/.well-known/",
+];
+
+function isNonSpaPath(pathname: string): boolean {
+  return NON_SPA_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 export function registerSpaRoutes(router: AppRouter) {
-  router.get(SPA_PREFIX, spaIndex);
-  router.get(`${SPA_PREFIX}/*`, async (c) => {
-    const asset = await c.env.ASSETS.fetch(c.req.raw);
-    if (asset.status !== 404) return asset;
+  // Bookmarks from the migration window when the SPA lived under /app.
+  // Registered before `/:owner/:repo` so `app` isn't parsed as an owner.
+  router.get("/app", (c) => c.redirect("/", 301));
+  router.get("/app/*", (c) => {
+    const rest = new URL(c.req.url).pathname.slice(4);
+    return c.redirect(rest || "/", 301);
+  });
+
+  // `/:owner/:repo` and `/:owner/:repo/<feature>` — the old SSR site map.
+  // Skipped when `repo` is a space-level segment so SPA paths pass through.
+  router.get("/:owner/:repo", (c) => {
+    if (isNonSpaPath(new URL(c.req.url).pathname)) return c.notFound();
+    if (SPACE_SEGMENTS.has(c.req.param("repo")!)) return spaIndex(c);
+    return legacyRepoRedirect(c);
+  });
+  router.get("/:owner/:repo/:feature{.+}", (c) => {
+    if (isNonSpaPath(new URL(c.req.url).pathname)) return c.notFound();
+    if (SPACE_SEGMENTS.has(c.req.param("repo")!)) return spaIndex(c);
+    return legacyRepoRedirect(c, c.req.param("feature"));
+  });
+
+  // Every other GET is a client-side route.
+  router.get("*", (c) => {
+    if (isNonSpaPath(new URL(c.req.url).pathname)) return c.notFound();
     return spaIndex(c);
   });
 }

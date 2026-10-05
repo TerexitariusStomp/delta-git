@@ -3,6 +3,32 @@
 Multi-tenant operational guide: quota ceilings, housekeeping, secrets inventory,
 migrations, and observability.
 
+## Frontend (Gitness SPA)
+
+The web UI is the vendored Harness/Gitness SPA (`frontend/canary/apps/gitness`),
+built at deploy time and served from the worker's `ASSETS` binding at the site
+root.
+
+- **Build**: `npm run build` = `vite build` (worker + retained SSR islands into
+  `dist/client/assets/`) then `npm run build:spa` (pnpm workspace build of the
+  canary packages + `vite build` of gitness + `scripts/copy-spa.mjs` copies
+  `frontend/canary/apps/gitness/dist` into `dist/client/` root).
+- **Routing**: all API/git/auth routes register first in
+  `src/worker/index.ts`; `registerSpaRoutes` (`src/worker/routes/spa.ts`) runs
+  last — `/:owner/:repo[...]` legacy URLs 301 to `/:owner/repos/:repo[...]`,
+  `/app/*` redirects to root, and every other GET serves `index.html`. Paths
+  under `/api`, `/auth`, `/xrpc`, `/mcp`, `/info`, `/objects`,
+  `/.well-known` never reach the fallback (404 instead of HTML).
+- **SSR remainder**: only `/auth` (DID sign-in island), the 404, and the error
+  page still render server-side via `src/client/server/registry.tsx`. The SPA
+  `/signin` route bounces to `/auth`; post-auth redirects land on `/`.
+- **Theme**: GitHub-style reskin lives in
+  `frontend/canary/apps/gitness/src/delta/github-theme.css`, imported after the
+  generated design-system CSS. Never edit the generated token CSS directly.
+- **Delta surfaces**: SPA routes under `pages-v2/delta/` call our `/api/...`
+  endpoints (arena feed `GET /api/arena`, leaderboard, repo agents/ideas/
+  intents/matches/work).
+
 ## Quota ceilings
 
 All limits live in `src/worker/agent/abuse.ts` (`LIMITS`, `DEFAULT_STORAGE_QUOTA_BYTES`).

@@ -5,9 +5,7 @@ import {
   findNamespaceBySlug,
   findRepositoryByNamespaceAndSlug,
   insertPatWithGrants,
-  listNamespacesForUser,
   listPatsForUser,
-  listRepositoriesForUser,
   revokePatById,
 } from "@/worker/db/d1/dal";
 import { sameOriginViolation } from "@/worker/auth/origin";
@@ -19,37 +17,16 @@ import {
   viewerIsNamespaceMember,
 } from "@/worker/auth/pat";
 import type { AppRouter } from "./hono";
-import { renderUiDocumentResponse } from "./uiResponse";
 import { safeRedirect, summarizeTokens } from "./authShared";
 import { PatCreateRequestSchema } from "./requestSchemas";
 
 export function registerAuthTokenRoutes(router: AppRouter) {
+  // The SSR account page was retired with the SPA cutover — profile/token
+  // management lives at /profile-settings inside the SPA.
   router.get(`/auth/account`, async (c) => {
     const viewer = await loadViewer(c);
     if (!viewer) return safeRedirect(c, "/auth");
-    const db = c.var.db;
-    const namespaces = await listNamespacesForUser(db, viewer.userId);
-    const repositoryRows = await listRepositoriesForUser(db, viewer.userId);
-    const tokenRows = await listPatsForUser(db, viewer.userId);
-    const tokens = await summarizeTokens(db, tokenRows);
-    return renderUiDocumentResponse(
-      c.env,
-      "account",
-      {
-        userId: viewer.userId,
-        primaryNamespaceSlug: viewer.primaryNamespaceSlug,
-        namespaces: namespaces.map((ns) => ({ id: ns.id, slug: ns.slug })),
-        repositories: repositoryRows.map((row) => ({
-          id: row.repository.id,
-          slug: row.repository.slug,
-          namespaceSlug: row.namespace.slug,
-          visibility: row.repository.visibility,
-          updatedAt: row.repository.updatedAt,
-        })),
-        tokens,
-      },
-      { failureBody: "Failed to render page\n", viewer }
-    );
+    return c.redirect("/profile-settings/general", 302);
   });
 
   router.get(`/auth/api/tokens`, async (c) => {

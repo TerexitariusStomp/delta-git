@@ -8,6 +8,7 @@
 // every endpoint the SPA calls is implemented.
 
 import type { AppRouter } from "@/worker/routes/hono";
+import { isRequestPrivate } from "@/worker/cache";
 import { loadViewer, generateUserId, generateNamespaceId } from "@/worker/auth/session";
 import { insertPatWithGrants, listPatsForUser, revokePatById } from "@/worker/db/d1/dal/tokens";
 import { insertUserIfNew, deleteUserRow } from "@/worker/db/d1/dal/users";
@@ -34,6 +35,17 @@ const GITIGNORE_PRESETS = ["Node", "Python", "Go", "Rust", "Java", "C++"];
 const LICENSE_PRESETS = ["MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause", "ISC"];
 
 export function registerGitnessApi(router: AppRouter) {
+  // Facade handlers return bare `Response` objects, so `c.header()` calls
+  // made mid-resolution never reach the wire. Stamp `no-store` on `c.res`
+  // once the private-repo marker has been applied to the request's cache
+  // context — one middleware covers every facade route.
+  router.use("/api/v1/*", async (c, next) => {
+    await next();
+    if (isRequestPrivate(c.var.cacheCtx)) {
+      c.res.headers.set("Cache-Control", "no-store");
+    }
+  });
+
   registerGitnessSpaces(router);
   // Pullreqs before gitdata: gitdata's greedy `:repo_ref{.+}` suffix routes
   // (e.g. `/activities`) would otherwise swallow `/pullreq/:n/...` paths.

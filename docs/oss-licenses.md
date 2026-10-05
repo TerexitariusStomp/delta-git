@@ -56,6 +56,49 @@ the shipping bundle.
 | vite, rolldown, tailwindcss, prettier, vitest  | MIT               |
 | wrangler                                       | MIT OR Apache-2.0 |
 | @cloudflare/workers-types, vitest-pool-workers | MIT / BSD         |
+| pnpm (canary workspace)                        | MIT               |
+
+## Vendored frontend — `frontend/canary/` (Harness/Gitness)
+
+The web UI is a vendored subtree of
+[`harness/canary`](https://github.com/harness/canary) pinned at tag
+`mfe.alpha.2819`. Repo-root `LICENSE` is Apache-2.0 and covers every vendored
+package; see `frontend/canary/UPSTREAM.md` for the exact pin and patches.
+
+Vendored workspace packages (all Apache-2.0, ISC for core-design-system):
+
+| Package                         | Role                                      |
+| ------------------------------- | ----------------------------------------- |
+| `apps/gitness`                  | The SPA — routes, pages, hooks, app shell |
+| `@harnessio/ui`                 | Component library                         |
+| `@harnessio/views`              | Prop-driven view layer                    |
+| `@harnessio/forms`              | Form engine                               |
+| `@harnessio/filters`            | Filter primitives                         |
+| `@harnessio/core-design-system` | Design tokens → `--cn-*` CSS vars         |
+| `@harnessio/pipeline-graph`     | Pipeline DAG renderer                     |
+| `@harnessio/yaml-editor`        | Monaco-backed YAML editor                 |
+
+Published packages consumed from npm:
+
+| Package                          | License | Role                                          |
+| -------------------------------- | ------- | --------------------------------------------- |
+| `@harnessio/code-service-client` | MIT     | `/api/v1` contract — our facade implements it |
+| `@harnessio/oats-cli`            | MIT     | Optional client codegen                       |
+
+Notable transitive runtime deps inside the SPA bundle (all permissive):
+
+| Component                                        | License | Role                          |
+| ------------------------------------------------ | ------- | ----------------------------- |
+| react 17, react-dom, react-router-dom 6          | MIT     | SPA runtime (isolated bundle) |
+| monaco-editor                                    | MIT     | File/editor surface           |
+| diff2html, @git-diff-view/react                  | MIT     | PR/commit diffs               |
+| react-query (tanstack v4), zustand, jotai, immer | MIT     | Data/state                    |
+| i18next family                                   | MIT     | i18n                          |
+| react-hook-form, zod                             | MIT     | Forms/validation              |
+
+S0.6 audit: 220 vendored deps — 190 MIT, 17 Apache-2.0, remainder
+ISC/BSD/MIT-0. The only flagged package is `gitness@0.1.0` itself, covered by
+the repo's Apache-2.0 root LICENSE. No GPL/AGPL anywhere in the subtree.
 
 ## wp-cloud Worker runtime
 

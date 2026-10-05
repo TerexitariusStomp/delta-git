@@ -4,6 +4,8 @@
 /* Monaco styles and fonts are included by monaco-editor-webpack-plugin. No separate import needed. */
 /* @import './styles/monaco-styles.css'; */
 @import '@harnessio/ui/markdown-preview-styles.css';
+/* delta-git GitHub reskin — must come after the design-system theme CSS. */
+@import './delta/github-theme.css';
 
 /* Escape styling from blueprint.css */
 

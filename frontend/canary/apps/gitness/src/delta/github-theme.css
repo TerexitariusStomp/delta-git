@@ -1,0 +1,245 @@
+/*
+ * delta-git GitHub reskin — applied last in styles.css so it overrides the
+ * Harness design tokens under the theme classes the app toggles
+ * (`.dark-std-std` / `.light-std-std`, plus bare `.dark`/`.light`).
+ * Values follow GitHub Primer: dark canvas #0d1117, light canvas #ffffff,
+ * accent #0969da/#4493f8, primary action green #1f883d/#238636.
+ */
+
+/* ---------- shared ---------- */
+:root {
+  --cn-font-family-default:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
+}
+
+/* ---------- GitHub Dark ---------- */
+.dark,
+.dark-std-std {
+  /* surfaces */
+  --cn-bg-0: #010409; /* header / inset canvas */
+  --cn-bg-1: #0d1117; /* app canvas */
+  --cn-bg-2: #161b22; /* cards, inputs, dropdowns */
+  --cn-bg-3: #21262d; /* popovers, raised surfaces */
+
+  /* text */
+  --cn-text-1: #f0f6fc;
+  --cn-text-2: #d1d9e0;
+  --cn-text-3: #9198a1;
+  --cn-text-4: #6e7681;
+  --cn-text-brand: #4493f8;
+
+  /* borders */
+  --cn-border-1: #59636e;
+  --cn-border-2: #30363d;
+  --cn-border-3: #21262d;
+  --cn-border-success: #238636;
+  --cn-border-danger: #da3633;
+  --cn-border-warning: #9e6a03;
+
+  /* interaction states */
+  --cn-state-hover: rgba(177, 186, 196, 0.12);
+  --cn-state-selected: rgba(177, 186, 196, 0.24);
+
+  /* brand = GitHub green primary + blue links */
+  --cn-set-brand-primary-text: #ffffff;
+  --cn-set-brand-primary-bg: #238636;
+  --cn-set-brand-primary-bg-hover: #2ea043;
+  --cn-set-brand-primary-bg-selected: #2ea043;
+  --cn-set-brand-primary-ring: rgba(46, 160, 67, 0.4);
+  --cn-set-brand-secondary-text: #4493f8;
+  --cn-set-brand-secondary-bg: #121d2f;
+  --cn-set-brand-secondary-bg-hover: #182742;
+  --cn-set-brand-secondary-bg-selected: #182742;
+  --cn-set-brand-outline-bg: #0d1117;
+  --cn-set-brand-outline-border: #3d444d;
+  --cn-set-brand-outline-bg-hover: #161b22;
+  --cn-set-brand-outline-bg-selected: #161b22;
+
+  /* gray set (neutral buttons/menus) */
+  --cn-set-gray-primary-text: #f0f6fc;
+  --cn-set-gray-primary-bg: #59636e;
+  --cn-set-gray-primary-bg-hover: #6e7681;
+  --cn-set-gray-primary-bg-selected: #6e7681;
+  --cn-set-gray-secondary-bg: #21262d;
+  --cn-set-gray-secondary-bg-hover: #30363d;
+  --cn-set-gray-secondary-bg-selected: #30363d;
+  --cn-set-gray-outline-bg-hover: #21262d;
+  --cn-set-gray-outline-bg-selected: #21262d;
+
+  /* success */
+  --cn-set-success-primary-text: #ffffff;
+  --cn-set-success-primary-bg: #238636;
+  --cn-set-success-primary-bg-hover: #2ea043;
+  --cn-set-success-primary-bg-selected: #2ea043;
+  --cn-set-success-secondary-text: #3fb950;
+  --cn-set-success-secondary-bg: #12261e;
+  --cn-set-success-secondary-bg-hover: #1a3929;
+  --cn-set-success-secondary-bg-selected: #1a3929;
+  --cn-set-success-outline-bg: #0d1117;
+  --cn-set-success-outline-border: #238636;
+  --cn-set-success-outline-bg-hover: #12261e;
+  --cn-set-success-outline-bg-selected: #12261e;
+
+  /* danger */
+  --cn-set-danger-primary-text: #ffffff;
+  --cn-set-danger-primary-bg: #da3633;
+  --cn-set-danger-primary-bg-hover: #f85149;
+  --cn-set-danger-primary-bg-selected: #f85149;
+  --cn-set-danger-secondary-text: #f85149;
+  --cn-set-danger-secondary-bg: #25171c;
+  --cn-set-danger-secondary-bg-hover: #341820;
+  --cn-set-danger-secondary-bg-selected: #341820;
+  --cn-set-danger-outline-bg: #0d1117;
+  --cn-set-danger-outline-border: #da3633;
+  --cn-set-danger-outline-bg-hover: #25171c;
+  --cn-set-danger-outline-bg-selected: #25171c;
+
+  /* attention/warning */
+  --cn-set-warning-primary-text: #ffffff;
+  --cn-set-warning-primary-bg: #9e6a03;
+  --cn-set-warning-primary-bg-hover: #d29922;
+  --cn-set-warning-primary-bg-selected: #d29922;
+  --cn-set-warning-secondary-text: #e3b341;
+  --cn-set-warning-secondary-bg: #272115;
+  --cn-set-warning-secondary-bg-hover: #3b2e00;
+  --cn-set-warning-secondary-bg-selected: #3b2e00;
+  --cn-set-warning-outline-bg: #0d1117;
+  --cn-set-warning-outline-border: #9e6a03;
+  --cn-set-warning-outline-bg-hover: #272115;
+  --cn-set-warning-outline-bg-selected: #272115;
+
+  /* info blue */
+  --cn-set-blue-primary-text: #ffffff;
+  --cn-set-blue-primary-bg: #1f6feb;
+  --cn-set-blue-primary-bg-hover: #388bfd;
+  --cn-set-blue-primary-bg-selected: #388bfd;
+  --cn-set-blue-secondary-text: #4493f8;
+  --cn-set-blue-secondary-bg: #121d2f;
+  --cn-set-blue-secondary-bg-hover: #182742;
+  --cn-set-blue-secondary-bg-selected: #182742;
+  --cn-set-blue-outline-bg: #0d1117;
+  --cn-set-blue-outline-border: #1f6feb;
+  --cn-set-blue-outline-bg-hover: #121d2f;
+  --cn-set-blue-outline-bg-selected: #121d2f;
+
+  /* purple (merged / AI accents) */
+  --cn-set-purple-primary-text: #ffffff;
+  --cn-set-purple-primary-bg: #8250df;
+  --cn-set-purple-primary-bg-hover: #a371f7;
+  --cn-set-purple-primary-bg-selected: #a371f7;
+  --cn-set-purple-secondary-text: #ab7df8;
+  --cn-set-purple-secondary-bg: #271c3a;
+  --cn-set-purple-secondary-bg-hover: #342452;
+  --cn-set-purple-secondary-bg-selected: #342452;
+}
+
+/* ---------- GitHub Light ---------- */
+.light,
+.light-std-std {
+  --cn-bg-0: #f6f8fa;
+  --cn-bg-1: #ffffff;
+  --cn-bg-2: #f6f8fa;
+  --cn-bg-3: #ffffff;
+
+  --cn-text-1: #1f2328;
+  --cn-text-2: #3d434d;
+  --cn-text-3: #59636e;
+  --cn-text-4: #818b98;
+  --cn-text-brand: #0969da;
+
+  --cn-border-1: #818b98;
+  --cn-border-2: #d1d9e0;
+  --cn-border-3: #eef1f4;
+  --cn-border-success: #1a7f37;
+  --cn-border-danger: #cf222e;
+  --cn-border-warning: #9a6700;
+
+  --cn-state-hover: rgba(208, 215, 222, 0.4);
+  --cn-state-selected: rgba(208, 215, 222, 0.7);
+
+  --cn-set-brand-primary-text: #ffffff;
+  --cn-set-brand-primary-bg: #1f883d;
+  --cn-set-brand-primary-bg-hover: #1a7f37;
+  --cn-set-brand-primary-bg-selected: #1a7f37;
+  --cn-set-brand-primary-ring: rgba(31, 136, 61, 0.3);
+  --cn-set-brand-secondary-text: #0969da;
+  --cn-set-brand-secondary-bg: #ddf4ff;
+  --cn-set-brand-secondary-bg-hover: #b6e3ff;
+  --cn-set-brand-secondary-bg-selected: #b6e3ff;
+  --cn-set-brand-outline-bg: #f6f8fa;
+  --cn-set-brand-outline-border: #d1d9e0;
+  --cn-set-brand-outline-bg-hover: #eef1f4;
+  --cn-set-brand-outline-bg-selected: #eef1f4;
+
+  --cn-set-gray-primary-text: #ffffff;
+  --cn-set-gray-primary-bg: #59636e;
+  --cn-set-gray-primary-bg-hover: #454c54;
+  --cn-set-gray-primary-bg-selected: #454c54;
+  --cn-set-gray-secondary-bg: #eff1f3;
+  --cn-set-gray-secondary-bg-hover: #e2e5e9;
+  --cn-set-gray-secondary-bg-selected: #e2e5e9;
+  --cn-set-gray-outline-bg-hover: #eff1f3;
+  --cn-set-gray-outline-bg-selected: #eff1f3;
+
+  --cn-set-success-primary-text: #ffffff;
+  --cn-set-success-primary-bg: #1f883d;
+  --cn-set-success-primary-bg-hover: #1a7f37;
+  --cn-set-success-primary-bg-selected: #1a7f37;
+  --cn-set-success-secondary-text: #1a7f37;
+  --cn-set-success-secondary-bg: #dafbe1;
+  --cn-set-success-secondary-bg-hover: #aceebb;
+  --cn-set-success-secondary-bg-selected: #aceebb;
+  --cn-set-success-outline-bg: #f6f8fa;
+  --cn-set-success-outline-border: #1a7f37;
+  --cn-set-success-outline-bg-hover: #dafbe1;
+  --cn-set-success-outline-bg-selected: #dafbe1;
+
+  --cn-set-danger-primary-text: #ffffff;
+  --cn-set-danger-primary-bg: #cf222e;
+  --cn-set-danger-primary-bg-hover: #a40e26;
+  --cn-set-danger-primary-bg-selected: #a40e26;
+  --cn-set-danger-secondary-text: #cf222e;
+  --cn-set-danger-secondary-bg: #ffebe9;
+  --cn-set-danger-secondary-bg-hover: #ffcecb;
+  --cn-set-danger-secondary-bg-selected: #ffcecb;
+  --cn-set-danger-outline-bg: #f6f8fa;
+  --cn-set-danger-outline-border: #cf222e;
+  --cn-set-danger-outline-bg-hover: #ffebe9;
+  --cn-set-danger-outline-bg-selected: #ffebe9;
+
+  --cn-set-warning-primary-text: #1f2328;
+  --cn-set-warning-primary-bg: #eac54f;
+  --cn-set-warning-primary-bg-hover: #d4a72c;
+  --cn-set-warning-primary-bg-selected: #d4a72c;
+  --cn-set-warning-secondary-text: #9a6700;
+  --cn-set-warning-secondary-bg: #fff8c5;
+  --cn-set-warning-secondary-bg-hover: #fae17d;
+  --cn-set-warning-secondary-bg-selected: #fae17d;
+  --cn-set-warning-outline-bg: #f6f8fa;
+  --cn-set-warning-outline-border: #9a6700;
+  --cn-set-warning-outline-bg-hover: #fff8c5;
+  --cn-set-warning-outline-bg-selected: #fff8c5;
+
+  --cn-set-blue-primary-text: #ffffff;
+  --cn-set-blue-primary-bg: #0969da;
+  --cn-set-blue-primary-bg-hover: #0860ca;
+  --cn-set-blue-primary-bg-selected: #0860ca;
+  --cn-set-blue-secondary-text: #0969da;
+  --cn-set-blue-secondary-bg: #ddf4ff;
+  --cn-set-blue-secondary-bg-hover: #b6e3ff;
+  --cn-set-blue-secondary-bg-selected: #b6e3ff;
+  --cn-set-blue-outline-bg: #f6f8fa;
+  --cn-set-blue-outline-border: #0969da;
+  --cn-set-blue-outline-bg-hover: #ddf4ff;
+  --cn-set-blue-outline-bg-selected: #ddf4ff;
+
+  --cn-set-purple-primary-text: #ffffff;
+  --cn-set-purple-primary-bg: #8250df;
+  --cn-set-purple-primary-bg-hover: #6639ba;
+  --cn-set-purple-primary-bg-selected: #6639ba;
+  --cn-set-purple-secondary-text: #8250df;
+  --cn-set-purple-secondary-bg: #fbefff;
+  --cn-set-purple-secondary-bg-hover: #ecd8ff;
+  --cn-set-purple-secondary-bg-selected: #ecd8ff;
+}

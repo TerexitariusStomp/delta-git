@@ -373,7 +373,7 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
       metric(c.env, "auth.did", { scope: "oauth-sso-handoff", index: result.did });
       return c.redirect(`${result.returnTo}${sep}dg_token=${dgToken}`);
     }
-    return c.redirect("/auth/account");
+    return c.redirect("/");
   });
 
   // --- logout / session -------------------------------------------------------

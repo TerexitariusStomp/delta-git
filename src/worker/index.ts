@@ -54,21 +54,12 @@ registerPagesRoutes(app);
 // POSIX tar export of a repo tree — consumed by wp-cloud deploy-git, CI, mirrors
 registerArchiveRoutes(app);
 
-app.get("/", async (c) => {
-  const viewer = await loadViewer(c);
-  return renderUiDocumentResponse(
-    c.env,
-    "home",
-    { origin: new URL(c.req.url).origin },
-    { failureBody: "Failed to render page\n", viewer }
-  );
-});
-
-// Gitness SPA under /app/* — after all /api + auth routes; its own prefix
-// so it cannot shadow SSR routes during the migration.
-registerSpaRoutes(app);
-// Register UI routes AFTER static/auth so that /:owner doesn't shadow them
+// Functional legacy endpoints (raw blobs, refs JSON, site builds) — before
+// the SPA fallback so they keep winning their old paths.
 registerUiRoutes(app);
+// Gitness SPA — owns every remaining GET (repo pages, spaces, delta views,
+// legacy `/:owner/:repo` redirects live inside registerSpaRoutes).
+registerSpaRoutes(app);
 
 async function renderNotFound(c: AppContext): Promise<Response> {
   const viewer = await loadViewer(c);

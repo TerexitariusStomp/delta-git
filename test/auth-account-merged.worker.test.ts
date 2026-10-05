@@ -66,54 +66,43 @@ async function signIn(sub: string, preferredUsername?: string): Promise<string> 
   return token!;
 }
 
-describe("merged /auth/account hub", () => {
-  it("renders identity, namespaces, repositories, and the tokens island on one page", async () => {
+describe("/auth/account post-cutover", () => {
+  it("redirects a signed-in viewer to the SPA profile settings", async () => {
     const token = await signIn("sub-merged-1", "merged-rachel");
     const res = await workerExports.default.fetch("https://example.com/auth/account", {
       headers: { Cookie: sessionCookieHeader(token) },
+      redirect: "manual",
     });
-    expect(res.status).toBe(200);
-    const html = await res.text();
-
-    // Identity moment renders the namespace handle, not "Your account".
-    expect(html).toContain("@merged-rachel");
-    expect(html).toContain("Identity");
-    expect(html).not.toContain("Your account");
-
-    // The four sections all live on this single page.
-    expect(html).toContain("Namespaces");
-    expect(html).toContain("Repositories");
-    expect(html).toContain("Tokens");
-
-    // The tokens section is anchored and hosts the island for client hydration.
-    expect(html).toContain('id="tokens"');
-    expect(html).toContain('data-island="tokens"');
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/profile-settings/general");
   });
 
-  it("renders the merged page even when the user has no preferred_username claim", async () => {
-    const token = await signIn("sub-merged-no-slug", undefined);
+  it("redirects anonymous viewers to /auth", async () => {
     const res = await workerExports.default.fetch("https://example.com/auth/account", {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/auth");
+  });
+
+  it("exposes the signed-in identity through /api/v1/user for the SPA", async () => {
+    const token = await signIn("sub-merged-api", "merged-api-rachel");
+    const res = await workerExports.default.fetch("https://example.com/api/v1/user", {
       headers: { Cookie: sessionCookieHeader(token) },
     });
     expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("Identity not yet claimed");
-    expect(html).toContain('data-island="tokens"');
+    const body = (await res.json()) as { display_name?: string };
+    expect(body.display_name).toBe("merged-api-rachel");
   });
 
-  it("/auth/tokens no longer routes to the management page", async () => {
+  it("/auth/tokens stays a 404 inside the reserved auth namespace", async () => {
     const token = await signIn("sub-tokens-route-gone", "route-gone");
     const res = await workerExports.default.fetch("https://example.com/auth/tokens", {
       headers: { Cookie: sessionCookieHeader(token) },
       redirect: "manual",
     });
-    // The management page is exclusively at /auth/account now. Whatever the
-    // /:owner/:repo fallthrough returns for an unknown namespace, it must not
-    // be the tokens management island.
-    if (res.status === 200) {
-      const html = await res.text();
-      expect(html).not.toContain('data-island="tokens"');
-      expect(html).not.toContain('id="tokens"');
-    }
+    // `/auth/*` is a non-SPA namespace — the SPA fallback must not serve
+    // index.html here, and no SSR tokens page exists anymore.
+    expect(res.status).toBe(404);
   });
 });
