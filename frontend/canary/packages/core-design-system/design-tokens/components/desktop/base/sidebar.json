@@ -1,0 +1,58 @@
+{
+  "sidebar": {
+    "item": {
+      "container": {
+        "$type": "spacing",
+        "$value": "{spacing.half}"
+      },
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.3-half}"
+      },
+      "radius": {
+        "$type": "borderRadius",
+        "$value": "{rounded.4}"
+      },
+      "min-height": {
+        "$type": "sizing",
+        "$value": "{size.9}"
+      },
+      "min-width": {
+        "$type": "sizing",
+        "$value": "{size.12}"
+      }
+    },
+    "group": {
+      "py": {
+        "$type": "spacing",
+        "$value": "{spacing.2-half}"
+      },
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.half}"
+      }
+    },
+    "container": {
+      "px": {
+        "$type": "spacing",
+        "$value": "{spacing.2-half}"
+      },
+      "py": {
+        "$type": "spacing",
+        "$value": "{spacing.5}"
+      },
+      "full-width": {
+        "$type": "sizing",
+        "$value": "{size.60}"
+      },
+      "min-width": {
+        "$type": "sizing",
+        "$value": "62px"
+      }
+    },
+    "fade-height": {
+      "$type": "sizing",
+      "$value": "{size.15}"
+    }
+  }
+}

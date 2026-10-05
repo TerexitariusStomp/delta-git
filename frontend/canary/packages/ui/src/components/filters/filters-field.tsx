@@ -1,0 +1,242 @@
+import { useMemo, useState } from 'react'
+
+import { Checkbox } from '@components/checkbox'
+import { Label } from '@components/form-primitives'
+import { MultiSelectOption } from '@components/multi-select'
+import { cn } from '@utils/cn'
+
+import FilterBoxWrapper, { type FilterFieldTriggerVariant } from './filter-box-wrapper'
+import Calendar from './filters-bar/actions/variants/calendar-field'
+import { MultiSelectFilter } from './filters-bar/actions/variants/checkbox'
+import Combobox, { ComboBoxOptions } from './filters-bar/actions/variants/combo-box'
+import DateRangeField from './filters-bar/actions/variants/date-range-field'
+import MultiTagFilter from './filters-bar/actions/variants/multi-tag'
+import Text from './filters-bar/actions/variants/text-field'
+import {
+  CheckboxOptions,
+  DateRangeValue,
+  FilterFieldConfig as FilterField,
+  FilterFieldTypes,
+  FilterOptionConfig,
+  FilterValueTypes
+} from './types'
+import { getDateRangeFilterLabels, getFilterLabelValue } from './utils'
+
+export interface FiltersFieldProps<
+  T extends string,
+  V extends FilterValueTypes,
+  CustomValue = Record<string, unknown>
+> {
+  filterOption: FilterOptionConfig<T, CustomValue>
+  removeFilter: () => void
+  valueLabel?: string
+  dropdownContentClassName?: string
+  shouldOpenFilter: boolean
+  onOpenChange?: (open: boolean) => void
+  onChange: (selectedValues: V) => void
+  value?: V
+  /**
+   * Trigger button look. Defaults to `secondary`.
+   * Pass `outline` for standalone filters (no filter group).
+   */
+  variant?: FilterFieldTriggerVariant
+}
+
+interface FilterFieldProps<T extends string, V extends FilterValueTypes, CustomValue = Record<string, unknown>> {
+  filter: FilterField<V>
+  filterOption: FilterOptionConfig<T, CustomValue>
+  onUpdateFilter: (selectedValues: V) => void
+  setIsOpen: (open: boolean) => void
+}
+
+const FilterFieldInternal = <T extends string, V extends FilterValueTypes, CustomValue = Record<string, unknown>>({
+  filter,
+  filterOption,
+  onUpdateFilter,
+  setIsOpen
+}: FilterFieldProps<T, V, CustomValue>): JSX.Element | null => {
+  const uniqId = useMemo(() => `filter-${Math.random().toString(36).slice(2, 11)}`, [])
+
+  if (!onUpdateFilter) return null
+
+  switch (filterOption.type) {
+    case FilterFieldTypes.Calendar: {
+      const calendarFilter = filter as FilterField<Date>
+      return (
+        <Calendar
+          filter={calendarFilter}
+          onUpdateFilter={values => {
+            onUpdateFilter(values as V)
+            // Currently this supports only single selection, will be handled based on calendar type
+            values && setIsOpen(false)
+          }}
+        />
+      )
+    }
+    case FilterFieldTypes.DateRange: {
+      const dateRangeFilter = filter as FilterField<DateRangeValue>
+      return (
+        <DateRangeField
+          filter={dateRangeFilter}
+          {...filterOption.filterFieldConfig}
+          onUpdateFilter={values => {
+            onUpdateFilter(values as V)
+            setIsOpen(false)
+          }}
+          onCancel={() => setIsOpen(false)}
+        />
+      )
+    }
+    case FilterFieldTypes.Text: {
+      const textFilter = filter as FilterField<string>
+      return (
+        <Text
+          filter={textFilter}
+          onUpdateFilter={values => onUpdateFilter(values as V)}
+          handleEnter={() => setIsOpen(false)}
+        />
+      )
+    }
+    case FilterFieldTypes.ComboBox: {
+      const comboBoxFilter = filter as FilterField<ComboBoxOptions>
+      return (
+        <Combobox
+          filterValue={comboBoxFilter.value}
+          {...filterOption.filterFieldConfig}
+          onUpdateFilter={values => {
+            onUpdateFilter(values as V)
+          }}
+        />
+      )
+    }
+    case FilterFieldTypes.MultiSelect: {
+      const checkboxFilter = filter as FilterField<CheckboxOptions[]>
+      return (
+        <MultiSelectFilter
+          {...filterOption.filterFieldConfig}
+          filter={checkboxFilter.value || []}
+          filterOption={filterOption.filterFieldConfig?.options || []}
+          onUpdateFilter={values => onUpdateFilter(values as V)}
+        />
+      )
+    }
+    case FilterFieldTypes.Custom: {
+      const customFilter = filter as unknown as FilterField<CustomValue>
+      return filterOption.filterFieldConfig.renderCustomComponent({
+        value: customFilter.value,
+        onChange: (values: unknown) => onUpdateFilter(values as V)
+      })
+    }
+    case FilterFieldTypes.Checkbox: {
+      const checkboxFilter = filter as FilterField<boolean>
+      const checkboxId = `checkbox-${uniqId}`
+      return (
+        <Label
+          optional
+          className="rounded-cn-3 bg-cn-gray-secondary border-cn-gray-outline cursor-pointer border px-cn-md py-cn-xs [&>.cn-label-text]:flex [&>.cn-label-text]:items-center [&>.cn-label-text]:gap-x-cn-2xs"
+          htmlFor={checkboxId}
+        >
+          <Checkbox
+            id={checkboxId}
+            checked={checkboxFilter.value}
+            onCheckedChange={value => onUpdateFilter(value as V)}
+            className="relative z-[1]"
+          />
+          {filterOption.filterFieldConfig?.label}
+        </Label>
+      )
+    }
+
+    case FilterFieldTypes.MultiTag: {
+      const multiTagFilter = filter as FilterField<MultiSelectOption[]>
+      return (
+        <MultiTagFilter
+          filter={multiTagFilter.value || []}
+          onUpdateFilter={values => onUpdateFilter(values as V)}
+          filterFieldConfig={filterOption.filterFieldConfig}
+        />
+      )
+    }
+    default:
+      return null
+  }
+}
+
+const FiltersField = <T extends string, V extends FilterValueTypes, CustomValue = Record<string, unknown>>({
+  filterOption,
+  removeFilter,
+  shouldOpenFilter,
+  dropdownContentClassName,
+  onOpenChange,
+  onChange,
+  value,
+  variant
+}: FiltersFieldProps<T, V, CustomValue>) => {
+  const activeFilterOption = {
+    type: filterOption.value,
+    value
+  }
+  const [isOpen, setIsOpen] = useState(shouldOpenFilter)
+
+  const onFilterValueChange = (selectedValues: V) => {
+    onChange(selectedValues)
+  }
+
+  if (filterOption.type === FilterFieldTypes.Checkbox) {
+    return (
+      <FilterFieldInternal<T, V, CustomValue>
+        filter={activeFilterOption}
+        filterOption={filterOption}
+        onUpdateFilter={onFilterValueChange}
+        setIsOpen={setIsOpen}
+      />
+    )
+  }
+
+  const valueLabel = getFilterLabelValue(filterOption, activeFilterOption)
+  const tooltipContent =
+    filterOption.type === FilterFieldTypes.DateRange
+      ? getDateRangeFilterLabels(
+          activeFilterOption.value as DateRangeValue | undefined,
+          filterOption.filterFieldConfig?.weekStartsOn
+        ).full
+      : valueLabel
+
+  return (
+    <FilterBoxWrapper
+      contentClassName={cn(
+        filterOption.type === FilterFieldTypes.Calendar ? 'w-[250px]' : '',
+        filterOption.type === FilterFieldTypes.DateRange ? 'w-auto min-w-[400px] max-w-none' : '',
+        filterOption.type === FilterFieldTypes.MultiTag ? 'cn-dropdown-menu-overflow-visible' : '',
+        dropdownContentClassName
+      )}
+      scrollAreaClassName={
+        // The date range picker's sidebar + calendar + footer can exceed the default
+        // ~360px dropdown cap (e.g. the Presets tab's two-month calendar), which clipped
+        // the timezone/Cancel/Apply footer and forced an extra internal scroll that also
+        // scrolled the section sidebar out of view. Let it grow with the viewport instead.
+        filterOption.type === FilterFieldTypes.DateRange
+          ? 'max-h-[min(560px,calc(var(--radix-dropdown-menu-content-available-height)_-_8px))]'
+          : undefined
+      }
+      handleRemoveFilter={() => removeFilter()}
+      isOpen={isOpen}
+      setIsOpen={setIsOpen}
+      onOpenChange={onOpenChange}
+      defaultOpen={shouldOpenFilter}
+      filterLabel={filterOption.label}
+      valueLabel={valueLabel}
+      tooltipContent={tooltipContent}
+      variant={variant}
+    >
+      <FilterFieldInternal<T, V, CustomValue>
+        filter={activeFilterOption}
+        filterOption={filterOption}
+        setIsOpen={setIsOpen}
+        onUpdateFilter={onFilterValueChange}
+      />
+    </FilterBoxWrapper>
+  )
+}
+
+export default FiltersField

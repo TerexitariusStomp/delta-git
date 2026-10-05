@@ -1,0 +1,75 @@
+import { useGraphContext } from '../context/graph-provider'
+import { ContainerNodeType } from '../types/container-node'
+import { ContainerNode, NodeProps } from '../types/nodes'
+import {
+  AnyNodeInternal,
+  LeafNodeInternalType,
+  ParallelNodeInternalType,
+  SerialNodeInternalType
+} from '../types/nodes-internal'
+
+export function RenderNodeContent(
+  props: {
+    node: AnyNodeInternal
+    children?: React.ReactElement
+    collapsed?: boolean
+    setCollapsed?: (collapsed: boolean) => void
+    isFirst?: boolean
+    isLast?: boolean
+    parentNodeType?: ContainerNodeType
+    portPosition?: number
+  } & NodeProps
+) {
+  const { node, children, collapsed, setCollapsed, isFirst, isLast, parentNodeType, mode, portPosition } = props
+  const { nodes } = useGraphContext()
+
+  const nodeContent = nodes[node.type]
+
+  switch (nodeContent.containerType) {
+    case ContainerNode.leaf:
+      return (
+        <nodeContent.component
+          node={node as LeafNodeInternalType<{}>}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+          isFirst={isFirst}
+          isLast={isLast}
+          parentNodeType={parentNodeType}
+          mode={mode}
+          portPosition={portPosition}
+        >
+          {children}
+        </nodeContent.component>
+      )
+    case ContainerNode.serial:
+      return (
+        <nodeContent.component
+          node={node as SerialNodeInternalType<{}>}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+          isFirst={isFirst}
+          isLast={isLast}
+          parentNodeType={parentNodeType}
+          mode={mode}
+          portPosition={portPosition}
+        >
+          {children}
+        </nodeContent.component>
+      )
+    case ContainerNode.parallel:
+      return (
+        <nodeContent.component
+          node={node as ParallelNodeInternalType<{}>}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+          isFirst={isFirst}
+          isLast={isLast}
+          parentNodeType={parentNodeType}
+          mode={mode}
+          portPosition={portPosition}
+        >
+          {children}
+        </nodeContent.component>
+      )
+  }
+}

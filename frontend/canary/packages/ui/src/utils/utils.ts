@@ -1,0 +1,191 @@
+import { Children, isValidElement, ReactElement, ReactNode } from 'react'
+
+import { Scope, ScopeType } from '@/types'
+import { get } from 'lodash-es'
+
+export const INITIAL_ZOOM_LEVEL = 1
+export const ZOOM_INC_DEC_LEVEL = 0.1
+
+export interface Violation {
+  violation: string
+}
+
+/**
+ * Generate a random alphanumeric hash of a given length
+ * @param length - The length of the hash to generate
+ * @returns A random alphanumeric hash of the given length
+ */
+export function generateAlphaNumericHash(length: number) {
+  let result = ''
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  const charactersLength = characters.length
+
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength))
+  }
+
+  return result
+}
+
+export const filterChildrenByDisplayNames = (
+  children: ReactNode,
+  displayNames: string[],
+  exclude?: true
+): ReactElement[] => {
+  return Children.toArray(children).filter((child): child is ReactElement => {
+    if (!isValidElement(child) || !child.type || typeof child.type === 'string') {
+      return false
+    }
+
+    const childDisplayName = (child.type as any).displayName
+    return exclude ? !displayNames.includes(childDisplayName) : displayNames.includes(childDisplayName)
+  })
+}
+
+export const getErrorMessage = (error: Error | string | null, defaultMessage: string): string => {
+  if (!error) {
+    return defaultMessage
+  }
+
+  if (typeof error === 'string' && error.length > 0) {
+    return error
+  }
+
+  return (
+    (get(error, 'data.error', get(error, 'data.message', get(error, 'message', error))) as string) || defaultMessage
+  )
+}
+
+/**
+ * Build pagination link with page number and optional search query
+ * @param pageNumber - The page number to navigate to
+ * @param searchQuery - Optional search query to preserve in URL
+ * @returns Query string for pagination link
+ */
+export function buildPaginationLink(pageNumber: number, searchQuery?: string | null): string {
+  const params = new URLSearchParams()
+  params.set('page', pageNumber.toString())
+  if (searchQuery) {
+    params.set('query', searchQuery)
+  }
+  return `?${params.toString()}`
+}
+
+export function createPaginationLinks(xPrevPage: number, xNextPage: number, searchQuery?: string | null) {
+  const getPrevPageLink = () => buildPaginationLink(xPrevPage, searchQuery)
+  const getNextPageLink = () => buildPaginationLink(xNextPage, searchQuery)
+
+  return { getPrevPageLink, getNextPageLink }
+}
+
+export function isPromise(obj: any): obj is Promise<any> {
+  return obj instanceof Promise || (obj && typeof obj.then === 'function')
+}
+
+export const encodePath = (path: string) => {
+  return path
+    .split('~')
+    .map((part, index) => (index === 0 ? encodeURI(part) : encodeURI(encodeURI(part))))
+    .join('~')
+}
+
+// Encode a slash-delimited resource path for repo file/folder links so that
+// special characters in individual segments (#, ?, %, +, &, space, ...) survive
+// the round-trip to the backend.
+//
+// Each segment is double-encoded because the `content` backend URL-decodes the
+// path segment TWICE. encodeURIComponent (not encodeURI) is used because
+// encodeURI leaves `#` untouched — a name starting with `#` would then be read
+// as the URL fragment, truncating the path and breaking navigation.
+export const encodeResourcePath = (resourcePath?: string): string => {
+  if (!resourcePath) return ''
+  return resourcePath
+    .split('/')
+    .map(segment => encodeURIComponent(encodeURIComponent(segment)))
+    .join('/')
+}
+
+export const decodeURIComponentIfValid = (path: string) => {
+  try {
+    return decodeURIComponent(path)
+  } catch {
+    return path
+  }
+}
+
+export const decodeURIPath = (path: string) => {
+  const pathArr = path.split('/')
+  return pathArr.map(decodeURIComponentIfValid).join('/')
+}
+
+/**
+ * Clamp a number between a minimum and maximum value.
+ * Ensures numeric values do not exceed expected bounds.
+ */
+export function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+/**
+ * Gets the scope type from scope parameters
+ * @param params - Scope parameters
+ * @returns The scope type
+ */
+const getScopeFromParams = (params: Scope): ScopeType | undefined => {
+  if (params.projectIdentifier) return ScopeType.Project
+  if (params.orgIdentifier) return ScopeType.Organization
+  if (params.accountId) return ScopeType.Account
+}
+
+/**
+ * Creates a backLink object for Page.Header component
+ * @param toSettings - Optional route function to settings page
+ * @param params - Path parameters including accountId, orgIdentifier, projectIdentifier, and module
+ * @returns BackLink object with linkText and linkProps, or undefined if toSettings is not provided
+ */
+export const settingsBackLink = (
+  toSettings?: (params: Scope & { module?: string }) => string,
+  params?: Scope & { module?: string }
+): { linkText: string; linkProps: { to: string } } | undefined => {
+  if (!toSettings || !params) {
+    return undefined
+  }
+
+  const scope = getScopeFromParams({
+    accountId: params.accountId || '',
+    orgIdentifier: params.orgIdentifier || '',
+    projectIdentifier: params.projectIdentifier || ''
+  })
+
+  const scopeName =
+    scope === ScopeType.Project ? 'Project' : scope === ScopeType.Organization ? 'Organization' : 'Account'
+
+  return {
+    linkText: `${scopeName} settings`,
+    linkProps: {
+      to: toSettings({
+        accountId: params.accountId || '',
+        orgIdentifier: params.orgIdentifier || '',
+        projectIdentifier: params.projectIdentifier || '',
+        module: params.module
+      })
+    }
+  }
+}
+
+/**
+ * Reads a CSS custom property from the document root.
+ * Guards against SSR/Node: `document` and `getComputedStyle` are undefined in those environments
+ * (e.g. Astro/Vite build, SSR), so we return '' so callers like `getCssNumber` fall back to their fallback value.
+ */
+const getCSSPropetyValue = (property: string): string => {
+  if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') {
+    return ''
+  }
+  return getComputedStyle(document.documentElement).getPropertyValue(property).trim()
+}
+
+export const getCssNumber = (variable: string, fallback: number): number => {
+  const value = parseFloat(getCSSPropetyValue(variable))
+  return Number.isFinite(value) ? value : fallback
+}

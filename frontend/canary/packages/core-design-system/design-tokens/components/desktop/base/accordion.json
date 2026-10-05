@@ -1,0 +1,44 @@
+{
+  "accordion": {
+    "sm": {
+      "py": {
+        "$type": "spacing",
+        "$value": "{spacing.4}"
+      },
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.1-half}"
+      },
+      "min-width": {
+        "$type": "sizing",
+        "$value": "{size.56}"
+      },
+      "card": {
+        "gap-y": {
+          "$type": "spacing",
+          "$value": "{spacing.3}"
+        }
+      }
+    },
+    "md": {
+      "py": {
+        "$type": "spacing",
+        "$value": "{spacing.4-half}"
+      },
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.2}"
+      },
+      "min-width": {
+        "$type": "sizing",
+        "$value": "{size.64}"
+      },
+      "card": {
+        "gap-y": {
+          "$type": "spacing",
+          "$value": "{spacing.4}"
+        }
+      }
+    }
+  }
+}

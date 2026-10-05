@@ -1,0 +1,265 @@
+export default {
+  '.cn-tabs-scroll-container': {
+    position: 'relative',
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    overflow: 'hidden',
+
+    '&-vertical': {
+      flexDirection: 'column',
+      height: '100%',
+      width: 'auto'
+    }
+  },
+
+  '.cn-tabs-scroll-wrapper': {
+    flex: '1',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    scrollbarWidth: 'none',
+    '&::-webkit-scrollbar': {
+      display: 'none'
+    },
+    scrollBehavior: 'smooth',
+    '& .cn-tabs-list': {
+      flexWrap: 'nowrap',
+      width: 'max-content',
+      minWidth: '100%'
+    },
+
+    '&-vertical': {
+      overflowX: 'hidden',
+      overflowY: 'auto',
+      '& .cn-tabs-list': {
+        height: 'max-content',
+        minHeight: '100%',
+        width: 'auto',
+        minWidth: 'auto'
+      }
+    }
+  },
+
+  '.cn-tabs-fade': {
+    position: 'absolute',
+    pointerEvents: 'none',
+    zIndex: '1',
+
+    '&-left': {
+      left: '0',
+      top: '0',
+      bottom: '0',
+      width: 'var(--cn-spacing-6)',
+      background: 'linear-gradient(to right, var(--cn-bg-1), transparent)'
+    },
+
+    '&-right': {
+      right: '0',
+      top: '0',
+      bottom: '0',
+      width: 'var(--cn-spacing-6)',
+      background: 'linear-gradient(to left, var(--cn-bg-1), transparent)'
+    },
+
+    '&-top': {
+      top: '0',
+      left: '0',
+      right: '0',
+      height: 'var(--cn-spacing-6)',
+      background: 'linear-gradient(to bottom, var(--cn-bg-1), transparent)'
+    },
+
+    '&-bottom': {
+      bottom: '0',
+      left: '0',
+      right: '0',
+      height: 'var(--cn-spacing-6)',
+      background: 'linear-gradient(to top, var(--cn-bg-1), transparent)'
+    }
+  },
+
+  '.cn-tabs-list': {
+    display: 'flex',
+    alignItems: 'center',
+
+    '&-vertical': {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+
+      '&.cn-tabs-list-underlined': {
+        borderBottom: 'none',
+        borderRight: 'var(--cn-tabs-container-border) solid var(--cn-border-3)'
+      },
+
+      '&.cn-tabs-list-overlined': {
+        borderBottom: 'none',
+        borderRight: 'var(--cn-tabs-container-border) solid var(--cn-border-3)'
+      }
+    },
+
+    '&-outlined': {
+      width: 'fit-content',
+      padding: 'var(--cn-tabs-container)',
+      borderRadius: 'var(--cn-tabs-container-radius)',
+      border: 'var(--cn-tabs-container-border) solid var(--cn-border-2)',
+      backgroundColor: 'var(--cn-bg-2)',
+      '@apply font-body-normal': ''
+    },
+
+    '&-ghost': {
+      width: 'fit-content',
+      padding: 'var(--cn-tabs-container)',
+      borderRadius: 'var(--cn-tabs-container-radius)',
+      '@apply font-body-normal': ''
+    },
+
+    '&-overlined': {
+      borderBottom: 'var(--cn-tabs-container-border) solid var(--cn-border-3)',
+      '@apply font-body-normal': ''
+    },
+
+    '&-underlined': {
+      minHeight: 'inherit',
+      borderBottom: 'var(--cn-tabs-container-border) solid var(--cn-border-3)',
+      gap: 'var(--cn-tabs-underlined-container-gap)',
+      '@apply font-body-normal': ''
+    }
+  },
+
+  '.cn-tabs-trigger': {
+    '@apply font-body-normal': '',
+    display: 'flex',
+    alignItems: 'center',
+    color: 'var(--cn-text-3)',
+    userSelect: 'none',
+    whiteSpace: 'nowrap',
+    flexShrink: '0',
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'ease-in-out',
+
+    '&.cn-tabs-trigger-measure-strong': {
+      '@apply font-body-strong': ''
+    },
+
+    '&:where(:not([disabled]).cn-tabs-trigger-active), &:where(:not([disabled]):hover)': {
+      '@apply font-body-strong': ''
+    },
+
+    '&-outlined': {
+      minHeight: 'var(--cn-tabs-item-min-height)',
+      padding: 'var(--cn-tabs-item-py) var(--cn-tabs-item-px)',
+      gap: 'var(--cn-tabs-item-gap)',
+      color: 'var(--cn-text-3)',
+      border: 'var(--cn-tabs-item-border) solid transparent',
+
+      '&:where(:not([disabled]).cn-tabs-trigger-active)': {
+        borderColor: 'var(--cn-text-brand)',
+        backgroundColor: 'var(--cn-bg-3)',
+        borderRadius: 'var(--cn-tabs-item-radius)',
+        color: 'var(--cn-text-brand) !important'
+      },
+
+      '&:where(:not([disabled]):hover)': {
+        color: 'var(--cn-text-1)'
+      }
+    },
+
+    '&-ghost': {
+      minHeight: 'var(--cn-tabs-item-min-height)',
+      padding: 'var(--cn-tabs-item-py) var(--cn-tabs-item-px)',
+      gap: 'var(--cn-tabs-item-gap)',
+      color: 'var(--cn-text-3)',
+      border: 'var(--cn-tabs-item-border) solid transparent',
+
+      '&:where(:not([disabled]).cn-tabs-trigger-active)': {
+        backgroundColor: 'var(--cn-set-blue-secondary-bg)',
+        borderRadius: 'var(--cn-tabs-item-radius)',
+        borderColor: 'var(--cn-set-blue-secondary-bg)',
+        color: 'var(--cn-set-blue-secondary-text) !important'
+      },
+
+      '&:where(:not([disabled]):hover)': {
+        color: 'var(--cn-text-1)'
+      }
+    },
+
+    '&-overlined': {
+      minHeight: 'var(--cn-tabs-item-overlined-min-height)',
+      padding: 'var(--cn-tabs-item-overlined-py) var(--cn-tabs-item-overlined-px)',
+      gap: 'var(--cn-tabs-item-overlined-gap)',
+      marginBottom: '-1px', // a compensation to overlap the bottom border of the container
+      color: 'var(--cn-text-2)',
+      border: 'var(--cn-tabs-item-overlined-border) solid transparent',
+      borderRadius:
+        'var(--cn-tabs-item-overlined-rt) var(--cn-tabs-item-overlined-rt) var(--cn-tabs-item-overlined-rb) var(--cn-tabs-item-overlined-rb)',
+
+      '&:where(:not([disabled]).cn-tabs-trigger-active)': {
+        borderColor: 'var(--cn-border-3)',
+        borderBottomColor: 'transparent',
+        backgroundColor: 'var(--cn-bg-1)',
+        color: 'var(--cn-text-brand) !important'
+      },
+
+      '&:where(:not([disabled]):hover)': {
+        // Adding important to override Blueprint reset CSS defaults
+        color: 'var(--cn-text-1) !important'
+      },
+
+      '&:where(:not([disabled]):focus-visible)': {
+        '@apply z-[1] outline-offset-cn-tight': ''
+      },
+
+      '.cn-tabs-list-vertical &': {
+        marginBottom: '0',
+        marginRight: '-1px',
+        marginLeft: '0',
+        borderRadius:
+          'var(--cn-tabs-item-overlined-rt) var(--cn-tabs-item-overlined-rb) var(--cn-tabs-item-overlined-rb) var(--cn-tabs-item-overlined-rt)',
+
+        '&:where(:not([disabled]).cn-tabs-trigger-active)': {
+          borderColor: 'var(--cn-border-3)',
+          borderRightColor: 'transparent'
+        }
+      }
+    },
+
+    '&-underlined': {
+      position: 'relative',
+      bottom: '-1px',
+      minHeight: 'var(--cn-tabs-item-underlined-min-height)',
+      padding: 'var(--cn-tabs-item-underlined-py) var(--cn-tabs-item-underlined-px)',
+      paddingBottom: 'calc(var(--cn-tabs-item-underlined-py) - 1px)', // to compensate for the border and keep the height consistent to the design
+      gap: 'var(--cn-tabs-item-underlined-gap)',
+      color: 'var(--cn-text-3)',
+      borderBottom: 'var(--cn-tabs-item-underlined-border) solid transparent',
+
+      '&:where(:not([disabled]).cn-tabs-trigger-active)': {
+        borderColor: 'var(--cn-text-brand)',
+        color: 'var(--cn-text-brand) !important'
+      },
+
+      '&:where(:not([disabled]):hover)': {
+        color: 'var(--cn-text-1) !important'
+      },
+
+      '.cn-tabs-list-vertical &': {
+        bottom: 'auto',
+        right: '-1px',
+        padding: 'var(--cn-tabs-item-underlined-px) var(--cn-tabs-item-underlined-py)',
+        paddingRight: 'calc(var(--cn-tabs-item-underlined-py) - 1px)',
+        borderBottom: 'none',
+        borderRight: 'var(--cn-tabs-item-underlined-border) solid transparent',
+
+        '&:where(:not([disabled]).cn-tabs-trigger-active)': {
+          borderColor: 'var(--cn-text-brand)'
+        }
+      }
+    },
+
+    '&:where([disabled]), &:where([aria-disabled="true"])': {
+      cursor: 'not-allowed',
+      '@apply font-body-normal opacity-cn-disabled': ''
+    }
+  }
+}

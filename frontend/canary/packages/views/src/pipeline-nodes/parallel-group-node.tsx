@@ -1,0 +1,108 @@
+import { Button } from '@harnessio/ui/components'
+import { IconV2 } from '@harnessio/ui/components'
+import { cn } from '@harnessio/ui/utils'
+
+import { ParallelContainerConfigType, SerialContainerConfigType } from '@harnessio/pipeline-graph'
+
+import { ExecutionStatus } from './components/execution-status'
+import { FloatingAddButton } from './components/floating-add-button'
+import { NodeMenuTrigger } from './components/node-menu-trigger'
+import { NodeTitle } from './components/node-title'
+import { ExecutionStatusType } from './types/types'
+
+export interface ParallelGroupNodeProps {
+  name?: string
+  executionStatus?: ExecutionStatusType
+  allChildrenCount?: number
+  children?: React.ReactElement
+  collapsed?: boolean
+  isEmpty?: boolean
+  selected?: boolean
+  isFirst?: boolean
+  parentNodeType?: 'leaf' | 'serial' | 'parallel'
+  hideContextMenu?: boolean
+  hideFloatingButtons?: boolean
+  onEllipsisClick: (e: React.MouseEvent<HTMLElement, MouseEvent>) => void
+  onAddInClick: (e: React.MouseEvent<HTMLElement, MouseEvent>) => void
+  onHeaderClick: (e: React.MouseEvent<HTMLElement, MouseEvent>) => void
+  onAddClick?: (position: 'before' | 'after', e: React.MouseEvent<HTMLElement, MouseEvent>) => void
+  parallelContainerConfig?: Partial<ParallelContainerConfigType>
+  serialContainerConfig?: Partial<SerialContainerConfigType>
+}
+
+export function ParallelGroupNode(props: ParallelGroupNodeProps) {
+  const {
+    name,
+    allChildrenCount,
+    executionStatus,
+    children,
+    collapsed,
+    isEmpty,
+    selected,
+    isFirst,
+    parentNodeType,
+    onEllipsisClick,
+    onAddInClick,
+    onHeaderClick,
+    onAddClick,
+    hideContextMenu,
+    hideFloatingButtons,
+    serialContainerConfig,
+    parallelContainerConfig
+  } = props
+
+  return (
+    <>
+      <ExecutionStatus executionStatus={executionStatus} />
+
+      <div
+        className={cn('absolute inset-0 -z-10 rounded-cn-3 border bg-cn-graph-card-canvas-2', {
+          'border-cn-3': !selected,
+          'border-cn-2': selected || collapsed
+        })}
+      />
+
+      <NodeTitle name={name} onHeaderClick={onHeaderClick} counter={allChildrenCount} />
+
+      {!hideContextMenu && <NodeMenuTrigger onEllipsisClick={onEllipsisClick} />}
+
+      {!collapsed && isEmpty && (
+        <Button
+          rounded
+          className="p-cn-sm self-center"
+          variant="outline"
+          onMouseDown={e => e.stopPropagation()}
+          onClick={onAddInClick}
+        >
+          <IconV2 name="plus" />
+        </Button>
+      )}
+
+      {!hideFloatingButtons && isFirst && (
+        <FloatingAddButton
+          parentNodeType={parentNodeType}
+          position="before"
+          onClick={e => {
+            onAddClick?.('before', e)
+          }}
+          collapsed={collapsed}
+          parallelContainerConfig={parallelContainerConfig}
+          serialContainerConfig={serialContainerConfig}
+        />
+      )}
+      {!hideFloatingButtons && (
+        <FloatingAddButton
+          parentNodeType={parentNodeType}
+          position="after"
+          onClick={e => {
+            onAddClick?.('after', e)
+          }}
+          collapsed={collapsed}
+          parallelContainerConfig={parallelContainerConfig}
+          serialContainerConfig={serialContainerConfig}
+        />
+      )}
+      {children}
+    </>
+  )
+}

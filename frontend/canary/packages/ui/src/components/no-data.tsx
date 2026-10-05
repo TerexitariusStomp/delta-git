@@ -1,0 +1,161 @@
+import { Dispatch, FC, Fragment, ReactNode, Ref, SetStateAction } from 'react'
+
+import {
+  Button,
+  ButtonProps,
+  ButtonVariants,
+  Dialog,
+  IconPropsV2,
+  IconV2,
+  Illustration,
+  IllustrationsNameType,
+  Layout,
+  SplitButton,
+  Text
+} from '@/components'
+import { useRouterContext } from '@/context'
+import { cn } from '@utils/cn'
+import omit from 'lodash-es/omit'
+
+export interface NoDataProps {
+  title: string
+  imageName?: IllustrationsNameType
+  imageSize?: number
+  description: string[]
+  primaryButton?: ButtonProps & {
+    ref?: Ref<HTMLButtonElement>
+    icon?: IconPropsV2['name']
+    label: ReactNode | string
+    to?: string
+    isDialogTrigger?: boolean
+    variant?: ButtonVariants
+  }
+  secondaryButton?: ButtonProps & {
+    ref?: Ref<HTMLButtonElement>
+    icon?: IconPropsV2['name']
+    label: ReactNode | string
+    to?: string
+    isDialogTrigger?: boolean
+  }
+  withBorder?: boolean
+  loadState?: string
+  setLoadState?: Dispatch<SetStateAction<string>>
+  textWrapperClassName?: string
+  className?: string
+  splitButton?: {
+    label: ReactNode | string
+    icon?: IconPropsV2['name']
+    options: { value: string; label: string }[]
+    handleOptionChange: (option: string) => void
+    handleButtonClick: () => void
+    props?: ButtonProps
+  }
+  children?: ReactNode
+}
+
+export const NoData: FC<NoDataProps> = ({
+  imageName,
+  imageSize = 112,
+  title,
+  description,
+  primaryButton,
+  secondaryButton,
+  withBorder = false,
+  textWrapperClassName,
+  className,
+  splitButton,
+  children
+}) => {
+  const { NavLink } = useRouterContext()
+
+  const PrimaryDialogTrigger = primaryButton?.isDialogTrigger ? Dialog.Trigger : Fragment
+  const SecondaryDialogTrigger = secondaryButton?.isDialogTrigger ? Dialog.Trigger : Fragment
+
+  return (
+    <Layout.Vertical
+      gap="md"
+      align="center"
+      justify="center"
+      className={cn(
+        'h-full w-full my-auto py-cn-4xl px-cn-2xl',
+        { 'h-auto grow border border-cn-3 rounded-cn-3': withBorder },
+        className
+      )}
+    >
+      {!!imageName && <Illustration name={imageName} size={imageSize} />}
+
+      <Layout.Vertical gap="xl" align="center" justify="center">
+        <Layout.Vertical gap="xs" align="center" justify="center" className={textWrapperClassName}>
+          <Text variant="heading-section" align="center">
+            {title}
+          </Text>
+          {!!description &&
+            description.map((line, index) => (
+              <Text key={index} align="center">
+                {line}
+              </Text>
+            ))}
+        </Layout.Vertical>
+
+        {(!!primaryButton || !!secondaryButton || !!splitButton || !!children) && (
+          <Layout.Horizontal gap="sm">
+            {primaryButton &&
+              (primaryButton.to ? (
+                <Button asChild {...(omit(primaryButton, ['to', 'label', 'icon']) as ButtonProps)}>
+                  <NavLink to={primaryButton.to}>
+                    {!!primaryButton?.icon && <IconV2 name={primaryButton.icon} size="sm" />}
+                    {primaryButton.label}
+                  </NavLink>
+                </Button>
+              ) : (
+                <PrimaryDialogTrigger>
+                  <Button {...(omit(primaryButton, ['label', 'icon', 'isDialogTrigger']) as ButtonProps)}>
+                    {!!primaryButton?.icon && <IconV2 name={primaryButton.icon} size="sm" />}
+                    {primaryButton.label}
+                  </Button>
+                </PrimaryDialogTrigger>
+              ))}
+
+            {secondaryButton &&
+              (secondaryButton.to ? (
+                <Button asChild variant="outline" {...(omit(secondaryButton, ['to', 'label', 'icon']) as ButtonProps)}>
+                  <NavLink to={secondaryButton.to}>
+                    {!!secondaryButton?.icon && <IconV2 name={secondaryButton.icon} size="sm" />}
+                    {secondaryButton.label}
+                  </NavLink>
+                </Button>
+              ) : (
+                <SecondaryDialogTrigger>
+                  <Button
+                    variant="outline"
+                    {...(omit(secondaryButton, ['label', 'icon', 'isDialogTrigger']) as ButtonProps)}
+                  >
+                    {!!secondaryButton?.icon && <IconV2 name={secondaryButton.icon} size="sm" />}
+                    {secondaryButton.label}
+                  </Button>
+                </SecondaryDialogTrigger>
+              ))}
+
+            {!!splitButton && (
+              <SplitButton<string>
+                dropdownContentClassName="min-w-[170px]"
+                handleButtonClick={() => splitButton?.handleButtonClick()}
+                handleOptionChange={option => {
+                  if (option === 'tag-rule') {
+                    splitButton?.handleOptionChange(option)
+                  }
+                }}
+                options={splitButton.options}
+              >
+                {!!splitButton?.icon && <IconV2 name={splitButton.icon} size="sm" />}
+                {splitButton.label}
+              </SplitButton>
+            )}
+
+            {children}
+          </Layout.Horizontal>
+        )}
+      </Layout.Vertical>
+    </Layout.Vertical>
+  )
+}

@@ -1,0 +1,411 @@
+const tablePinnedLayeredBackground =
+  'linear-gradient(var(--cn-table-pinned-overlay), var(--cn-table-pinned-overlay)), var(--cn-table-pinned-base)'
+
+export default {
+  '.cn-table-v2': {
+    '@apply w-full': '',
+
+    // Table container
+    '&-container': {
+      '@apply relative w-full overflow-auto border-cn-3': '',
+      borderWidth: 'var(--cn-table-border)',
+      borderRadius: 'var(--cn-table-radius)',
+      borderColor: 'var(--cn-border-3)'
+    },
+
+    // Table element
+    '&-element': {
+      '@apply w-full overflow-x-auto': '',
+
+      '&:where(.cn-table-v2-disable-x-scroll)': {
+        '@apply min-w-0 overflow-x-hidden': ''
+      }
+    },
+
+    '&-overlay-host': {
+      position: 'relative',
+      display: 'grid',
+      width: 'max-content',
+      minWidth: '100%',
+      isolation: 'isolate',
+
+      '& > .cn-table-v2-element': {
+        gridArea: '1 / 1'
+      }
+    },
+
+    '&-column-resize-indicator': {
+      gridArea: '1 / 1',
+      justifySelf: 'start',
+      alignSelf: 'start',
+      zIndex: '20',
+      width: '2px',
+      height: 'var(--cn-table-header-min)',
+      pointerEvents: 'none',
+      backgroundColor: 'var(--cn-border-brand)'
+    },
+
+    // Variants
+    '&:where(.cn-table-v2-normal)': {
+      '@apply caption-bottom': '',
+      '.cn-table-v2-cell': {
+        paddingTop: 'var(--cn-table-cell-py-normal)',
+        paddingBottom: 'var(--cn-table-cell-py-normal)',
+        minHeight: 'var(--cn-table-cell-min-normal)'
+      }
+    },
+
+    '&:where(.cn-table-v2-relaxed)': {
+      '@apply caption-bottom': '',
+      '.cn-table-v2-cell': {
+        paddingTop: 'var(--cn-table-cell-py-relaxed)',
+        paddingBottom: 'var(--cn-table-cell-py-relaxed)',
+        minHeight: 'var(--cn-table-cell-min-relaxed)'
+      }
+    },
+
+    '&:where(.cn-table-v2-compact)': {
+      '@apply caption-bottom': '',
+      '.cn-table-v2-cell': {
+        paddingTop: 'var(--cn-table-cell-py-compact)',
+        paddingBottom: 'var(--cn-table-cell-py-compact)',
+        minHeight: 'var(--cn-table-cell-min-compact)'
+      }
+    },
+
+    // Transparent variant
+    '&:where(.cn-table-v2-transparent)': {
+      '&.cn-table-v2-container': {
+        '@apply border-0': ''
+      },
+      '.cn-table-v2-header': {
+        '@apply border-0 bg-transparent': ''
+      },
+      '.cn-table-v2-head, .cn-table-v2-cell, .cn-table-v2-head-sortable:hover': {
+        '@apply bg-transparent': ''
+      },
+      '.cn-table-v2-row': {
+        '@apply border-b-0': ''
+      }
+    },
+
+    // Header
+    '&-header': {
+      '@apply border-b': '',
+      borderColor: 'var(--cn-border-3)',
+
+      // Separator between group row and leaf row in multi-row headers
+      'tr[data-header-depth="0"]:not(:last-child)': {
+        '@apply border-b': '',
+        borderColor: 'var(--cn-border-3)'
+      }
+    },
+
+    // Container highlight on hover
+    '&:where(.cn-table-v2-highlight-hover) tbody > tr': {
+      '&:hover, &:has(.cn-table-v2-cell-clickable-block:focus-visible)': {
+        '&>td': {
+          backgroundColor: 'var(--cn-state-hover)'
+        },
+        '&>td.cn-table-v2-cell-pinned': {
+          '--cn-table-pinned-overlay': 'var(--cn-state-hover)',
+          background: tablePinnedLayeredBackground
+        },
+        '& .cn-row-pin:not(.cn-row-pin-on)': {
+          opacity: '1'
+        }
+      }
+    },
+
+    // Body
+    '&-body': {},
+
+    // Footer
+    '&-footer': {
+      '@apply border-t font-medium [&>tr]:last:border-b-0': ''
+    },
+
+    // Row
+    '&-row': {
+      '@apply border-b border-cn-3 transition-colors overflow-hidden': '',
+      '@apply last:border-b-0': '',
+
+      '&:has(.cn-table-v2-cell-clickable-block:focus-visible)': {
+        outline: 'var(--cn-focus)',
+        '@apply outline-offset-cn-tight': ''
+      },
+
+      '&:where(.row-link-no-underline)': {
+        '@apply [&_.cn-table-v2-cell-clickable-block]:no-underline': ''
+      },
+
+      '&:where([data-checked=true]) td': {
+        backgroundColor: 'var(--cn-state-selected)'
+      },
+
+      '&:where([data-checked=true]) td.cn-table-v2-cell-pinned': {
+        '--cn-table-pinned-overlay': 'var(--cn-state-selected)',
+        background: tablePinnedLayeredBackground
+      },
+
+      '&-expanded': {
+        backgroundColor: 'var(--cn-state-selected)'
+      },
+
+      '&.cn-table-row-active': {
+        '@apply border-cn-brand': '',
+        borderWidth: '1px',
+
+        '.cn-table-v2-cell': {
+          '@apply bg-cn-brand-secondary': ''
+        }
+      },
+
+      '&:has(+ .cn-table-row-active)': {
+        '@apply border-b-0': ''
+      },
+
+      '&:where([data-disabled=true])': {
+        '@apply opacity-50 cursor-not-allowed pointer-events-none': ''
+      },
+
+      '&:where([data-disabled=true]) td': {
+        '@apply pointer-events-auto cursor-not-allowed': ''
+      }
+    },
+
+    // Head cell
+    '&-head': {
+      '--cn-table-pinned-base': 'var(--cn-bg-2)',
+      backgroundColor: 'var(--cn-table-pinned-base)',
+      '@apply text-cn-3 text-left align-middle font-medium overflow-hidden transition-colors': '',
+      '@apply [&:has([role=checkbox])]:py-0 [&:has([role=checkbox])]:!pr-0 [&>[role=checkbox]]:translate-y-[2px]': '',
+      '@apply [&:has([role=button])]:py-0 [&:has([role=button])]:!pr-0': '',
+
+      paddingLeft: 'var(--cn-table-header-px)',
+      paddingRight: 'var(--cn-table-header-px)',
+      paddingTop: 'var(--cn-table-header-py)',
+      paddingBottom: 'var(--cn-table-header-py)',
+      gap: 'var(--cn-table-header-gap)',
+      minHeight: 'var(--cn-table-header-min)'
+    },
+
+    // Group header cell (parent column spanning child columns)
+    '&-head-group': {
+      '@apply uppercase': ''
+    },
+
+    // Sortable head cell
+    '&-head-sortable': {
+      '@apply cursor-pointer select-none': ''
+    },
+    '&-head-sortable:hover': {
+      backgroundColor: 'var(--cn-state-hover)'
+    },
+    '&-head-sortable.cn-table-v2-cell-pinned:hover': {
+      '--cn-table-pinned-overlay': 'var(--cn-state-hover)',
+      background: tablePinnedLayeredBackground
+    },
+
+    '&-head-divider': {
+      position: 'absolute',
+      top: '0',
+      left: 'calc(-1 * var(--cn-table-header-px))',
+      height: '100%'
+    },
+
+    '&-head-resizable': {
+      position: 'relative',
+
+      // The next header cell paints over this cell's right edge. Lift the
+      // hovered cell so its boundary affordance remains visible.
+      '&:hover': {
+        overflow: 'visible',
+        zIndex: '8 !important'
+      }
+    },
+
+    '&-column-resizer': {
+      position: 'absolute',
+      top: '0',
+      right: '0',
+      zIndex: '2',
+      width: '8px',
+      height: '100%',
+      margin: '0',
+      padding: '0',
+      border: '0',
+      appearance: 'none',
+      background: 'transparent',
+      cursor: 'col-resize',
+      userSelect: 'none',
+      touchAction: 'none',
+      outline: 'none',
+
+      '&::after': {
+        content: '""',
+        position: 'absolute',
+        top: '0',
+        right: '0',
+        width: '1px',
+        height: '100%',
+        backgroundColor: 'transparent'
+      },
+
+      '&:hover::after': {
+        backgroundColor: 'var(--cn-border-3)',
+        width: '2px'
+      },
+
+      '&:focus-visible::after': {
+        backgroundColor: 'var(--cn-border-brand)',
+        width: '2px'
+      },
+
+      // The table-level overlay is the only drag indicator. Suppress this
+      // in-cell line while dragging so auto-layout tables do not show both.
+      '&:where([data-resizing=true])::after': {
+        backgroundColor: 'transparent',
+        width: '1px'
+      }
+    },
+
+    // Data cell
+    '&-cell': {
+      '--cn-table-pinned-base': 'var(--cn-bg-1)',
+      backgroundColor: 'var(--cn-table-pinned-base)',
+      position: 'relative',
+      '@apply align-middle transition-colors': '',
+      '@apply [&:has([role=checkbox])]:py-0 [&:has([role=checkbox])]:!pr-0 [&>[role=checkbox]]:translate-y-[2px]': '',
+      '@apply [&:has([role=button])]:py-0 [&:has([role=button])]:!pr-0': '',
+      paddingLeft: 'var(--cn-table-cell-px)',
+      paddingRight: 'var(--cn-table-cell-px)',
+      gap: 'var(--cn-table-cell-gap)',
+
+      'a, button': {
+        position: 'relative',
+        zIndex: '1'
+      }
+    },
+
+    // Cell link
+    '&-cell-clickable-block': {
+      position: 'absolute !important',
+      inset: '0',
+      zIndex: '0 !important',
+
+      '&:focus-within': {
+        // Adding !important to override global :focus-within
+        outline: 'none !important'
+      }
+    },
+
+    // Caption
+    '&-caption': {
+      '@apply mt-cn-md': ''
+    }
+  },
+
+  /**
+   * Sticky mode (opt-in via `Table.Root` `stickyHeader`).
+   * Every rule is scoped to `.cn-table-v2-sticky` so non-sticky tables
+   * compile to byte-identical CSS.
+   */
+  '.cn-table-v2-sticky': {
+    // The viewport is the single scroll container; the outer container never scrolls.
+    '&.cn-table-v2-container': {
+      overflow: 'hidden'
+    },
+
+    '.cn-table-v2-viewport': {
+      overflow: 'auto'
+    },
+
+    '.cn-table-v2-element': {
+      // No intermediate scrollport between sticky cells and the viewport.
+      overflow: 'visible',
+      // In the separated-border model, borders belong to cells and travel with
+      // sticky cells — this removes the collapsed-border "transparent gap"
+      // between stacked header rows.
+      borderCollapse: 'separate',
+      borderSpacing: '0',
+      // Fallback block-size of the first header row (incl. its border);
+      // DataTable overrides it inline with the measured height.
+      '--cn-table-header-row-h': 'calc(var(--cn-table-header-min) + var(--cn-table-border))'
+    },
+
+    // Header separators move off the (non-sticky) thead / tr boxes onto the
+    // cells, one-directional (bottom only) so the separated model draws
+    // single lines.
+    '.cn-table-v2-header': {
+      borderBottom: 'none',
+
+      'tr[data-header-depth="0"]:not(:last-child)': {
+        borderBottom: 'none'
+      }
+    },
+
+    '.cn-table-v2-head': {
+      borderBottomWidth: 'var(--cn-table-border)',
+      borderBottomStyle: 'solid',
+      borderBottomColor: 'var(--cn-border-3)'
+    },
+
+    // Sortable head hover must stay opaque when sticky: composite the
+    // translucent state token over the opaque pinned-base instead of
+    // replacing the background. Transparent variant keeps its own hover.
+    '&:not(.cn-table-v2-transparent) .cn-table-v2-head-sortable:hover': {
+      '--cn-table-pinned-overlay': 'var(--cn-state-hover)',
+      background: tablePinnedLayeredBackground
+    },
+
+    // Bottom-pinned rows (tfoot): separator lives on the cells (top border),
+    // matching the one-directional border scheme of the header. Footer cells
+    // use the header's opaque base so the pinned band reads like one surface.
+    '.cn-table-v2-footer': {
+      borderTop: 'none',
+
+      '.cn-table-v2-cell': {
+        '--cn-table-pinned-base': 'var(--cn-bg-2)',
+        backgroundColor: 'var(--cn-table-pinned-base)',
+        borderTopWidth: 'var(--cn-table-border)',
+        borderTopStyle: 'solid',
+        borderTopColor: 'var(--cn-border-3)'
+      }
+    },
+
+    // Pinned-row hover/selected compositing uses the same overlay mechanism
+    // as pinned columns, so the generic body hover must not also repaint
+    // their background.
+    '&.cn-table-v2-highlight-hover tbody > tr.cn-table-v2-row-pinned:hover > td': {
+      backgroundColor: 'var(--cn-table-pinned-base)'
+    },
+
+    // Spacer row: paints the opaque gap between the body rows and a
+    // bottom-pinned row when the table is shorter than its viewport.
+    // No borders or hover — it is a phantom row.
+    '.cn-table-v2-spacer-row': {
+      borderBottom: 'none',
+
+      '> td': {
+        '--cn-table-pinned-base': 'var(--cn-bg-1)',
+        backgroundColor: 'var(--cn-table-pinned-base)',
+        borderBottom: 'none',
+        padding: '0'
+      }
+    },
+
+    '&.cn-table-v2-highlight-hover tbody > tr.cn-table-v2-spacer-row:hover > td': {
+      backgroundColor: 'var(--cn-bg-1)'
+    }
+  },
+
+  '.cn-row-pin': {
+    opacity: '0',
+    transitionProperty: 'opacity'
+  },
+
+  '.cn-row-pin-on': {
+    opacity: '1'
+  }
+}

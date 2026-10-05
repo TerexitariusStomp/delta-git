@@ -1,0 +1,279 @@
+import {
+  ComponentProps,
+  forwardRef,
+  ReactElement,
+  ReactNode,
+  Ref,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
+
+import {
+  FilterOptionConfig,
+  Layout,
+  ListActions,
+  renderFilterSelectLabel,
+  SearchableDropdown,
+  SearchInput,
+  SimpleSort,
+  Sort,
+  SortValue
+} from '@harnessio/ui/components'
+import { useTranslation } from '@harnessio/ui/context'
+
+import { createFilters } from '../Filters'
+import { FilterRefType } from '../types'
+import ListControlBar from './list-control-bar'
+import SaveFiltersDialog, { SaveFiltersDialogProps } from './save-filters-dialog'
+import SavedFilters from './saved-filters'
+
+interface FilterGroupProps<
+  T extends Record<string, unknown>,
+  V extends keyof T & string,
+  CustomValue = Record<string, unknown>
+> {
+  onFilterSelectionChange?: (selectedFilters: (keyof T)[]) => void
+  onFilterValueChange?: (filterType: T) => void
+  handleFilterOpen?: (filter: V, isOpen: boolean) => void
+  quickFiltersSlot?: ReactNode
+  multiSortConfig?: Omit<ComponentProps<typeof Sort.Root>, 'children'>
+  simpleSortConfig?: ComponentProps<typeof SimpleSort>
+  searchValue?: string
+  searchPlaceholder?: string
+  hideSearch?: boolean
+  handleInputChange: (value: string) => void
+  filterOptions: FilterOptionConfig<V, CustomValue>[]
+  headerAction?: ReactNode
+  isAddFilterSearchable?: boolean
+  addFilterInputPlaceholder?: string
+  /**
+   * Hides the "Add filter" dropdown and the "Reset" control. Useful when all
+   * filters are sticky (always visible), so there is nothing to add.
+   */
+  hideAddFilter?: boolean
+  savedFiltersConfig?: {
+    savedFilterKey?: string
+    savedFiltersOptions: { value: string; label: string }[]
+    onSaveFilters: SaveFiltersDialogProps['onSubmit']
+    getSavedFiltersValues: (savedFilterId: string) => Promise<T>
+    onDeleteSavedFilter?: (savedFilterId: string) => Promise<void> | void
+  }
+}
+
+export type FilterGroupRef = {
+  resetSearch?: () => void
+  resetFilters?: () => void
+}
+
+const FilterGroupInner = <
+  T extends Record<string, unknown>,
+  V extends Extract<keyof T, string>,
+  CustomValue = Record<string, unknown>
+>(
+  props: FilterGroupProps<T, V, CustomValue>,
+  ref: Ref<FilterGroupRef>
+) => {
+  const {
+    onFilterSelectionChange,
+    onFilterValueChange,
+    searchValue,
+    handleInputChange,
+    searchPlaceholder,
+    hideSearch,
+    filterOptions,
+    multiSortConfig,
+    simpleSortConfig,
+    savedFiltersConfig,
+    handleFilterOpen,
+    isAddFilterSearchable,
+    addFilterInputPlaceholder,
+    hideAddFilter
+  } = props
+
+  const { t } = useTranslation()
+  const {
+    savedFilterKey = 'filterIdentifier',
+    savedFiltersOptions,
+    onSaveFilters,
+    getSavedFiltersValues,
+    onDeleteSavedFilter
+  } = savedFiltersConfig ?? {}
+
+  const FilterHandler = useMemo(() => createFilters<T>(), [])
+  const filtersRef = useRef<FilterRefType<T> | null>(null)
+  const searchRef = useRef<HTMLInputElement | null>(null)
+  const [openedFilter, setOpenedFilter] = useState<V>()
+  const [selectedFiltersCnt, setSelectedFiltersCnt] = useState(0)
+  const [sortSelectionsCnt, setSortSelectionsCnt] = useState(0)
+
+  useImperativeHandle(ref, () => {
+    return {
+      resetSearch: () => {
+        if (searchRef.current) {
+          searchRef.current.value = ''
+        }
+      },
+      resetFilters: () => {
+        if (filtersRef.current) {
+          filtersRef.current.reset()
+        }
+      }
+    }
+  })
+
+  const onSortValueChange = (sort: SortValue[]) => {
+    setSortSelectionsCnt(sort.length)
+    multiSortConfig?.onSortChange?.(sort)
+  }
+
+  const renderMultiSort = (contents: ReactNode) => {
+    if (multiSortConfig) {
+      return (
+        <Sort.Root {...multiSortConfig} onSortChange={onSortValueChange}>
+          {contents}
+        </Sort.Root>
+      )
+    }
+    return contents
+  }
+
+  return (
+    <FilterHandler
+      ref={filtersRef}
+      onFilterSelectionChange={(filterValues: (keyof T)[]) => {
+        setSelectedFiltersCnt(filterValues.length)
+        onFilterSelectionChange?.(filterValues)
+      }}
+      savedFiltersConfig={{
+        getSavedFilters: (savedFilterId: string) => {
+          return getSavedFiltersValues?.(savedFilterId)
+        },
+        savedFilterKey
+      }}
+      onChange={onFilterValueChange}
+      view="dropdown"
+    >
+      {renderMultiSort(
+        <>
+          <ListActions.Root>
+            <ListActions.Left className="min-w-0">
+              <Layout.Horizontal gap="xs" align={'center'} justify={'start'} className="min-w-0 flex-1">
+                {!hideSearch && (
+                  <SearchInput
+                    inputContainerClassName="max-w-80 flex-1"
+                    ref={searchRef}
+                    searchValue={searchValue || ''}
+                    onChange={handleInputChange}
+                    placeholder={searchPlaceholder ?? t('views:repos.search', 'Search')}
+                  />
+                )}
+                {props.quickFiltersSlot}
+                {filterOptions.length > 0 && !hideAddFilter && (
+                  <FilterHandler.Dropdown>
+                    {(addFilter, availableFilters) => {
+                      return (
+                        <SearchableDropdown<FilterOptionConfig<V, CustomValue>>
+                          options={filterOptions.filter(option => availableFilters.includes(option.value))}
+                          onChange={option => {
+                            addFilter(option.value)
+                            setOpenedFilter(option.value)
+                          }}
+                          isSearchable={isAddFilterSearchable}
+                          inputPlaceholder={
+                            addFilterInputPlaceholder ?? t('component:filter.inputPlaceholder', 'Filter by...')
+                          }
+                          displayLabel={renderFilterSelectLabel({
+                            selectedFilters: filterOptions.length - availableFilters.length,
+                            displayLabel: t('component:filter.defaultLabel', 'Add filter')
+                          })}
+                        />
+                      )
+                    }}
+                  </FilterHandler.Dropdown>
+                )}
+                {!!savedFiltersOptions?.length && (
+                  <SavedFilters
+                    savedFilterKey={savedFilterKey}
+                    options={savedFiltersOptions}
+                    onDeleteSavedFilter={onDeleteSavedFilter}
+                  />
+                )}
+              </Layout.Horizontal>
+            </ListActions.Left>
+            <ListActions.Right>
+              <Layout.Horizontal gap="xs">
+                {multiSortConfig && (
+                  <Sort.Select
+                    displayLabel={t('component:sort.defaultLabel', 'Sort')}
+                    buttonLabel={t('component:sort.resetSort', 'Reset sort')}
+                  />
+                )}
+                {simpleSortConfig && <SimpleSort {...simpleSortConfig} />}
+                {props.headerAction}
+              </Layout.Horizontal>
+            </ListActions.Right>
+          </ListActions.Root>
+          <>
+            <ListControlBar<T, CustomValue, T[keyof T]>
+              hideAddFilter={hideAddFilter}
+              renderSelectedFilters={filterFieldRenderer => (
+                <FilterHandler.Content className={'gap-x-cn-md flex items-center'}>
+                  {filterOptions.map(filterOption => {
+                    return (
+                      <FilterHandler.Component<keyof T>
+                        parser={filterOption.parser as any}
+                        filterKey={filterOption.value}
+                        sticky={filterOption.sticky}
+                        defaultValue={filterOption.defaultValue as T[keyof T]}
+                        key={filterOption.value}
+                      >
+                        {({ onChange, removeFilter, value }) =>
+                          filterFieldRenderer({
+                            filterOption,
+                            onChange,
+                            removeFilter,
+                            value: value,
+                            onOpenChange: isOpen => {
+                              handleFilterOpen?.(filterOption.value, isOpen)
+                            }
+                          })
+                        }
+                      </FilterHandler.Component>
+                    )
+                  })}
+                </FilterHandler.Content>
+              )}
+              renderFilterOptions={filterOptionsRenderer => (
+                <FilterHandler.Dropdown>
+                  {(addFilter, availableFilters: Extract<keyof T, string>[], resetFilters) => (
+                    <div className="gap-x-cn-md flex items-center">
+                      {filterOptionsRenderer({ addFilter, resetFilters, availableFilters })}
+                      {onSaveFilters && <SaveFiltersDialog onSubmit={onSaveFilters} />}
+                    </div>
+                  )}
+                </FilterHandler.Dropdown>
+              )}
+              sortSelectionsCnt={sortSelectionsCnt}
+              renderSelectedSort={() => <Sort.MultiSort />}
+              openedFilter={openedFilter}
+              filterOptions={filterOptions}
+              selectedFiltersCnt={selectedFiltersCnt}
+            />
+          </>
+        </>
+      )}
+    </FilterHandler>
+  )
+}
+
+const FilterGroup = forwardRef(FilterGroupInner) as <
+  T extends Record<string, unknown>,
+  V extends Extract<keyof T, string>,
+  CustomValue = Record<string, unknown>
+>(
+  props: FilterGroupProps<T, V, CustomValue> & { ref?: Ref<FilterGroupRef> }
+) => ReactElement
+
+export default FilterGroup

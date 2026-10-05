@@ -1,0 +1,375 @@
+import { PropsWithChildren, useMemo, useRef, type JSX } from 'react'
+
+import { IconV2, IconV2NamesType, StatusBadge, Text } from '@/components'
+import { cn } from '@/utils'
+import { cva } from 'class-variance-authority'
+import { AnimatePresence, motion } from 'framer-motion'
+
+import {
+  StudioCardContentProps,
+  StudioCardExpandButtonProps,
+  StudioCardFooterProps,
+  StudioCardHeaderProps,
+  StudioCardMessageProps,
+  StudioCardRootProps,
+  StudioCardStatusProps,
+  StudioCardTagProps
+} from './studio-card-types'
+
+/**
+ * =================
+ * Root Component
+ * =================
+ */
+
+const sizeVariants = cva('', {
+  variants: {
+    size: {
+      xs: 'cn-studio-card-xs',
+      sm: 'cn-studio-card-sm',
+      md: ''
+    }
+  },
+  defaultVariants: {
+    size: 'md'
+  }
+})
+
+const CLICK_DRAG_THRESHOLD = 5
+
+function Root({
+  children,
+  isGroupCard = false,
+  onClick,
+  theme = 'default',
+  selected = false,
+  variant = 'default',
+  execution = false,
+  size = 'md'
+}: PropsWithChildren<StudioCardRootProps>): JSX.Element {
+  // Used to determine if a click was a drag or a click
+  const dragPos = useRef({ x: 0, y: 0 })
+
+  return (
+    <div
+      className={cn('cn-studio-card cursor-default', sizeVariants({ size }), {
+        'cn-studio-card-execution': execution,
+        'cn-studio-card-group': isGroupCard,
+        'cn-studio-card-stage': variant === 'stage'
+      })}
+      onMouseDown={e => {
+        dragPos.current = { x: e.clientX, y: e.clientY }
+      }}
+      onClick={e => {
+        const dx = Math.abs(e.clientX - dragPos.current.x)
+        const dy = Math.abs(e.clientY - dragPos.current.y)
+
+        // If the mouse moved more than 5px, it was a drag, not a click
+        if (dx > CLICK_DRAG_THRESHOLD || dy > CLICK_DRAG_THRESHOLD) return
+
+        e.stopPropagation()
+        onClick?.(e)
+      }}
+      role="button"
+      tabIndex={-1}
+      data-theme={theme}
+      data-selected={selected}
+    >
+      {children}
+    </div>
+  )
+}
+
+/**
+ * ==================
+ * Header Component
+ * ==================
+ */
+
+function Header({ icon, title, actions }: StudioCardHeaderProps): JSX.Element {
+  const headerIcon = icon ?? <IconV2 size="lg" name="harness-plugins" />
+
+  return (
+    <div className="cn-studio-card-header">
+      {headerIcon}
+      <Text className="flex-1" color="foreground-1" title={title} variant="body-strong" truncate>
+        {title}
+      </Text>
+
+      {/* Actions menu */}
+      {actions}
+    </div>
+  )
+}
+
+/**
+ * ====================
+ * Content Component
+ * ====================
+ */
+
+function Content({ children, className }: PropsWithChildren<StudioCardContentProps>): JSX.Element {
+  return (
+    <motion.div className={cn('cn-studio-card-content', className)}>
+      <AnimatePresence>{children}</AnimatePresence>
+    </motion.div>
+  )
+}
+
+/**
+ * ====================
+ * Message Component
+ * ====================
+ */
+
+function Message({ message }: StudioCardMessageProps): JSX.Element | null {
+  if (!message) return null
+
+  return (
+    <Text className="cn-studio-card-message" lineClamp={2} color="foreground-2" variant="caption-normal">
+      {message}
+    </Text>
+  )
+}
+
+/**
+ * ==========================
+ * Expand Button Component
+ *
+ * It is used to expand the studio card to show the content.
+ * Use StudioCard.Button for standalone button inside a studio card.
+ * ==========================
+ */
+
+const expandButtonVariants = {
+  hidden: {
+    opacity: 0,
+    scale: 0.8
+  },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      duration: 0.1,
+      // ease: [0.4, 0, 0.2, 1]
+      ease: 'easeOut'
+    }
+  },
+  exit: {
+    opacity: 0,
+    scale: 0,
+    transition: {
+      duration: 0.2,
+      // ease: [0.4, 0, 0.2, 1]
+      ease: 'easeOut'
+    }
+  }
+}
+
+function ExpandButton({
+  stepCount,
+  isExpanded = false,
+  onToggle,
+  label,
+  icon,
+  loading = false,
+  stackDirection = 'right',
+  variant = 'default'
+}: StudioCardExpandButtonProps): JSX.Element | null {
+  // Calculate number of stacks to show (max 2)
+  const stackCount = useMemo(() => {
+    if (isExpanded || stepCount <= 1) return 0
+    if (stepCount === 2) return 1
+    return 2 // For 3 or more steps
+  }, [stepCount, isExpanded])
+
+  if (stepCount === 0 || isExpanded) return null
+
+  return (
+    <motion.div
+      variants={expandButtonVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      className="cn-studio-card-expand-button"
+      data-expanded={isExpanded}
+      data-stack-direction={stackDirection}
+      data-variant={variant}
+    >
+      {stackCount > 0 && (
+        <>
+          {stackCount >= 2 && (
+            <div className="cn-studio-card-expand-button-stack cn-studio-card-expand-button-stack-2" />
+          )}
+          {stackCount >= 1 && (
+            <div className="cn-studio-card-expand-button-stack cn-studio-card-expand-button-stack-1" />
+          )}
+        </>
+      )}
+
+      {/* Main button */}
+      <button
+        onClick={e => {
+          e.stopPropagation()
+          onToggle?.()
+        }}
+        className="cn-studio-card-expand-button-main"
+        disabled={loading}
+      >
+        {/* icon + label */}
+        <div className="cn-studio-card-expand-button-top">
+          {variant === 'default' && (icon ?? <IconV2 name="harness-plugins" size="lg" />)}
+          <Text
+            color="inherit"
+            variant={variant === 'minimal' ? 'caption-code' : 'body-strong'}
+            className="min-w-0 flex-1"
+            truncate
+          >
+            {label}
+          </Text>
+          {variant === 'minimal' && <IconV2 name="expand" size="xs" className="shrink-0" />}
+        </div>
+
+        {/* Count + expand icon */}
+        {variant === 'default' && (
+          <div className="cn-studio-card-expand-button-bottom">
+            <Text color="foreground-1" variant="body-code" className="leading-none">
+              +{stepCount} more
+            </Text>
+            <IconV2
+              className={cn('text-cn-2', loading && 'animate-spin')}
+              name={loading ? 'loader' : 'expand'}
+              size="sm"
+            />
+          </div>
+        )}
+      </button>
+    </motion.div>
+  )
+}
+
+/**
+ * ====================
+ * Status Component
+ * ====================
+ */
+
+function Status({ status, theme, children }: PropsWithChildren<StudioCardStatusProps>): JSX.Element | null {
+  return (
+    <StatusBadge data-status={status} className="cn-studio-card-status" size="sm" variant="outline" theme={theme}>
+      {children}
+    </StatusBadge>
+  )
+}
+
+/**
+ * ====================
+ * Tag Component
+ * ====================
+ */
+
+function Tag({ tagText, icon, theme = 'purple' }: StudioCardTagProps): JSX.Element {
+  const truncatedText = tagText.length > 12 ? `${tagText.slice(0, 12)}...` : tagText
+
+  return (
+    <div className="cn-studio-card-tag" data-theme={theme}>
+      {icon && <IconV2 name={icon} size="xs" />}
+      <Text title={tagText} color="inherit" variant="caption-single-line-normal" truncate>
+        {truncatedText}
+      </Text>
+    </div>
+  )
+}
+
+/**
+ * ====================
+ * Footer Component
+ * ====================
+ */
+function Footer({ children, size = 'default', invisible }: PropsWithChildren<StudioCardFooterProps>): JSX.Element {
+  return (
+    <div className={cn('cn-studio-card-footer', { invisible: invisible })} data-size={size}>
+      {typeof children === 'string' ? (
+        <Text color="foreground-3" variant="caption-normal">
+          {children}
+        </Text>
+      ) : (
+        children
+      )}
+    </div>
+  )
+}
+
+/**
+ * ===========================
+ * Custom actions component
+ * ===========================
+ */
+function CustomActions({ children }: PropsWithChildren<any>): JSX.Element {
+  return <>{children}</>
+}
+
+/**
+ *
+ * =====================
+ * Button Component
+ *
+ * Can be used a standalone button inside a studio card.
+ * It is different from expand button.
+ * =====================
+ */
+function StudioCardButton({
+  children,
+  className,
+  onClick,
+  icon
+}: PropsWithChildren<{
+  className?: string
+  onClick: (e: React.MouseEvent<HTMLElement, MouseEvent>) => void
+  icon?: IconV2NamesType
+}>): JSX.Element {
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation()
+        onClick(e)
+      }}
+      type="button"
+      className={cn('cn-studio-card-button', 'bg-cn-3 shadow-cn-none self-start', className)}
+    >
+      <Text color="foreground-1" variant="body-code" className="leading-none">
+        {children}
+      </Text>
+      {icon && <IconV2 className="text-cn-2" name={icon} size="sm" />}
+    </button>
+  )
+}
+
+/**
+ * ====================
+ * CodePreview Component
+ * ====================
+ */
+function CodePreview({ children }: PropsWithChildren<unknown>): JSX.Element | null {
+  return (
+    <div className="cn-studio-card-code-preview">
+      <Text variant="body-code">{children}</Text>
+    </div>
+  )
+}
+
+export const StudioCard = {
+  Root,
+  Header,
+  Content,
+  Footer,
+  Status,
+  Message,
+  Tag,
+  Button: StudioCardButton,
+  ExpandButton,
+  CustomActions,
+  CodePreview
+}
+
+export type * from './studio-card-types'

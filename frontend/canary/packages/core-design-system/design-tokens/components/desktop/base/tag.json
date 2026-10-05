@@ -1,0 +1,74 @@
+{
+  "tag": {
+    "size": {
+      "sm": {
+        "$type": "sizing",
+        "$value": "{size.5}"
+      },
+      "md": {
+        "$type": "sizing",
+        "$value": "{size.6}"
+      }
+    },
+    "gap": {
+      "$type": "spacing",
+      "$value": "{spacing.1}"
+    },
+    "py": {
+      "$type": "spacing",
+      "$value": "{spacing.half}"
+    },
+    "px": {
+      "$type": "spacing",
+      "$value": "{spacing.2}"
+    },
+    "radius": {
+      "default": {
+        "$type": "borderRadius",
+        "$value": "{rounded.3}"
+      },
+      "full": {
+        "$type": "borderRadius",
+        "$value": "{rounded.full}"
+      }
+    },
+    "split": {
+      "right": {
+        "radius": {
+          "r": {
+            "$type": "borderRadius",
+            "$value": "{tag.radius.default}"
+          },
+          "l": {
+            "$type": "borderRadius",
+            "$value": "{rounded.none}"
+          }
+        }
+      },
+      "left": {
+        "radius": {
+          "r": {
+            "$type": "borderRadius",
+            "$value": "{rounded.none}"
+          },
+          "l": {
+            "$type": "borderRadius",
+            "$value": "{tag.radius.default}"
+          }
+        }
+      },
+      "max-width": {
+        "$type": "sizing",
+        "$value": "{size.64}"
+      }
+    },
+    "border": {
+      "$type": "borderWidth",
+      "$value": "{borderWidth.1}"
+    },
+    "max-width": {
+      "$type": "sizing",
+      "$value": "{size.56}"
+    }
+  }
+}

@@ -14,6 +14,7 @@ import { ensureArtifactsPushSubscription } from "@/worker/tasks/artifactsSubscri
 import { loadViewer } from "@/worker/auth/session";
 import { viewerIsNamespaceMember } from "@/worker/auth/pat";
 import type { AppRouter } from "./hono";
+import { workerExecutionContext } from "./hono";
 import { enqueueRouteCacheSync } from "./authShared";
 import { RepositoryCreateRequestSchema, RepositoryVisibilityRequestSchema } from "./requestSchemas";
 
@@ -156,7 +157,7 @@ export function registerAuthRepositoryRoutes(router: AppRouter) {
     if (artifactsName) {
       // Per-repo `pushed` event subscription — deferred so the create
       // response isn't gated on the Cloudflare API round trip.
-      ensureArtifactsPushSubscription(c.executionCtx, c.env, artifactsName);
+      ensureArtifactsPushSubscription(workerExecutionContext(c), c.env, artifactsName);
     }
     log.info("repo-create:ok", {
       userId: viewer.userId,

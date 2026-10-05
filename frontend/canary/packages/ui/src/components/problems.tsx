@@ -1,0 +1,119 @@
+import { IconV2 } from '@components/icon-v2'
+
+export type ProblemSeverity = 'error' | 'warning' | 'info'
+
+export interface Problem<T = unknown> {
+  severity: ProblemSeverity
+  message: string
+  position: {
+    row: number
+    column: number
+  }
+  data?: T
+  action?: React.ReactNode
+}
+
+const getProblemIcon = (severity: ProblemSeverity): React.ReactElement => {
+  switch (severity) {
+    case 'error':
+      return <IconV2 name="xmark-circle-solid" color="danger" />
+    case 'warning':
+      return <IconV2 name="warning-triangle-solid" color="warning" />
+    case 'info':
+      return <IconV2 name="info-circle" />
+  }
+}
+
+export interface ProblemsProps<T = unknown> {
+  problems: Problem<T>[]
+  onClick: (data: Problem<T>) => void
+}
+
+const ProblemsComponent = {
+  Root: function Root({ children }: { children: React.ReactNode }) {
+    // TODO: needs design review
+    return <div className="min-h-12 overflow-scroll text-[13px] leading-cn-16">{children}</div>
+  },
+
+  Row: function Root({ onClick, children }: { onClick?: () => void; children: React.ReactNode }) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        className="width-100 text-cn-1 flex flex-1 cursor-pointer items-center justify-between gap-cn-xs text-nowrap px-cn-md py-cn-4xs"
+      >
+        {children}
+      </div>
+    )
+  },
+
+  Icon: function Root({ severity }: { severity: ProblemSeverity }) {
+    return <div>{getProblemIcon(severity)}</div>
+  },
+
+  Message: function Root({ message }: { message: string }) {
+    return (
+      <div className="flex items-center overflow-hidden">
+        <span className="truncate">{message}</span>
+      </div>
+    )
+  },
+
+  Position: function Root({
+    position
+  }: {
+    position: {
+      row: number
+      column: number
+    }
+  }) {
+    return (
+      <div className="text-nowrap pr-cn-xs">
+        [{position.row}, {position.column}]
+      </div>
+    )
+  },
+
+  Action: function Root({ children }: { children: React.ReactNode }) {
+    return <div className="flex items-center">{children}</div>
+  }
+}
+
+// TODO: remove hardcoded colors - implement proper variables from theme
+const Problems = <T,>(props: ProblemsProps<T>): React.ReactElement => {
+  const { problems, onClick } = props
+
+  return (
+    <ProblemsComponent.Root>
+      {/* TODO: don't use idx, compose id from problem data*/}
+      {problems.map(problem => {
+        const { message, position, severity, action } = problem
+
+        return (
+          <ProblemsComponent.Row
+            key={`${problem.message}_${problem.position.column}_${problem.position.row}`}
+            onClick={() => onClick(problem)}
+          >
+            <div className="flex items-center gap-cn-xs">
+              <ProblemsComponent.Icon severity={severity} />
+              <ProblemsComponent.Message message={message} />
+              <ProblemsComponent.Position position={position} />
+            </div>
+            {action ? <ProblemsComponent.Action>{action}</ProblemsComponent.Action> : null}
+          </ProblemsComponent.Row>
+        )
+      })}
+    </ProblemsComponent.Root>
+  )
+}
+
+function NoProblemsFound(): JSX.Element {
+  return (
+    <div className="flex items-center gap-cn-xs pl-cn-md">
+      <IconV2 name="check-circle-solid" className="text-cn-success" /> No problems found
+    </div>
+  )
+}
+
+export { Problems, NoProblemsFound }

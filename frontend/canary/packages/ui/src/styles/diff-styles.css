@@ -1,0 +1,51 @@
+/* IMPORTANT: Do not modify the variable names on the left side (--diff-*) as they are required by the third-party git-diff-view component.
+   The right side variables (--cn-comp-*) are from the design system core.css file. */
+
+/* Override library's default theme variables with design system tokens */
+/* Light themes */
+.light .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-std-std .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-std-low .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-std-high .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-tri-std .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-tri-low .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-tri-high .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-pro-std .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-pro-low .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-pro-high .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-deu-std .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-deu-low .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+.light-deu-high .diff-tailwindcss-wrapper[data-theme='light'] .diff-style-root,
+/* Dark themes */
+.dark .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-std-std .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-std-low .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-std-high .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-tri-std .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-tri-low .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-tri-high .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-pro-std .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-pro-low .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-pro-high .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-deu-std .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-deu-low .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root,
+.dark-deu-high .diff-tailwindcss-wrapper[data-theme='dark'] .diff-style-root {
+  --diff-grey: var(--cn-comp-diff-background);
+  --diff-add-content--: var(--cn-comp-diff-add-content);
+  --diff-del-content--: var(--cn-comp-diff-del-content);
+  --diff-add-lineNumber--: var(--cn-comp-diff-add-line-number);
+  --diff-del-lineNumber--: var(--cn-comp-diff-del-line-number);
+  --diff-plain-content--: var(--cn-comp-diff-plain-content);
+  --diff-expand-content--: var(--cn-comp-diff-expand-content);
+  --diff-plain-lineNumber--: var(--cn-comp-diff-plain-line-number);
+  --diff-plain-lineNumber-color--: var(--cn-comp-diff-plain-line-number-color);
+  --diff-hunk-content--: var(--cn-comp-diff-hunk-content);
+  --diff-hunk-lineNumber--: var(--cn-comp-diff-hunk-line-number);
+  --diff-add-content-highlight--: var(--cn-comp-diff-add-content-highlight);
+  --diff-del-content-highlight--: var(--cn-comp-diff-del-content-highlight);
+  --diff-add-widget--: var(--cn-comp-diff-add-widget);
+  --diff-add-widget-color--: var(--cn-comp-diff-add-widget-color);
+  --diff-empty-content--: var(--cn-comp-diff-empty-content);
+  --diff-hunk-content-color--: var(--cn-comp-diff-hunk-content-color);
+  --diff-border--: var(--cn-border-2);
+}

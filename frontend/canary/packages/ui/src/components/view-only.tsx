@@ -1,0 +1,197 @@
+import { isValidElement, ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react'
+
+import { Layout, Separator, Skeleton, Text } from '@/components'
+import { useResizeObserver } from '@/hooks'
+import { cn, wrapConditionalObjectElement } from '@/utils'
+
+export type ViewOnlyItemLayout = 'horizontal' | 'vertical'
+
+export type ViewOnlyItemData = { label: string; value: ReactNode } | ReactNode
+
+function splitArray<T>(array: T[]): [T[], T[]] {
+  if (array.length <= 2) {
+    return [array, []]
+  }
+
+  const midPoint = Math.ceil(array.length / 2)
+  const firstHalf = array.slice(0, midPoint)
+  const secondHalf = array.slice(midPoint)
+
+  return [firstHalf, secondHalf]
+}
+
+export const ViewOnlyItem = ({
+  label,
+  value,
+  isLoading = false,
+  itemLayout = 'horizontal'
+}: {
+  label: string
+  value: ReactNode
+  isLoading?: boolean
+  itemLayout?: ViewOnlyItemLayout
+}) => {
+  const valueNode = !value ? (
+    <Text as="span" color="disabled">
+      empty
+    </Text>
+  ) : typeof value === 'string' ? (
+    value
+  ) : (
+    value
+  )
+
+  const valueTitle = typeof value === 'string' || typeof value === 'number' ? String(value) : undefined
+
+  if (itemLayout === 'vertical') {
+    return (
+      <Layout.Vertical key={label} gapY="4xs" className="min-w-0">
+        {isLoading ? (
+          <>
+            <Skeleton.Typography className="w-1/3" />
+            <Skeleton.Typography className="w-2/3" />
+          </>
+        ) : (
+          <>
+            <Text color="foreground-1" variant="body-normal">
+              {label}
+            </Text>
+            <Text color="foreground-3" variant="body-normal" truncate title={valueTitle} className="w-full min-w-0">
+              {valueNode}
+            </Text>
+          </>
+        )}
+      </Layout.Vertical>
+    )
+  }
+
+  return (
+    <Layout.Grid
+      key={label}
+      flow="row"
+      gapX="2xl"
+      columns="minmax(0, 200px) minmax(0, 1fr)"
+      align="start"
+      className="min-w-0"
+    >
+      {isLoading ? (
+        <>
+          <Skeleton.Typography className="w-full" />
+          <Skeleton.Typography className="w-2/3" />
+        </>
+      ) : (
+        <>
+          <Text color="foreground-3" as="dt">
+            {label}
+          </Text>
+          <Text color="foreground-1" as="dd" truncate title={valueTitle} className="min-w-0">
+            {valueNode}
+          </Text>
+        </>
+      )}
+    </Layout.Grid>
+  )
+}
+
+const isWideEnoughForColumns = (width: number) => width >= 800
+
+export interface ViewOnlyProps {
+  title?: string
+  data: ViewOnlyItemData[]
+  layout?: 'singleColumn' | 'columns'
+  itemLayout?: ViewOnlyItemLayout
+  className?: string
+  isLoading?: boolean
+  forceColumns?: boolean
+}
+
+export const ViewOnly = ({
+  className,
+  title,
+  data,
+  layout = 'columns',
+  itemLayout = 'horizontal',
+  isLoading = false,
+  forceColumns = false
+}: ViewOnlyProps) => {
+  const [isLayoutColumns, setIsLayoutColumns] = useState(forceColumns || layout === 'columns')
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (forceColumns) return
+
+    const el = contentRef.current
+    if (!el) return
+
+    const { offsetWidth } = el
+    setIsLayoutColumns(isWideEnoughForColumns(offsetWidth) && layout === 'columns')
+  }, [layout, forceColumns])
+
+  useResizeObserver(
+    contentRef,
+    el => {
+      if (forceColumns || !el || layout === 'singleColumn') return
+
+      const { offsetWidth } = el
+      setIsLayoutColumns(isWideEnoughForColumns(offsetWidth))
+    },
+    200
+  )
+
+  const renderItem = useCallback(
+    (item: ViewOnlyItemData) => {
+      if (item instanceof Object && 'label' in item && 'value' in item && typeof item.label === 'string') {
+        return (
+          <ViewOnlyItem
+            key={item.label}
+            label={item.label}
+            value={item.value}
+            isLoading={isLoading}
+            itemLayout={itemLayout}
+          />
+        )
+      } else if (isValidElement(item)) {
+        return item
+      }
+
+      return null
+    },
+    [isLoading, itemLayout]
+  )
+
+  if (!data || data.length === 0) return null
+
+  const isSeparatorVisible = isLayoutColumns && data.length > 2
+  const leftColumnData = isLayoutColumns ? splitArray(data)[0] : data
+  const rightColumnData = isLayoutColumns ? splitArray(data)[1] : null
+
+  return (
+    <Layout.Grid ref={contentRef} gap="md" className={cn('group', className)}>
+      <Text variant="heading-base" as="h4">
+        {title}
+      </Text>
+
+      <Layout.Grid
+        as="dl"
+        flow="column"
+        align="start"
+        gapX="lg"
+        {...wrapConditionalObjectElement({ columns: 'minmax(0, 1fr) auto minmax(0, 1fr)' }, isLayoutColumns)}
+      >
+        <Layout.Grid gapY="sm" className="min-w-0">
+          {leftColumnData.map(item => renderItem(item))}
+        </Layout.Grid>
+
+        {isLayoutColumns && <Separator orientation="vertical" className={cn({ invisible: !isSeparatorVisible })} />}
+
+        {!!rightColumnData && (
+          <Layout.Grid gapY="sm" className="min-w-0">
+            {rightColumnData.map(item => renderItem(item))}
+          </Layout.Grid>
+        )}
+      </Layout.Grid>
+
+      <Separator className="group-last:hidden mb-cn-md" />
+    </Layout.Grid>
+  )
+}

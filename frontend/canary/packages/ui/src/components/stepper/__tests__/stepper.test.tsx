@@ -1,0 +1,1261 @@
+import React from 'react'
+
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, test, vi } from 'vitest'
+
+import stepperStyles from '../../../../tailwind-utils-config/components/stepper'
+import { Stepper } from '../index'
+import { useStepperContext } from '../stepper-context'
+
+// Mock IconV2 for testing
+vi.mock('@components/icon-v2', () => ({
+  IconV2: ({ name, className }: { name: string; className?: string }) => (
+    <span data-testid={`icon-${name}`} className={className}>
+      {name}
+    </span>
+  ),
+  IconV2DisplayName: 'IconV2',
+  IconNameMapV2: {}
+}))
+
+// Mock Tooltip to avoid context requirements
+vi.mock('@components/tooltip', () => ({
+  Tooltip: ({ children, content }: { children: React.ReactNode; content: React.ReactNode }) => (
+    <span data-tooltip-content={typeof content === 'string' ? content : undefined}>{children}</span>
+  ),
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  withTooltip: (Component: React.ComponentType<any>) => Component
+}))
+
+function BasicStepper({
+  value = 'step1',
+  onValueChange = vi.fn(),
+  completed = false,
+  disableCompletedFade = false,
+  showConnectors = false,
+  title
+}: {
+  value?: string
+  onValueChange?: (v: string) => void
+  completed?: boolean
+  disableCompletedFade?: boolean
+  showConnectors?: boolean
+  title?: React.ReactNode
+}) {
+  return (
+    <Stepper.Root
+      value={value}
+      onValueChange={onValueChange}
+      completed={completed}
+      disableCompletedFade={disableCompletedFade}
+      showConnectors={showConnectors}
+      title={title}
+    >
+      <Stepper.Step value="step1" title="First Step" />
+      <Stepper.Step value="step2" title="Second Step" />
+      <Stepper.Step value="step3" title="Third Step" />
+    </Stepper.Root>
+  )
+}
+
+describe('Stepper', () => {
+  describe('Registration', () => {
+    test('renders all registered steps', () => {
+      const { container } = render(<BasicStepper value="step1" title="Setup" />)
+      expect(container.querySelectorAll('.cn-stepper-step-item')).toHaveLength(3)
+    })
+
+    test('dynamic mount/unmount updates rendered steps', () => {
+      function DynamicStepper() {
+        const [showThird, setShowThird] = React.useState(true)
+        return (
+          <>
+            <button data-testid="toggle" onClick={() => setShowThird(prev => !prev)}>
+              Toggle
+            </button>
+            <Stepper.Root value="step1" onValueChange={vi.fn()} title="Setup">
+              <Stepper.Step value="step1" title="First" />
+              <Stepper.Step value="step2" title="Second" />
+              {showThird && <Stepper.Step value="step3" title="Third" />}
+            </Stepper.Root>
+          </>
+        )
+      }
+
+      const { container } = render(<DynamicStepper />)
+      expect(container.querySelectorAll('.cn-stepper-step-item')).toHaveLength(3)
+
+      userEvent.click(screen.getByTestId('toggle'))
+      // After unmount, rendered steps should update
+      return waitFor(() => {
+        expect(container.querySelectorAll('.cn-stepper-step-item')).toHaveLength(2)
+      })
+    })
+  })
+
+  describe('State derivation', () => {
+    test('active step has active class', () => {
+      render(<BasicStepper value="step2" title="Setup" />)
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[1]).toHaveClass('cn-stepper-step-active')
+    })
+
+    test('steps before active have completed class', () => {
+      render(<BasicStepper value="step2" title="Setup" />)
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toHaveClass('cn-stepper-step-completed')
+    })
+
+    test('steps after active have upcoming class', () => {
+      render(<BasicStepper value="step2" title="Setup" />)
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[2]).toHaveClass('cn-stepper-step-upcoming')
+    })
+
+    test('explicit error state overrides derived state', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()} title="Setup">
+          <Stepper.Step value="step1" title="First" state="error" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toHaveClass('cn-stepper-step-error')
+    })
+
+    test('explicit skipped state overrides derived state', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()} title="Setup">
+          <Stepper.Step value="step1" title="First" state="skipped" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toHaveClass('cn-stepper-step-skipped')
+    })
+
+    test('completed prop marks all steps as completed', () => {
+      render(<BasicStepper value="step1" completed title="Setup" />)
+      const buttons = screen.getAllByRole('button')
+      buttons.forEach(button => {
+        expect(button).toHaveClass('cn-stepper-step-completed')
+      })
+    })
+
+    test('error state is preserved when completed prop is true', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()} completed title="Setup">
+          <Stepper.Step value="step1" title="First" state="error" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toHaveClass('cn-stepper-step-error')
+      expect(buttons[1]).toHaveClass('cn-stepper-step-completed')
+    })
+
+    test('skipped state is preserved when completed prop is true', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()} completed title="Setup">
+          <Stepper.Step value="step1" title="First" state="skipped" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toHaveClass('cn-stepper-step-skipped')
+      expect(buttons[1]).toHaveClass('cn-stepper-step-completed')
+    })
+  })
+
+  describe('Disabled state', () => {
+    test('upcoming steps are disabled', () => {
+      render(<BasicStepper value="step1" />)
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).not.toBeDisabled()
+      expect(buttons[1]).toBeDisabled()
+      expect(buttons[2]).toBeDisabled()
+    })
+
+    test('explicit disabled prop disables a step', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" disabled />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toBeDisabled()
+    })
+  })
+
+  describe('Indicators', () => {
+    test('completed step shows check icon', () => {
+      render(<BasicStepper value="step2" />)
+      // First step is completed
+      expect(screen.getByTestId('icon-check')).toBeInTheDocument()
+    })
+
+    test('active step shows step number', () => {
+      render(<BasicStepper value="step2" />)
+      expect(screen.getByText('2')).toBeInTheDocument()
+    })
+
+    test('upcoming step shows step number', () => {
+      render(<BasicStepper value="step1" />)
+      expect(screen.getByText('2')).toBeInTheDocument()
+      expect(screen.getByText('3')).toBeInTheDocument()
+    })
+
+    test('error step shows xmark icon', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" state="error" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      expect(screen.getByTestId('icon-xmark')).toBeInTheDocument()
+    })
+
+    test('active loading step shows spinner', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First" loading />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      const loader = screen.getByTestId('icon-loader')
+      expect(loader).toBeInTheDocument()
+      expect(loader).toHaveClass('animate-spin')
+    })
+  })
+
+  describe('Connectors', () => {
+    test('rendered when showConnectors=true', () => {
+      const { container } = render(<BasicStepper value="step1" showConnectors />)
+      const connectors = container.querySelectorAll('.cn-stepper-connector')
+      expect(connectors.length).toBe(3)
+    })
+
+    test('not rendered when showConnectors=false', () => {
+      const { container } = render(<BasicStepper value="step1" showConnectors={false} />)
+      const connectors = container.querySelectorAll('.cn-stepper-connector')
+      expect(connectors.length).toBe(0)
+    })
+
+    test('connector has state class matching step state', () => {
+      const { container } = render(<BasicStepper value="step2" showConnectors />)
+      const connectors = container.querySelectorAll('.cn-stepper-connector')
+      expect(connectors[0]).toHaveClass('cn-stepper-connector-completed')
+      expect(connectors[1]).toHaveClass('cn-stepper-connector-active')
+      expect(connectors[2]).toHaveClass('cn-stepper-connector-upcoming')
+    })
+
+    test('connector shows error state class', () => {
+      const { container } = render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()} showConnectors>
+          <Stepper.Step value="step1" title="Step 1" state="error" />
+          <Stepper.Step value="step2" title="Step 2" />
+          <Stepper.Step value="step3" title="Step 3" state="skipped" />
+        </Stepper.Root>
+      )
+      const connectors = container.querySelectorAll('.cn-stepper-connector')
+      expect(connectors[0]).toHaveClass('cn-stepper-connector-error')
+      expect(connectors[2]).toHaveClass('cn-stepper-connector-skipped')
+    })
+
+    test('error step with mixed nested steps uses partial trunk connector', () => {
+      const { container } = render(
+        <Stepper.Root value="sub4" onValueChange={vi.fn()} showConnectors>
+          <Stepper.StepGroup value="step1" title="First" state="error">
+            <Stepper.Step value="sub1" title="Sub One" state="completed" />
+            <Stepper.Step value="sub2" title="Sub Two" state="completed" />
+            <Stepper.Step value="sub3" title="Sub Three" state="completed" />
+            <Stepper.Step value="sub4" title="Sub Four" state="error" />
+            <Stepper.Step value="sub5" title="Sub Five" state="upcoming" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      const errorStepItem = container.querySelector('.cn-stepper-step-error')?.closest('.cn-stepper-step-item')
+      const connector = errorStepItem?.querySelector('.cn-stepper-connector')
+
+      expect(connector).toHaveClass('cn-stepper-connector-error-partial')
+      expect(connector).not.toHaveClass('cn-stepper-connector-error')
+      expect(errorStepItem).toHaveStyle({
+        '--cn-stepper-trunk-green-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 2 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))',
+        '--cn-stepper-trunk-blue-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 3 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))'
+      })
+    })
+
+    test('active step with nested steps uses partial trunk connector', () => {
+      const { container } = render(
+        <Stepper.Root value="sub2" onValueChange={vi.fn()} showConnectors>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" state="completed" />
+            <Stepper.Step value="sub2" title="Sub Two" state="active" />
+            <Stepper.Step value="sub3" title="Sub Three" state="upcoming" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      const activeStepItem = container.querySelector('.cn-stepper-step-active')?.closest('.cn-stepper-step-item')
+      const connector = activeStepItem?.querySelector('.cn-stepper-connector')
+
+      expect(connector).toHaveClass('cn-stepper-connector-active-partial')
+      expect(activeStepItem).toHaveStyle({
+        '--cn-stepper-trunk-green-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 0 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))',
+        '--cn-stepper-trunk-blue-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 1 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))'
+      })
+    })
+
+    test('active step with only first nested step active uses partial trunk with no green segment', () => {
+      const { container } = render(
+        <Stepper.Root value="sub1" onValueChange={vi.fn()} showConnectors>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" state="active" />
+            <Stepper.Step value="sub2" title="Sub Two" state="upcoming" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      const activeStepItem = container.querySelector('.cn-stepper-step-active')?.closest('.cn-stepper-step-item')
+      const connector = activeStepItem?.querySelector('.cn-stepper-connector')
+
+      expect(connector).toHaveClass('cn-stepper-connector-active-partial')
+      expect(activeStepItem).toHaveStyle({
+        '--cn-stepper-trunk-green-end': '0px',
+        '--cn-stepper-trunk-blue-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 0 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))'
+      })
+    })
+
+    test('placeholder branch stays gray on active parent step', () => {
+      const { container } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" state="active" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      expect(container.querySelector('.cn-stepper-nested-step-placeholder-branch')).toBeInTheDocument()
+      expect(
+        container.querySelector(
+          '.cn-stepper-step-item:has(.cn-stepper-step-active) .cn-stepper-nested-step-placeholder-branch'
+        )
+      ).toBeInTheDocument()
+    })
+
+    test('collapsibleNestedSteps caps active trunk and hides indeterminate placeholder', () => {
+      const { container } = render(
+        <Stepper.Root value="sub1" onValueChange={vi.fn()} showConnectors collapsibleNestedSteps>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" state="active">
+              <div className="cn-stepper-nested-step-panel">Panel content</div>
+            </Stepper.Step>
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      expect(container.querySelector('.cn-stepper-nested-step-placeholder')).not.toBeInTheDocument()
+      expect(container.querySelector('[data-testid="icon-more-horizontal"]')).not.toBeInTheDocument()
+      expect(container.querySelector('.cn-stepper-collapsible-nested-steps')).toBeInTheDocument()
+
+      const activeStepItem = container.querySelector('.cn-stepper-step-active')?.closest('.cn-stepper-step-item')
+      const connector = activeStepItem?.querySelector('.cn-stepper-connector') as HTMLElement | null
+
+      expect(connector).toHaveClass('cn-stepper-connector-active-partial')
+      expect(activeStepItem).toHaveStyle({
+        '--cn-stepper-trunk-blue-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 0 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))'
+      })
+    })
+
+    // The cap is CSS (`bottom: auto` on the active-partial connector). JSDOM does not load
+    // tailwind-utils-config, so this asserts the selector itself: without `:last-child` the gray
+    // trunk dies at the nested elbow even when later groups exist (CI onboarding 1→2 gap).
+    test('collapsibleNestedSteps caps active trunk only when the active group is last-child', () => {
+      const capSelector = Object.keys(stepperStyles).find(
+        key =>
+          key.includes('cn-stepper-collapsible-nested-steps') && key.includes('cn-stepper-connector-active-partial')
+      )
+
+      expect(capSelector).toBeDefined()
+      expect(capSelector).toContain(':last-child')
+    })
+
+    test('collapsibleNestedSteps leaves a following group as a later sibling of the active group', () => {
+      const { container } = render(
+        <Stepper.Root value="sub1" onValueChange={vi.fn()} showConnectors collapsibleNestedSteps>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" state="active">
+              <div className="cn-stepper-nested-step-panel">Panel content</div>
+            </Stepper.Step>
+          </Stepper.StepGroup>
+          <Stepper.StepGroup value="step2" title="Second" state="upcoming" />
+        </Stepper.Root>
+      )
+
+      const items = container.querySelectorAll(':scope .cn-stepper-list > .cn-stepper-step-item')
+      const activeStepItem = container.querySelector('.cn-stepper-step-active')?.closest('.cn-stepper-step-item')
+
+      expect(items.length).toBe(2)
+      expect(activeStepItem).toBe(items[0])
+      expect(activeStepItem).not.toBe(items[1])
+    })
+
+    test('collapsible completed nested step renders collapsed on mount', () => {
+      const { container } = render(
+        <Stepper.Root value="sub2" onValueChange={vi.fn()} collapsibleNestedSteps>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" state="completed">
+              <div>Completed panel content</div>
+            </Stepper.Step>
+            <Stepper.Step value="sub2" title="Sub Two" state="active">
+              <div>Active panel content</div>
+            </Stepper.Step>
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+
+      const completedItem = container.querySelector(
+        '.cn-stepper-nested-step-completed.cn-stepper-nested-step-item-collapsible'
+      )
+      const panel = completedItem?.querySelector('.cn-stepper-nested-step-panel-collapsible')
+      expect(panel).toHaveAttribute('data-state', 'closed')
+    })
+
+    test('collapsible nested step does not nest button elements', () => {
+      const { container } = render(
+        <Stepper.Root value="sub1" onValueChange={vi.fn()} collapsibleNestedSteps>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" state="active">
+              <div>Panel content</div>
+            </Stepper.Step>
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+
+      expect(container.querySelectorAll('button button')).toHaveLength(0)
+      expect(container.querySelector('.cn-stepper-nested-step-header .cn-stepper-nested-step')?.tagName).toBe('DIV')
+      expect(container.querySelector('.cn-stepper-nested-step-collapse-trigger')?.tagName).toBe('SPAN')
+    })
+
+    test('collapsible nested step collapses when transitioning to completed', () => {
+      const { container, rerender } = render(
+        <Stepper.Root value="sub1" onValueChange={vi.fn()} collapsibleNestedSteps>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" state="active">
+              <div>Panel content</div>
+            </Stepper.Step>
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+
+      const activePanel = container.querySelector(
+        '.cn-stepper-nested-step-active .cn-stepper-nested-step-panel-collapsible'
+      )
+      expect(activePanel).toHaveAttribute('data-state', 'open')
+
+      rerender(
+        <Stepper.Root value="sub2" onValueChange={vi.fn()} collapsibleNestedSteps>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" state="completed">
+              <div>Panel content</div>
+            </Stepper.Step>
+            <Stepper.Step value="sub2" title="Sub Two" state="active">
+              <div>Active panel</div>
+            </Stepper.Step>
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+
+      const completedItem = container.querySelector(
+        '.cn-stepper-nested-step-completed.cn-stepper-nested-step-item-collapsible'
+      )
+      const panel = completedItem?.querySelector('.cn-stepper-nested-step-panel-collapsible')
+      expect(panel).toHaveAttribute('data-state', 'closed')
+    })
+  })
+
+  describe('Nested Steps', () => {
+    test('render under active parent', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" />
+            <Stepper.Step value="sub2" title="Sub Two" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      expect(screen.getByText('Sub One')).toBeInTheDocument()
+      expect(screen.getByText('Sub Two')).toBeInTheDocument()
+    })
+
+    test('hidden when parent is upcoming', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.StepGroup value="step2" title="Second">
+            <Stepper.Step value="sub1" title="Sub One" />
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+      expect(screen.queryByText('Sub One')).not.toBeInTheDocument()
+    })
+
+    test('parent is active when value is a nested step', () => {
+      render(
+        <Stepper.Root value="sub1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" />
+            <Stepper.Step value="sub2" title="Sub Two" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      // Nested steps should be visible since parent is active
+      expect(screen.getByText('Sub One')).toBeInTheDocument()
+      expect(screen.getByText('Sub Two')).toBeInTheDocument()
+    })
+
+    test('nested steps do not register as top-level steps', () => {
+      // Asserting container.querySelectorAll('.cn-stepper-step-item').length === 2 would pass here
+      // for the WRONG reason: that count is StepGroup (1) + top-level Step (1), not "the two nested
+      // steps inside the StepGroup didn't ALSO register as top-level." Assert directly on the
+      // stepper context's orderedSteps instead, which is the actual top-level registry (see
+      // registerStep in stepper-context.tsx) — it must contain only the top-level step/group values,
+      // never the nested step values.
+      let capturedOrderedSteps: string[] = []
+      function OrderedStepsProbe() {
+        capturedOrderedSteps = useStepperContext().orderedSteps
+        return null
+      }
+
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()} title="Setup">
+          <OrderedStepsProbe />
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" />
+            <Stepper.Step value="sub2" title="Sub Two" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      expect(capturedOrderedSteps).toEqual(['step1', 'step2'])
+      expect(capturedOrderedSteps).not.toContain('sub1')
+      expect(capturedOrderedSteps).not.toContain('sub2')
+    })
+
+    test('placeholder rendered when hasNestedSteps with no children', () => {
+      const { container } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      expect(container.querySelector('.cn-stepper-nested-step-placeholder')).toBeInTheDocument()
+    })
+
+    test('nested step shows explicit state classes', () => {
+      const { container } = render(
+        <Stepper.Root value="sub2" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" state="completed" />
+            <Stepper.Step value="sub2" title="Sub Two" state="active" />
+            <Stepper.Step value="sub3" title="Sub Three" state="error" />
+            <Stepper.Step value="sub4" title="Sub Four" state="upcoming" />
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+      expect(container.querySelector('.cn-stepper-nested-step-completed')).toBeInTheDocument()
+      expect(container.querySelector('.cn-stepper-nested-step-active')).toBeInTheDocument()
+      expect(container.querySelector('.cn-stepper-nested-step-error')).toBeInTheDocument()
+      expect(container.querySelector('.cn-stepper-nested-step-upcoming')).toBeInTheDocument()
+    })
+
+    test('nested step branch and indicator have state-specific styling', () => {
+      const { container } = render(
+        <Stepper.Root value="sub2" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" state="completed" />
+            <Stepper.Step value="sub2" title="Sub Two" state="active" />
+            <Stepper.Step value="sub3" title="Sub Three" state="error" />
+            <Stepper.Step value="sub4" title="Sub Four" state="upcoming" />
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+      // Verify branch elements render within state containers
+      expect(
+        container.querySelector('.cn-stepper-nested-step-completed .cn-stepper-nested-step-branch')
+      ).toBeInTheDocument()
+      expect(
+        container.querySelector('.cn-stepper-nested-step-active .cn-stepper-nested-step-branch')
+      ).toBeInTheDocument()
+      expect(
+        container.querySelector('.cn-stepper-nested-step-error .cn-stepper-nested-step-branch')
+      ).toBeInTheDocument()
+      expect(
+        container.querySelector('.cn-stepper-nested-step-upcoming .cn-stepper-nested-step-branch')
+      ).toBeInTheDocument()
+      // Verify indicator elements render within state containers
+      expect(
+        container.querySelector('.cn-stepper-nested-step-completed .cn-stepper-nested-step-indicator')
+      ).toBeInTheDocument()
+      expect(
+        container.querySelector('.cn-stepper-nested-step-active .cn-stepper-nested-step-indicator')
+      ).toBeInTheDocument()
+      expect(
+        container.querySelector('.cn-stepper-nested-step-error .cn-stepper-nested-step-indicator')
+      ).toBeInTheDocument()
+      expect(
+        container.querySelector('.cn-stepper-nested-step-upcoming .cn-stepper-nested-step-indicator')
+      ).toBeInTheDocument()
+    })
+
+    test('placeholder branch stays inactive when parent step is active', () => {
+      const { container } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()} showConnectors>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      const placeholderBranch = container.querySelector('.cn-stepper-nested-step-placeholder-branch')
+      expect(placeholderBranch).toBeInTheDocument()
+      expect(
+        container.querySelector(
+          '.cn-stepper-step-item:has(.cn-stepper-step-active) .cn-stepper-nested-step-placeholder-branch'
+        )
+      ).toBeInTheDocument()
+    })
+
+    test('active step with pending nested steps uses partial connector class', () => {
+      const { container } = render(
+        <Stepper.Root value="sub1" onValueChange={vi.fn()} showConnectors>
+          <Stepper.StepGroup value="step1" title="First" hasNestedSteps>
+            <Stepper.Step value="sub1" title="Sub One" />
+            <Stepper.Step value="sub2" title="Sub Two" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      const connector = container.querySelector('.cn-stepper-step-active + .cn-stepper-connector')
+      expect(connector).toHaveClass('cn-stepper-connector-active-partial')
+      expect(connector).not.toHaveClass('cn-stepper-connector-active')
+
+      const stepItem = container.querySelector('.cn-stepper-step-item:has(.cn-stepper-step-active)')
+      expect(stepItem).toHaveStyle({
+        '--cn-stepper-trunk-green-end': '0px',
+        '--cn-stepper-trunk-blue-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 0 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))'
+      })
+    })
+
+    test('active step on last nested step still uses partial connector with gray trunk below', () => {
+      const { container } = render(
+        <Stepper.Root value="sub2" onValueChange={vi.fn()} showConnectors>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="Sub One" state="completed" />
+            <Stepper.Step value="sub2" title="Sub Two" state="active" />
+          </Stepper.StepGroup>
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      const connector = container.querySelector('.cn-stepper-step-active + .cn-stepper-connector')
+      expect(connector).toHaveClass('cn-stepper-connector-active-partial')
+      expect(connector).not.toHaveClass('cn-stepper-connector-active')
+
+      const stepItem = container.querySelector('.cn-stepper-step-item:has(.cn-stepper-step-active)')
+      expect(stepItem).toHaveStyle({
+        '--cn-stepper-trunk-green-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 0 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))',
+        '--cn-stepper-trunk-blue-end':
+          'calc(var(--cn-stepper-step-content-overflow, 0px) + var(--cn-spacing-3) + 1 * (var(--cn-spacing-2) * 2 + var(--cn-size-5)) + var(--cn-spacing-2) + var(--cn-size-5) / 2 - (12 / 22) * (var(--cn-size-5) / 2 + var(--cn-rounded-5)))'
+      })
+    })
+  })
+
+  describe('Active nested step unmount falls back to parent', () => {
+    test('calls onValueChange with parent when active nested step unmounts', async () => {
+      const onValueChange = vi.fn()
+
+      function TestComponent() {
+        const [showSub, setShowSub] = React.useState(true)
+        return (
+          <>
+            <button data-testid="remove-sub" onClick={() => setShowSub(false)}>
+              Remove
+            </button>
+            <Stepper.Root value="sub1" onValueChange={onValueChange}>
+              <Stepper.StepGroup value="step1" title="First">
+                {showSub && <Stepper.Step value="sub1" title="Sub One" />}
+                <Stepper.Step value="sub2" title="Sub Two" />
+              </Stepper.StepGroup>
+              <Stepper.Step value="step2" title="Second" />
+            </Stepper.Root>
+          </>
+        )
+      }
+
+      render(<TestComponent />)
+      await userEvent.click(screen.getByTestId('remove-sub'))
+      await waitFor(() => {
+        expect(onValueChange).toHaveBeenCalledWith('step1')
+      })
+    })
+  })
+
+  describe('Navigation', () => {
+    test('clicking a completed step calls onValueChange', async () => {
+      const onValueChange = vi.fn()
+
+      render(
+        <Stepper.Root value="step2" onValueChange={onValueChange}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[0])
+      expect(onValueChange).toHaveBeenCalledWith('step1')
+    })
+
+    test('clicking an upcoming step does nothing', async () => {
+      const onValueChange = vi.fn()
+
+      render(
+        <Stepper.Root value="step1" onValueChange={onValueChange}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[1])
+      expect(onValueChange).not.toHaveBeenCalled()
+    })
+
+    test('clicking a disabled step does nothing', async () => {
+      const onValueChange = vi.fn()
+
+      render(
+        <Stepper.Root value="step2" onValueChange={onValueChange}>
+          <Stepper.Step value="step1" title="First" disabled />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[0])
+      expect(onValueChange).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Navigation Guard', () => {
+    test('onBeforeChange returning true allows navigation', async () => {
+      const onValueChange = vi.fn()
+      const onBeforeChange = vi.fn().mockReturnValue(true)
+
+      render(
+        <Stepper.Root value="step2" onValueChange={onValueChange} onBeforeChange={onBeforeChange}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[0])
+      expect(onBeforeChange).toHaveBeenCalledWith('step2', 'step1')
+      expect(onValueChange).toHaveBeenCalledWith('step1')
+    })
+
+    test('onBeforeChange returning false blocks silently', async () => {
+      const onValueChange = vi.fn()
+      const onBeforeChange = vi.fn().mockReturnValue(false)
+
+      render(
+        <Stepper.Root value="step2" onValueChange={onValueChange} onBeforeChange={onBeforeChange}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[0])
+      expect(onBeforeChange).toHaveBeenCalledWith('step2', 'step1')
+      expect(onValueChange).not.toHaveBeenCalled()
+    })
+
+    test('onBeforeChange returning string shows confirmation dialog', async () => {
+      const onValueChange = vi.fn()
+      const onBeforeChange = vi.fn().mockReturnValue('Are you sure?')
+
+      render(
+        <Stepper.Root value="step2" onValueChange={onValueChange} onBeforeChange={onBeforeChange}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[0])
+      expect(await screen.findByText('Are you sure?')).toBeInTheDocument()
+      expect(onValueChange).not.toHaveBeenCalled()
+    })
+
+    test('confirming dialog proceeds with navigation', async () => {
+      const onValueChange = vi.fn()
+      const onBeforeChange = vi.fn().mockReturnValue('Are you sure?')
+
+      render(
+        <Stepper.Root value="step2" onValueChange={onValueChange} onBeforeChange={onBeforeChange}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[0])
+      const confirmBtn = await screen.findByRole('button', { name: /confirm/i })
+      await userEvent.click(confirmBtn)
+      expect(onValueChange).toHaveBeenCalledWith('step1')
+    })
+
+    test('canceling dialog blocks navigation', async () => {
+      const onValueChange = vi.fn()
+      const onBeforeChange = vi.fn().mockReturnValue('Are you sure?')
+
+      render(
+        <Stepper.Root value="step2" onValueChange={onValueChange} onBeforeChange={onBeforeChange}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      await userEvent.click(screen.getAllByRole('button')[0])
+      const cancelBtn = await screen.findByRole('button', { name: /cancel/i })
+      await userEvent.click(cancelBtn)
+      expect(onValueChange).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Blocking', () => {
+    test('steps after blocking step are disabled', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First" blocking />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).not.toBeDisabled() // blocking step itself is active
+      expect(buttons[1]).toBeDisabled() // after blocking
+      expect(buttons[2]).toBeDisabled() // after blocking
+    })
+
+    test('steps after blocking step have upcoming state', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First" blocking />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[1]).toHaveClass('cn-stepper-step-upcoming')
+      expect(buttons[2]).toHaveClass('cn-stepper-step-upcoming')
+    })
+  })
+
+  describe('Keyboard Navigation', () => {
+    test('ArrowDown moves focus to next navigable step', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      buttons[0].focus()
+      fireEvent.keyDown(buttons[0], { key: 'ArrowDown' })
+      expect(buttons[1]).toHaveFocus()
+    })
+
+    test('ArrowUp moves focus to previous step', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      buttons[1].focus()
+      fireEvent.keyDown(buttons[1], { key: 'ArrowUp' })
+      expect(buttons[0]).toHaveFocus()
+    })
+
+    test('ArrowDown skips disabled steps', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      // Only step1 is navigable (step2, step3 are upcoming/disabled)
+      const buttons = screen.getAllByRole('button')
+      buttons[0].focus()
+      fireEvent.keyDown(buttons[0], { key: 'ArrowDown' })
+      // Should stay on step1 since there's nothing else navigable
+      expect(buttons[0]).toHaveFocus()
+    })
+
+    test('Home moves to first navigable step', () => {
+      render(
+        <Stepper.Root value="step3" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      buttons[2].focus()
+      fireEvent.keyDown(buttons[2], { key: 'Home' })
+      expect(buttons[0]).toHaveFocus()
+    })
+
+    test('End moves to last navigable step', () => {
+      render(
+        <Stepper.Root value="step3" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      buttons[0].focus()
+      fireEvent.keyDown(buttons[0], { key: 'End' })
+      expect(buttons[2]).toHaveFocus()
+    })
+
+    test('only active step has tabIndex 0', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toHaveAttribute('tabindex', '-1')
+      expect(buttons[1]).toHaveAttribute('tabindex', '0')
+      // buttons[2] is disabled, no tabindex
+    })
+  })
+
+  describe('Accessibility', () => {
+    test('root nav has aria-label', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+        </Stepper.Root>
+      )
+      expect(screen.getByRole('navigation')).toHaveAttribute('aria-label', 'Progress steps')
+    })
+
+    test('active step has aria-current="step"', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).not.toHaveAttribute('aria-current')
+      expect(buttons[1]).toHaveAttribute('aria-current', 'step')
+    })
+
+    test('step buttons have descriptive aria-label', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First Step" />
+          <Stepper.Step value="step2" title="Second Step" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[0]).toHaveAttribute('aria-label', 'Step 1 of 2: First Step')
+      expect(buttons[1]).toHaveAttribute('aria-label', 'Step 2 of 2: Second Step')
+    })
+
+    test('disabled step has aria-disabled', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[1]).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    test('live region announces step changes', async () => {
+      const { container, rerender } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      rerender(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      const liveRegion = container.querySelector('[aria-live="polite"]')
+      expect(liveRegion).toHaveTextContent('Step 2 of 2')
+    })
+  })
+
+  describe('Animation Classes', () => {
+    test('forward navigation applies transitioning class', () => {
+      const { rerender } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+
+      rerender(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+
+      expect(document.querySelector('.cn-stepper-step-transitioning')).toBeInTheDocument()
+    })
+
+    test('backward navigation does NOT apply transitioning class', () => {
+      const { rerender } = render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+
+      rerender(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+
+      expect(document.querySelector('.cn-stepper-step-transitioning')).not.toBeInTheDocument()
+    })
+
+    test('no animation on initial mount', () => {
+      render(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      expect(document.querySelector('.cn-stepper-step-transitioning')).not.toBeInTheDocument()
+    })
+
+    test('animation class removed after 600ms', () => {
+      vi.useFakeTimers()
+
+      const { rerender } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      rerender(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      expect(document.querySelector('.cn-stepper-step-transitioning')).toBeInTheDocument()
+
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+
+      expect(document.querySelector('.cn-stepper-step-transitioning')).not.toBeInTheDocument()
+
+      vi.useRealTimers()
+    })
+
+    test('list has locked class during animation', () => {
+      const { container, rerender } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      rerender(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+        </Stepper.Root>
+      )
+
+      expect(container.querySelector('.cn-stepper-list-locked')).toBeInTheDocument()
+    })
+
+    test('source step has leaving class, target has entering class', () => {
+      const { rerender } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+
+      rerender(
+        <Stepper.Root value="step2" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="First" />
+          <Stepper.Step value="step2" title="Second" />
+          <Stepper.Step value="step3" title="Third" />
+        </Stepper.Root>
+      )
+
+      expect(document.querySelector('.cn-stepper-indicator-leaving')).toBeInTheDocument()
+      expect(document.querySelector('.cn-stepper-indicator-entering')).toBeInTheDocument()
+    })
+  })
+
+  describe('Skeleton State', () => {
+    test('renders skeleton rows when no children', () => {
+      const { container } = render(<Stepper.Root value="" onValueChange={vi.fn()} title="Setup" />)
+      const skeletons = container.querySelectorAll('.cn-stepper-skeleton-item')
+      expect(skeletons).toHaveLength(3) // default
+    })
+
+    test('respects custom skeletonCount', () => {
+      const { container } = render(<Stepper.Root value="" onValueChange={vi.fn()} title="Setup" skeletonCount={5} />)
+      const skeletons = container.querySelectorAll('.cn-stepper-skeleton-item')
+      expect(skeletons).toHaveLength(5)
+    })
+
+    test('skeleton disappears when steps mount', () => {
+      const { container, rerender } = render(<Stepper.Root value="" onValueChange={vi.fn()} title="Setup" />)
+      expect(container.querySelectorAll('.cn-stepper-skeleton-item')).toHaveLength(3)
+
+      rerender(
+        <Stepper.Root value="step1" onValueChange={vi.fn()} title="Setup">
+          <Stepper.Step value="step1" title="First" />
+        </Stepper.Root>
+      )
+      expect(container.querySelectorAll('.cn-stepper-skeleton-item')).toHaveLength(0)
+    })
+  })
+
+  describe('Text Overflow', () => {
+    test('step title is rendered', () => {
+      render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="A very long title" />
+        </Stepper.Root>
+      )
+      expect(screen.getByText('A very long title')).toBeInTheDocument()
+      expect(screen.getByText('A very long title').closest('.cn-stepper-step-title')).toBeInTheDocument()
+    })
+
+    test('step title has no tooltip wrapper (removed hover tooltip)', () => {
+      const { container } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.Step value="step1" title="A very long title" />
+        </Stepper.Root>
+      )
+      expect(container.querySelector('[data-tooltip-content]')).not.toBeInTheDocument()
+    })
+
+    test('nested step title has no tooltip wrapper (removed hover tooltip)', () => {
+      const { container } = render(
+        <Stepper.Root value="step1" onValueChange={vi.fn()}>
+          <Stepper.StepGroup value="step1" title="First">
+            <Stepper.Step value="sub1" title="A long nested step title" />
+          </Stepper.StepGroup>
+        </Stepper.Root>
+      )
+      expect(container.querySelector('[data-tooltip-content]')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('UUI-3585 default chrome', () => {
+    test('head pad, connector inset, open-step panel, active badge, and completed mute are defaults', () => {
+      const step = stepperStyles['.cn-stepper-step']
+      expect(step.paddingBlock).toBe('var(--cn-spacing-3)')
+      expect(step.paddingInline).toBe('0')
+
+      const connector = stepperStyles['.cn-stepper-connector']
+      expect(connector.top).toBe('calc(var(--cn-spacing-3) + var(--cn-size-5) + var(--cn-spacing-half))')
+      expect(connector.bottom).toBe('calc(var(--cn-spacing-half) - var(--cn-spacing-3))')
+
+      const lastChild = stepperStyles['.cn-stepper-step-item']['&:last-child'] as {
+        '& .cn-stepper-connector': { bottom: string }
+      }
+      expect(lastChild['& .cn-stepper-connector'].bottom).toBe('var(--cn-spacing-half)')
+
+      expect(stepperStyles['.cn-stepper-step-panel'].marginTop).toBe('0')
+
+      const activeBadge = stepperStyles['.cn-stepper-step-active .cn-stepper-step-badge']
+      expect(activeBadge.borderColor).toBe('var(--cn-set-blue-outline-border)')
+      expect(activeBadge.background).toBe('var(--cn-set-blue-outline-bg)')
+      expect(activeBadge.color).toBe('var(--cn-set-blue-outline-text)')
+
+      const completedItem = stepperStyles[
+        '.cn-stepper:not(.cn-stepper-disable-completed-fade) .cn-stepper-step-item'
+      ] as {
+        '&:has(.cn-stepper-step-completed)': { opacity: string; '&:hover': { opacity: string } }
+      }
+      expect(completedItem['&:has(.cn-stepper-step-completed)'].opacity).toBe('0.6')
+      expect(completedItem['&:has(.cn-stepper-step-completed)']['&:hover'].opacity).toBe('1')
+    })
+  })
+
+  describe('UUI-3726 disableCompletedFade', () => {
+    test('omitting the prop does not add the opt-out class', () => {
+      const { container } = render(<BasicStepper value="step2" />)
+      expect(container.querySelector('nav.cn-stepper')).not.toHaveClass('cn-stepper-disable-completed-fade')
+    })
+
+    test('true adds the opt-out class on root', () => {
+      const { container } = render(<BasicStepper value="step2" disableCompletedFade />)
+      expect(container.querySelector('nav.cn-stepper')).toHaveClass('cn-stepper-disable-completed-fade')
+    })
+
+    test('completed mute does not apply on the ungated step item', () => {
+      expect('&:has(.cn-stepper-step-completed)' in stepperStyles['.cn-stepper-step-item']).toBe(false)
+    })
+  })
+})

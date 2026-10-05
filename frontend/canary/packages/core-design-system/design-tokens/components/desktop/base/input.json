@@ -1,0 +1,107 @@
+{
+  "input": {
+    "size": {
+      "sm": {
+        "$type": "sizing",
+        "$value": "{size.8}",
+        "$description": "32px"
+      },
+      "md": {
+        "$type": "sizing",
+        "$value": "{size.9}",
+        "$description": "36px\n"
+      }
+    },
+    "radius": {
+      "$type": "borderRadius",
+      "$value": "{rounded.3}",
+      "$description": "6px"
+    },
+    "md": {
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.1-half}"
+      },
+      "pl": {
+        "$type": "spacing",
+        "$value": "{spacing.3}"
+      },
+      "pr": {
+        "$type": "spacing",
+        "$value": "{spacing.2}"
+      },
+      "py": {
+        "$type": "spacing",
+        "$value": "{spacing.1-half}"
+      }
+    },
+    "border": {
+      "$type": "borderWidth",
+      "$value": "{borderWidth.1}"
+    },
+    "wrapper": {
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.2}"
+      }
+    },
+    "sm": {
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.2}"
+      },
+      "pl": {
+        "$type": "spacing",
+        "$value": "{spacing.2-half}"
+      },
+      "pr": {
+        "$type": "spacing",
+        "$value": "{spacing.1-half}"
+      },
+      "py": {
+        "$type": "spacing",
+        "$value": "{spacing.1}"
+      }
+    },
+    "horizontal": {
+      "label": {
+        "max-width": {
+          "$type": "sizing",
+          "$value": "{size.72}"
+        }
+      }
+    },
+    "text-area": {
+      "min-height": {
+        "$type": "sizing",
+        "$value": "{size.25}"
+      }
+    },
+    "ai": {
+      "container": {
+        "$type": "spacing",
+        "$value": "{spacing.3}"
+      },
+      "gap": {
+        "$type": "spacing",
+        "$value": "{spacing.2-half}"
+      },
+      "radius": {
+        "$type": "borderRadius",
+        "$value": "{rounded.6}"
+      },
+      "min-height": {
+        "$type": "sizing",
+        "$value": "102px"
+      },
+      "max-height": {
+        "$type": "sizing",
+        "$value": "340px"
+      },
+      "border": {
+        "$type": "borderWidth",
+        "$value": "1.5px"
+      }
+    }
+  }
+}

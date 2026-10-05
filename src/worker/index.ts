@@ -9,6 +9,7 @@ import { registerArchiveRoutes } from "./routes/archive";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
 import { registerUiRoutes } from "./routes/ui";
+import { registerSpaRoutes } from "./routes/spa";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerAtpAuthRoutes } from "./routes/atpauth";
 import { registerXrpcRoutes } from "./routes/xrpc";
@@ -60,6 +61,9 @@ app.get("/", async (c) => {
   );
 });
 
+// Gitness SPA under /app/* — after all /api + auth routes; its own prefix
+// so it cannot shadow SSR routes during the migration.
+registerSpaRoutes(app);
 // Register UI routes AFTER static/auth so that /:owner doesn't shadow them
 registerUiRoutes(app);
 

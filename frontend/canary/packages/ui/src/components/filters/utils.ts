@@ -1,0 +1,115 @@
+import { ReactNode } from 'react'
+
+import type { MultiSelectOption } from '@components/multi-select'
+import { format } from 'date-fns'
+
+import {
+  formatDateRangeLabel,
+  formatDateRangeTriggerLabel,
+  type DateRangeInput,
+  type Weekday
+} from '../date-range-picker'
+import { ComboBoxOptions } from './filters-bar/actions/variants/combo-box'
+import {
+  CheckboxOptions,
+  DateRangeValue,
+  FilterFieldConfig,
+  FilterFieldTypes,
+  FilterOptionConfig,
+  FilterValueTypes
+} from './types'
+
+export const getDateRangeFilterLabels = (
+  value: DateRangeInput | undefined,
+  weekStartsOn?: Weekday
+): { compact: string; full: string } => {
+  if (!value) return { compact: '', full: '' }
+
+  try {
+    return {
+      compact: formatDateRangeTriggerLabel(value, { weekStartsOn }),
+      full: formatDateRangeLabel(value, {
+        includeResolvedRange: true,
+        includeTimeZone: true,
+        weekStartsOn
+      })
+    }
+  } catch {
+    return { compact: '', full: '' }
+  }
+}
+
+export const getFilterLabelValue = <
+  T extends string,
+  V extends FilterValueTypes,
+  CustomValue = Record<string, unknown>
+>(
+  filterOption: FilterOptionConfig<T, CustomValue>,
+  filter: FilterFieldConfig<V>
+): ReactNode => {
+  switch (filterOption.type) {
+    case FilterFieldTypes.Calendar: {
+      const filterValue = filter.value as Date
+      if (!filterValue) return ''
+
+      const formatDate = (dateString: Date) => {
+        const date = new Date(dateString)
+        const currentYear = new Date().getFullYear()
+        return date.getFullYear() === currentYear ? format(date, 'MMM d') : format(date, 'MMM d, yyyy')
+      }
+
+      return formatDate(filterValue)
+    }
+    case FilterFieldTypes.DateRange: {
+      const filterValue = filter.value as DateRangeValue | undefined
+      return getDateRangeFilterLabels(filterValue, filterOption.filterFieldConfig?.weekStartsOn).compact
+    }
+    case FilterFieldTypes.ComboBox: {
+      const filterValue = filter.value as ComboBoxOptions | undefined
+      if (filterValue?.label) {
+        return filterValue.label
+      }
+
+      const options = filterOption.filterFieldConfig?.options
+      return options?.find(option => option.value === filterValue?.value)?.label
+    }
+    case FilterFieldTypes.MultiSelect: {
+      const options = filterOption.filterFieldConfig?.options
+      return (filter.value as CheckboxOptions[])
+        ?.map(
+          selectedOption =>
+            options?.find(option => option.value === selectedOption.value)?.label || selectedOption.value
+        )
+        .join(', ')
+    }
+    case FilterFieldTypes.MultiTag: {
+      return (filter.value as MultiSelectOption[])
+        ?.map(option => String(option.id || (option.value ? `${option.key}:${option.value}` : option.key)))
+        .filter(Boolean)
+        .join(', ')
+    }
+    case FilterFieldTypes.Text: {
+      return filter.value as string
+    }
+    case FilterFieldTypes.Custom: {
+      return filterOption.filterFieldConfig.renderFilterLabel?.(filter.value as CustomValue)
+    }
+    default:
+      return ''
+  }
+}
+
+export const getMultiSelectParser = (options: CheckboxOptions[]) => {
+  return {
+    parse: (value: string) => {
+      // Since "," can be encoded while appending to URL
+      const valueArr = decodeURIComponent(value)
+        .split(',')
+        .filter(Boolean)
+        .map(val => options.find(option => option.value === val))
+        .filter((option): option is CheckboxOptions => option !== undefined)
+      return valueArr
+    },
+    serialize: (value?: CheckboxOptions[]) => value?.reduce((acc, val) => (acc += `${val.value},`), '') || ''
+  }
+}

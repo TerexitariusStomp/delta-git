@@ -1,0 +1,268 @@
+{
+  "tracking": {
+    "tight": {
+      "$type": "letterSpacing",
+      "$value": "-0.02em",
+      "$description": "Headings"
+    },
+    "normal": {
+      "$type": "letterSpacing",
+      "$value": "0em",
+      "$description": "Default body text"
+    },
+    "wide": {
+      "$type": "letterSpacing",
+      "$value": "0.025em",
+      "$description": "Improved readability"
+    }
+  },
+  "fontWeight": {
+    "default": {
+      "normal": {
+        "300": {
+          "$type": "fontWeights",
+          "$value": "310"
+        },
+        "400": {
+          "$type": "fontWeights",
+          "$value": "360"
+        },
+        "500": {
+          "$type": "fontWeights",
+          "$value": "440"
+        },
+        "600": {
+          "$type": "fontWeights",
+          "$value": "550"
+        },
+        "700": {
+          "$type": "fontWeights",
+          "$value": "Bold"
+        }
+      }
+    },
+    "mono": {
+      "normal": {
+        "300": {
+          "$type": "fontWeights",
+          "$value": "Light"
+        },
+        "400": {
+          "$type": "fontWeights",
+          "$value": "Regular"
+        },
+        "500": {
+          "$type": "fontWeights",
+          "$value": "Medium"
+        },
+        "700": {
+          "$type": "fontWeights",
+          "$value": "Bold"
+        }
+      }
+    }
+  },
+  "fontFamily": {
+    "default": {
+      "$type": "fontFamilies",
+      "$value": ["Inter", "system-ui", "sans-serif"]
+    },
+    "mono": {
+      "$type": "fontFamilies",
+      "$value": ["JetBrains Mono", "monospace"]
+    }
+  },
+  "textDecoration": {
+    "none": {
+      "$type": "textDecoration",
+      "$value": "none"
+    },
+    "underline": {
+      "$type": "textDecoration",
+      "$value": "underline"
+    },
+    "line-through": {
+      "$type": "textDecoration",
+      "$value": "line-through"
+    }
+  },
+  "textCase": {
+    "none": {
+      "$type": "textCase",
+      "$value": "none"
+    },
+    "uppercase": {
+      "$type": "textCase",
+      "$value": "uppercase"
+    }
+  },
+  "fontSize": {
+    "0": {
+      "$type": "fontSizes",
+      "$value": "0.55rem",
+      "$description": "8.8px"
+    },
+    "1": {
+      "$type": "fontSizes",
+      "$value": "0.641rem",
+      "$description": "10.25px"
+    },
+    "2": {
+      "$type": "fontSizes",
+      "$value": "0.719rem",
+      "$description": "11.5px"
+    },
+    "3": {
+      "$type": "fontSizes",
+      "$value": "0.75rem",
+      "$description": "12px"
+    },
+    "4": {
+      "$type": "fontSizes",
+      "$value": "0.813rem",
+      "$description": "13px"
+    },
+    "5": {
+      "$type": "fontSizes",
+      "$value": "0.875rem",
+      "$description": "14px"
+    },
+    "6": {
+      "$type": "fontSizes",
+      "$value": "1rem",
+      "$description": "16px"
+    },
+    "7": {
+      "$type": "fontSizes",
+      "$value": "1.125rem",
+      "$description": "18px"
+    },
+    "8": {
+      "$type": "fontSizes",
+      "$value": "1.25rem",
+      "$description": "20px"
+    },
+    "9": {
+      "$type": "fontSizes",
+      "$value": "1.5rem",
+      "$description": "24px"
+    },
+    "10": {
+      "$type": "fontSizes",
+      "$value": "1.75rem",
+      "$description": "28px"
+    },
+    "11": {
+      "$type": "fontSizes",
+      "$value": "2.25rem",
+      "$description": "36px"
+    },
+    "12": {
+      "$type": "fontSizes",
+      "$value": "3rem",
+      "$description": "48px"
+    },
+    "15": {
+      "$type": "fontSizes",
+      "$value": "6rem",
+      "$description": "96px"
+    }
+  },
+  "lineHeight": {
+    "multiplier": {
+      "none": {
+        "$type": "lineHeights",
+        "$value": "1.14"
+      }
+    },
+    "8": {
+      "$type": "lineHeights",
+      "$value": "0.5rem",
+      "$description": "8px"
+    },
+    "12": {
+      "$type": "lineHeights",
+      "$value": "0.75rem",
+      "$description": "12px"
+    },
+    "16": {
+      "$type": "lineHeights",
+      "$value": "1rem",
+      "$description": "16px"
+    },
+    "20": {
+      "$type": "lineHeights",
+      "$value": "1.25rem",
+      "$description": "20px"
+    },
+    "24": {
+      "$type": "lineHeights",
+      "$value": "1.5rem",
+      "$description": "24px"
+    },
+    "28": {
+      "$type": "lineHeights",
+      "$value": "1.75rem",
+      "$description": "28px"
+    },
+    "32": {
+      "$type": "lineHeights",
+      "$value": "2rem",
+      "$description": "32px"
+    },
+    "36": {
+      "$type": "lineHeights",
+      "$value": "2.25rem",
+      "$description": "36px"
+    },
+    "40": {
+      "$type": "lineHeights",
+      "$value": "2.5rem",
+      "$description": "40px"
+    },
+    "chart": {
+      "1": {
+        "none": {
+          "$type": "lineHeights",
+          "$value": "{fontSize.1}*{lineHeight.multiplier.none}",
+          "$description": "Chart-only legacy token (retire with chart migration)"
+        }
+      },
+      "3": {
+        "none": {
+          "$type": "lineHeights",
+          "$value": "{fontSize.3}*{lineHeight.multiplier.none}",
+          "$description": "Chart-only legacy token (retire with chart migration)"
+        }
+      },
+      "6": {
+        "none": {
+          "$type": "lineHeights",
+          "$value": "{fontSize.6}*{lineHeight.multiplier.none}",
+          "$description": "Chart-only legacy token (retire with chart migration)"
+        }
+      },
+      "8": {
+        "none": {
+          "$type": "lineHeights",
+          "$value": "{fontSize.8}*{lineHeight.multiplier.none}",
+          "$description": "Chart-only legacy token (retire with chart migration)"
+        }
+      },
+      "10": {
+        "none": {
+          "$type": "lineHeights",
+          "$value": "{fontSize.10}*{lineHeight.multiplier.none}",
+          "$description": "Chart-only legacy token (retire with chart migration)"
+        }
+      },
+      "15": {
+        "none": {
+          "$type": "lineHeights",
+          "$value": "{fontSize.15}*{lineHeight.multiplier.none}",
+          "$description": "Chart-only legacy token (retire with chart migration)"
+        }
+      }
+    }
+  }
+}

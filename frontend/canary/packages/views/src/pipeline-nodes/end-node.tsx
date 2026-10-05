@@ -1,0 +1,18 @@
+import { useTheme } from '@harnessio/ui/context'
+import { cn } from '@harnessio/ui/utils'
+import { IconV2 } from '@harnessio/ui/components'
+
+export function EndNode() {
+  const { isLightTheme } = useTheme()
+
+  return (
+    <div
+      className={cn(
+        'flex size-full items-center justify-center rounded-cn-full border-[1.2px] border-cn-gray-outline bg-cn-3 shadow-cn-4',
+        { 'bg-cn-1': isLightTheme }
+      )}
+    >
+      <IconV2 name="stop" size="xs" className="text-cn-3" />
+    </div>
+  )
+}

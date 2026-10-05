@@ -1,0 +1,20 @@
+{
+  "header": {
+    "height": {
+      "$type": "sizing",
+      "$value": "{size.13}"
+    },
+    "pl": {
+      "$type": "spacing",
+      "$value": "{spacing.4}"
+    },
+    "pr": {
+      "$type": "spacing",
+      "$value": "{spacing.1-half}"
+    },
+    "py": {
+      "$type": "spacing",
+      "$value": "{spacing.2}"
+    }
+  }
+}

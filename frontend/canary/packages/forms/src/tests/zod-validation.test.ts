@@ -1,0 +1,834 @@
+import { z } from 'zod/v3'
+
+import {
+  getValidationSchema,
+  processValidationParseResponse,
+  type IGetValidationSchemaOptions
+} from '../core/validation/zod-validation'
+import type { IFormDefinition, IInputDefinition } from '../types/types'
+
+describe('Zod Validation System', () => {
+  describe('processValidationParseResponse', () => {
+    it('should process string error messages', () => {
+      const result = processValidationParseResponse('Simple error message')
+      expect(result).toBe('Simple error message')
+    })
+
+    it('should process JSON string error messages', () => {
+      const errorJson = JSON.stringify({ message: 'JSON error' })
+      const result = processValidationParseResponse(errorJson)
+      expect(result).toBe('JSON error')
+    })
+
+    it('should process array error messages', () => {
+      const errorArray = [{ message: 'First error' }, { message: 'Second error' }]
+      const result = processValidationParseResponse(errorArray as any)
+      expect(result).toBe('First error')
+    })
+
+    it('should process object error messages', () => {
+      const errorObj = { message: 'Object error' }
+      const result = processValidationParseResponse(errorObj as any)
+      expect(result).toBe('Object error')
+    })
+
+    it('should return unknown error for unrecognized format', () => {
+      const result = processValidationParseResponse({} as any)
+      expect(result).toBe('Unknown error')
+    })
+
+    it('should handle invalid JSON gracefully', () => {
+      const result = processValidationParseResponse('Simple error message' as any)
+      expect(result).toBe('Simple error message')
+    })
+  })
+
+  describe('getValidationSchema', () => {
+    it('should create schema for simple required field', () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'name',
+            label: 'Name',
+            required: true
+          }
+        ]
+      }
+
+      const values = { name: 'John' }
+      const schema = getValidationSchema(formDefinition, values)
+
+      expect(schema).toBeDefined()
+
+      // Test valid data
+      const validResult = schema.safeParse(values)
+      expect(validResult.success).toBe(true)
+
+      // Test invalid data
+      const invalidResult = schema.safeParse({ name: '' })
+      expect(invalidResult.success).toBe(false)
+    })
+
+    it('should create schema for field with custom validation', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'email',
+            label: 'Email',
+            validation: {
+              schema: z.string().email('Invalid email format')
+            }
+          }
+        ]
+      }
+
+      const values = { email: 'test@example.com' }
+      const schema = getValidationSchema(formDefinition, values)
+
+      // Test valid email
+      const validResult = await schema.safeParseAsync(values)
+      expect(validResult.success).toBe(true)
+
+      // Test invalid email
+      const invalidResult = await schema.safeParseAsync({ email: 'invalid-email' })
+      expect(invalidResult.success).toBe(false)
+      if (!invalidResult.success) {
+        expect(invalidResult.error.errors[0].message).toBe('Invalid email format')
+      }
+    })
+
+    it('should handle conditional validation based on values', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'repoType',
+            label: 'Repo Type'
+          },
+          {
+            inputType: 'text',
+            path: 'remoteRepo',
+            label: 'Remote Repo',
+            validation: {
+              schema: (values: any) => {
+                if (values.repoType === 'remote') {
+                  return z.string().min(1, 'Remote repo is required when type is remote')
+                }
+                return z.string().optional()
+              }
+            }
+          }
+        ]
+      }
+
+      // Test when repoType is 'inline' - remoteRepo should be optional
+      const values1 = { repoType: 'inline', remoteRepo: '' }
+      const schema1 = getValidationSchema(formDefinition, values1)
+      const result1 = await schema1.safeParseAsync(values1)
+      expect(result1.success).toBe(true)
+
+      // Test when repoType is 'remote' - remoteRepo should be required
+      const values2 = { repoType: 'remote', remoteRepo: '' }
+      const schema2 = getValidationSchema(formDefinition, values2)
+      const result2 = await schema2.safeParseAsync(values2)
+      expect(result2.success).toBe(false)
+    })
+
+    it('should handle array validation', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'array',
+            path: 'tags',
+            label: 'Tags',
+            required: true,
+            inputConfig: {
+              input: {
+                inputType: 'text',
+                path: '',
+                label: 'Tag',
+                validation: {
+                  schema: z.string().min(1, 'Tag cannot be empty')
+                }
+              }
+            }
+          }
+        ]
+      }
+
+      const values = { tags: ['tag1', 'tag2'] }
+      const schema = getValidationSchema(formDefinition, values)
+
+      // Test valid array
+      const validResult = await schema.safeParseAsync(values)
+      expect(validResult.success).toBe(true)
+
+      // Test empty array when required
+      const emptyResult = await schema.safeParseAsync({ tags: [] })
+      expect(emptyResult.success).toBe(false)
+
+      // Test invalid array items
+      const invalidResult = await schema.safeParseAsync({ tags: ['valid', ''] })
+      expect(invalidResult.success).toBe(false)
+    })
+
+    // TODO: fix
+    it.skip('should handle global validation configuration', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'name',
+            label: 'Name',
+            required: false // Make it not required to focus on global validation
+          }
+        ]
+      }
+
+      const options: IGetValidationSchemaOptions = {
+        validationConfig: {
+          globalValidation: (value: any, input: IInputDefinition) => {
+            if (input.path === 'name' && typeof value === 'string' && value.length < 3) {
+              return { error: 'Name must be at least 3 characters long', continue: false }
+            }
+            return { continue: true }
+          }
+        }
+      }
+
+      const values = { name: 'Jo' }
+      const schema = getValidationSchema(formDefinition, values, options)
+      const result = await schema.safeParseAsync(values)
+      expect(result.success).toBe(false)
+
+      if (!result.success) {
+        expect(result.error.errors[0].message).toBe('Name must be at least 3 characters long')
+      }
+    })
+
+    it('should handle per-input required messages', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'name',
+            label: 'Name',
+            required: true
+          }
+        ]
+      }
+
+      const options: IGetValidationSchemaOptions = {
+        validationConfig: {
+          requiredMessagePerInput: {
+            text: 'Name is required'
+          }
+        }
+      }
+
+      const values = { name: '' }
+      const schema = getValidationSchema(formDefinition, values, options)
+      const result = await schema.safeParseAsync(values)
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.errors[0].message).toBe('Name is required')
+      }
+    })
+
+    it('should handle warning validation (should not block submission)', () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'description',
+            label: 'Description',
+            warning: {
+              schema: z.string().min(10, 'Description is short, consider adding more details')
+            }
+          }
+        ]
+      }
+
+      const values = { description: 'Short' }
+      const schema = getValidationSchema(formDefinition, values)
+
+      // Warnings should not affect validation schema
+      const result = schema.safeParse(values)
+      expect(result.success).toBe(true)
+    })
+
+    it('should handle isVisible conditional rendering', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'showEmail',
+            label: 'Show email'
+          },
+          {
+            inputType: 'text',
+            path: 'email',
+            label: 'Email',
+            required: true,
+            isVisible: (values: any) => values.showEmail === 'yes',
+            validation: {
+              schema: z.string().email()
+            }
+          }
+        ]
+      }
+
+      // When showEmail is 'no', remoteRepo should not be validated
+      const values1 = { showEmail: 'no' }
+      const schema1 = getValidationSchema(formDefinition, values1)
+      const result1 = await schema1.safeParseAsync(values1)
+      expect(result1.success).toBe(true)
+
+      // When showEmail is 'yes', remoteRepo should be validated - false
+      const values2 = { showEmail: 'yes', email: 'a' }
+      const schema2 = getValidationSchema(formDefinition, values2)
+      const result2 = await schema2.safeParseAsync(values2)
+      expect(result2.success).toBe(false)
+
+      // When showEmail is 'yes', remoteRepo should be validated
+      const values3 = { showEmail: 'yes', email: 'a@a.com' }
+      const schema3 = getValidationSchema(formDefinition, values3)
+      const result3 = await schema3.safeParseAsync(values3)
+      expect(result3.success).toBe(true)
+    })
+
+    it('should handle nested object validation', () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'group',
+            path: 'address',
+            label: 'Address',
+            inputs: [
+              {
+                inputType: 'text',
+                path: 'address.street',
+                label: 'Street',
+                required: true
+              },
+              {
+                inputType: 'text',
+                path: 'address.city',
+                label: 'City',
+                required: true
+              }
+            ]
+          }
+        ]
+      }
+
+      const values = { address: { street: '123 Main St', city: 'New York' } }
+      const schema = getValidationSchema(formDefinition, values)
+
+      // Test valid nested data
+      const validResult = schema.safeParse(values)
+      expect(validResult.success).toBe(true)
+
+      // Test missing required nested field
+      const invalidResult = schema.safeParse({ address: { street: '123 Main St' } })
+      expect(invalidResult.success).toBe(false)
+    })
+
+    describe('Schema Caching', () => {
+      it('should cache schemas for performance', () => {
+        const formDefinition: IFormDefinition = {
+          inputs: [
+            {
+              inputType: 'text',
+              path: 'name',
+              label: 'Name',
+              required: true
+            }
+          ]
+        }
+
+        const values = { name: 'John' }
+
+        // First call should create schema
+        const schema1 = getValidationSchema(formDefinition, values)
+
+        // Second call with same inputs should return cached schema
+        const schema2 = getValidationSchema(formDefinition, values)
+
+        // Should return the same cached schema since values are identical
+        expect(schema1).not.toBe(schema2)
+      })
+
+      it('should not cache when dependencies exist', () => {
+        const formDefinition: IFormDefinition = {
+          inputs: [
+            {
+              inputType: 'text',
+              path: 'repoType',
+              label: 'Repo Type'
+            },
+            {
+              inputType: 'text',
+              path: 'remoteRepo',
+              label: 'Remote Repo',
+              isVisible: (values: any) => values.repoType === 'remote'
+            }
+          ]
+        }
+
+        const values1 = { repoType: 'inline' }
+        const values2 = { repoType: 'remote' }
+
+        const schema1 = getValidationSchema(formDefinition, values1)
+        const schema2 = getValidationSchema(formDefinition, values2)
+
+        // Should be different schemas due to different visibility conditions
+        expect(schema1).not.toBe(schema2)
+      })
+    })
+
+    describe('Prefix Handling', () => {
+      it('should handle prefix for nested form data', () => {
+        const formDefinition: IFormDefinition = {
+          inputs: [
+            {
+              inputType: 'text',
+              path: 'name',
+              label: 'Name',
+              required: true
+            }
+          ]
+        }
+
+        const values = { formData: { name: 'John' } }
+        const options: IGetValidationSchemaOptions = {
+          prefix: 'formData.'
+        }
+
+        const schema = getValidationSchema(formDefinition, values, options)
+
+        // Should validate nested structure
+        const result = schema.safeParse(values)
+        expect(result.success).toBe(true)
+
+        // Test invalid nested data
+        const invalidResult = schema.safeParse({ formData: { name: '' } })
+        expect(invalidResult.success).toBe(false)
+      })
+    })
+  })
+
+  describe('Tuple Validation Support', () => {
+    it('should validate tuple-style paths with fixed indices', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'users.0.name',
+            label: 'First User Name',
+            required: true
+          },
+          {
+            inputType: 'text',
+            path: 'users.0.email',
+            label: 'First User Email',
+            validation: {
+              schema: z.string().email('Invalid email')
+            }
+          },
+          {
+            inputType: 'text',
+            path: 'users.1.name',
+            label: 'Second User Name',
+            required: true
+          }
+        ]
+      }
+
+      const values = {
+        users: [{ name: 'John', email: 'john@example.com' }, { name: 'Jane' }]
+      }
+      const schema = getValidationSchema(formDefinition, values)
+
+      // Test valid data
+      const validResult = await schema.safeParseAsync(values)
+      expect(validResult.success).toBe(true)
+
+      // Test missing required field in first position
+      const invalidResult = await schema.safeParseAsync({
+        users: [{ email: 'john@example.com' }, { name: 'Jane' }]
+      })
+      expect(invalidResult.success).toBe(false)
+
+      // Test invalid email format
+      const invalidEmail = await schema.safeParseAsync({
+        users: [{ name: 'John', email: 'invalid' }, { name: 'Jane' }]
+      })
+      expect(invalidEmail.success).toBe(false)
+    })
+
+    it('should handle sparse tuple indices', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'items.0.value',
+            label: 'First Item',
+            required: true
+          },
+          {
+            inputType: 'text',
+            path: 'items.5.value',
+            label: 'Sixth Item',
+            required: true
+          }
+        ]
+      }
+
+      // Positions 1-4 can be anything or missing
+      const values = {
+        items: [
+          { value: 'first' },
+          'random', // index 1 - not validated
+          { other: 'data' }, // index 2 - not validated
+          undefined, // index 3 - not validated
+          null, // index 4 - not validated
+          { value: 'sixth' }
+        ]
+      }
+      const schema = getValidationSchema(formDefinition, values)
+
+      const result = await schema.safeParseAsync(values)
+      expect(result.success).toBe(true)
+    })
+
+    it('should allow extra items beyond tuple definition', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'tags.0',
+            label: 'First Tag',
+            validation: {
+              schema: z.string().min(3, 'Tag must be at least 3 characters')
+            }
+          }
+        ]
+      }
+
+      // Array has more items than defined in tuple
+      const values = { tags: ['tag1', 'tag2', 'tag3', 'tag4'] }
+      const schema = getValidationSchema(formDefinition, values)
+
+      const result = await schema.safeParseAsync(values)
+      expect(result.success).toBe(true)
+
+      // Test with invalid first tag
+      const invalidResult = await schema.safeParseAsync({ tags: ['ab', 'tag2', 'tag3'] })
+      expect(invalidResult.success).toBe(false)
+    })
+
+    it('should handle nested object paths within tuple items', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'config.sources.0.type',
+            label: 'First Source Type',
+            required: true
+          },
+          {
+            inputType: 'text',
+            path: 'config.sources.0.url',
+            label: 'First Source URL',
+            validation: {
+              schema: z.string().url('Invalid URL')
+            }
+          }
+        ]
+      }
+
+      const values = {
+        config: {
+          sources: [{ type: 'git', url: 'https://github.com/test/repo' }]
+        }
+      }
+      const schema = getValidationSchema(formDefinition, values)
+
+      const validResult = await schema.safeParseAsync(values)
+      expect(validResult.success).toBe(true)
+
+      const invalidUrl = await schema.safeParseAsync({
+        config: { sources: [{ type: 'git', url: 'not-a-url' }] }
+      })
+      expect(invalidUrl.success).toBe(false)
+    })
+
+    it('should fail validation when tuple array is shorter than defined indices', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'users.2.name',
+            label: 'Third User',
+            required: true
+          }
+        ]
+      }
+
+      // Array only has 2 items, but we're validating index 2 (third item)
+      const values = { users: ['user1', 'user2'] }
+      const schema = getValidationSchema(formDefinition, values)
+
+      const result = await schema.safeParseAsync(values)
+      expect(result.success).toBe(false)
+    })
+
+    it('should handle simple tuple path without nested objects', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'coordinates.0',
+            label: 'X Coordinate',
+            validation: {
+              schema: z.number().min(0, 'X must be non-negative')
+            }
+          },
+          {
+            inputType: 'text',
+            path: 'coordinates.1',
+            label: 'Y Coordinate',
+            validation: {
+              schema: z.number().min(0, 'Y must be non-negative')
+            }
+          }
+        ]
+      }
+
+      const values = { coordinates: [10, 20] }
+      const schema = getValidationSchema(formDefinition, values)
+
+      const validResult = await schema.safeParseAsync(values)
+      expect(validResult.success).toBe(true)
+
+      const invalidResult = await schema.safeParseAsync({ coordinates: [-5, 20] })
+      expect(invalidResult.success).toBe(false)
+    })
+  })
+
+  describe('Object container inputs with runtime/expression values', () => {
+    // An object/group input (nested `inputs`) that the UI can switch to a runtime
+    // input string (e.g. `<+input>`). Before the fix this produced a hard
+    // "Expected object, received string" error because the object schema had no
+    // string-union fallback and globalValidation never ran on the container node.
+    const objectContainerFormDefinition: IFormDefinition = {
+      inputs: [
+        {
+          inputType: 'object',
+          path: 'ref',
+          label: 'Ref',
+          inputs: [
+            { inputType: 'text', path: 'ref.type', label: 'Type', required: true },
+            { inputType: 'text', path: 'ref.name', label: 'Name' }
+          ]
+        }
+      ]
+    }
+
+    const nonFixedGlobalValidation: IGetValidationSchemaOptions = {
+      validationConfig: {
+        globalValidation: (value: unknown) =>
+          typeof value === 'string' && /^<\+.*>$/.test(value) ? { continue: false } : { continue: true }
+      }
+    }
+
+    it('accepts a runtime-input string at an object-container path', async () => {
+      const values = { ref: '<+input>' }
+      const schema = getValidationSchema(objectContainerFormDefinition, values, nonFixedGlobalValidation)
+      const result = await schema.safeParseAsync(values)
+      expect(result.success).toBe(true)
+    })
+
+    it('still validates the nested object shape when a real object is provided', async () => {
+      const schema = getValidationSchema(
+        objectContainerFormDefinition,
+        { ref: { type: 'branch', name: 'main' } },
+        nonFixedGlobalValidation
+      )
+      expect((await schema.safeParseAsync({ ref: { type: 'branch', name: 'main' } })).success).toBe(true)
+      // ref.type is required, so an object missing it must fail.
+      expect((await schema.safeParseAsync({ ref: { name: 'main' } })).success).toBe(false)
+    })
+
+    it('treats an undefined object container as valid when no child is required', async () => {
+      const optionalChildrenDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'object',
+            path: 'ref',
+            label: 'Ref',
+            inputs: [{ inputType: 'text', path: 'ref.name', label: 'Name' }]
+          }
+        ]
+      }
+      const schema = getValidationSchema(optionalChildrenDefinition, {}, nonFixedGlobalValidation)
+      expect((await schema.safeParseAsync({})).success).toBe(true)
+    })
+
+    it('enforces required children of an undefined object container', async () => {
+      const schema = getValidationSchema(objectContainerFormDefinition, {}, nonFixedGlobalValidation)
+      const result = await schema.safeParseAsync({})
+      expect(result.success).toBe(false)
+      expect(result.error?.issues.map(issue => issue.path.join('.'))).toContain('ref.type')
+    })
+  })
+
+  describe('Required fields under a missing parent object', () => {
+    const infraFormDefinition: IFormDefinition = {
+      inputs: [
+        { inputType: 'text', path: 'spec.connectorRef', label: 'Connector', required: true },
+        { inputType: 'text', path: 'spec.namespace', label: 'Namespace', required: true }
+      ]
+    }
+
+    const getIssuePaths = (result: z.SafeParseReturnType<unknown, unknown>) =>
+      result.error?.issues.map(issue => issue.path.join('.')) ?? []
+
+    it('reports every required child when the parent object is missing', async () => {
+      const schema = getValidationSchema(infraFormDefinition, {})
+      const result = await schema.safeParseAsync({})
+      expect(result.success).toBe(false)
+      expect(getIssuePaths(result)).toEqual(expect.arrayContaining(['spec.connectorRef', 'spec.namespace']))
+    })
+
+    it('reports required children when the parent object is null', async () => {
+      const schema = getValidationSchema(infraFormDefinition, { spec: null })
+      const result = await schema.safeParseAsync({ spec: null })
+      expect(result.success).toBe(false)
+      expect(getIssuePaths(result)).toEqual(expect.arrayContaining(['spec.connectorRef', 'spec.namespace']))
+    })
+
+    it('enforces required fields through several missing levels', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [{ inputType: 'text', path: 'a.b.c', label: 'C', required: true }]
+      }
+      const schema = getValidationSchema(formDefinition, { a: null })
+      const result = await schema.safeParseAsync({ a: null })
+      expect(result.success).toBe(false)
+      expect(getIssuePaths(result)).toEqual(['a.b.c'])
+    })
+
+    it('skips required children that are hidden', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          { inputType: 'text', path: 'spec.connectorRef', label: 'Connector', required: true, isVisible: () => false }
+        ]
+      }
+      const schema = getValidationSchema(formDefinition, {})
+      expect((await schema.safeParseAsync({})).success).toBe(true)
+    })
+
+    it('passes when the required children are filled', async () => {
+      const values = { spec: { connectorRef: 'account.k8s', namespace: 'default' } }
+      const schema = getValidationSchema(infraFormDefinition, values)
+      expect((await schema.safeParseAsync(values)).success).toBe(true)
+    })
+  })
+
+  describe('Nested inputs of an input that has its own rule', () => {
+    const nestedInputs: IInputDefinition[] = [
+      { inputType: 'text', path: 'environment.items.0.infra.spec.connectorRef', label: 'Connector', required: true },
+      { inputType: 'text', path: 'environment.items.0.infra.spec.namespace', label: 'Namespace', required: true }
+    ]
+    const hasItems = z.any().superRefine((value, ctx) => {
+      if (!Array.isArray((value as { items?: unknown })?.items)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Environment is required' })
+      }
+    })
+    const values = { environment: { items: [{ id: 'env1', infra: { spec: {} } }] } }
+
+    const getIssuePaths = (result: z.SafeParseReturnType<unknown, unknown>) =>
+      result.error?.issues.map(issue => issue.path.join('.')) ?? []
+
+    it('enforces nested required inputs when the parent has a custom validation', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'environment',
+            label: 'Environment',
+            validation: { schema: hasItems },
+            inputs: nestedInputs
+          }
+        ]
+      }
+      const result = await getValidationSchema(formDefinition, values).safeParseAsync(values)
+      expect(getIssuePaths(result)).toEqual([
+        'environment.items.0.infra.spec.connectorRef',
+        'environment.items.0.infra.spec.namespace'
+      ])
+    })
+
+    it('enforces nested required inputs when the parent is required', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [{ inputType: 'text', path: 'environment', label: 'Environment', required: true, inputs: nestedInputs }]
+      }
+      const result = await getValidationSchema(formDefinition, values).safeParseAsync(values)
+      expect(getIssuePaths(result)).toEqual([
+        'environment.items.0.infra.spec.connectorRef',
+        'environment.items.0.infra.spec.namespace'
+      ])
+    })
+
+    it("reports only the parent's error when its own rule fails", async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'environment',
+            label: 'Environment',
+            validation: { schema: hasItems },
+            inputs: nestedInputs
+          }
+        ]
+      }
+      const result = await getValidationSchema(formDefinition, {}).safeParseAsync({})
+      expect(getIssuePaths(result)).toEqual(['environment'])
+    })
+
+    it('passes when the parent rule and nested inputs are satisfied', async () => {
+      const filled = {
+        environment: { items: [{ id: 'env1', infra: { spec: { connectorRef: 'k8s', namespace: 'ns' } } }] }
+      }
+      const formDefinition: IFormDefinition = {
+        inputs: [
+          {
+            inputType: 'text',
+            path: 'environment',
+            label: 'Environment',
+            validation: { schema: hasItems },
+            inputs: nestedInputs
+          }
+        ]
+      }
+      expect((await getValidationSchema(formDefinition, filled).safeParseAsync(filled)).success).toBe(true)
+    })
+
+    it('accepts a runtime value on the parent when global validation allows it', async () => {
+      const formDefinition: IFormDefinition = {
+        inputs: [{ inputType: 'text', path: 'environment', label: 'Environment', required: true, inputs: nestedInputs }]
+      }
+      const runtimeValues = { environment: '<+input>' }
+      const options: IGetValidationSchemaOptions = {
+        validationConfig: {
+          globalValidation: value => (value === '<+input>' ? { continue: false } : { continue: true })
+        }
+      }
+      const result = await getValidationSchema(formDefinition, runtimeValues, options).safeParseAsync(runtimeValues)
+      expect(result.success).toBe(true)
+    })
+  })
+})

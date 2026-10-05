@@ -1,0 +1,32 @@
+{
+  "alert": {
+    "gap": {
+      "$type": "spacing",
+      "$value": "{spacing.2}"
+    },
+    "py": {
+      "$type": "spacing",
+      "$value": "{spacing.3}"
+    },
+    "pl": {
+      "$type": "spacing",
+      "$value": "{spacing.3}"
+    },
+    "pr": {
+      "$type": "spacing",
+      "$value": "{spacing.10}"
+    },
+    "radius": {
+      "$type": "borderRadius",
+      "$value": "{rounded.3}"
+    },
+    "min-width": {
+      "$type": "sizing",
+      "$value": "{size.64}"
+    },
+    "fade-height": {
+      "$type": "sizing",
+      "$value": "{size.24}"
+    }
+  }
+}

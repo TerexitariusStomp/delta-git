@@ -1,0 +1,28 @@
+{
+  "tooltip": {
+    "radius": {
+      "$type": "borderRadius",
+      "$value": "{rounded.4}"
+    },
+    "py": {
+      "$type": "spacing",
+      "$value": "{spacing.1}"
+    },
+    "px": {
+      "$type": "spacing",
+      "$value": "{spacing.2}"
+    },
+    "max": {
+      "$type": "sizing",
+      "$value": "{size.90}"
+    },
+    "min": {
+      "$type": "sizing",
+      "$value": "{size.6}"
+    },
+    "border": {
+      "$type": "borderWidth",
+      "$value": "{borderWidth.1}"
+    }
+  }
+}

@@ -1,0 +1,261 @@
+[
+  {
+    "id": "89bf9a3ab61c40d6291a24c452efc1591c4d41c0",
+    "name": "source",
+    "selectedTokenSets": {
+      "core/typography": "source",
+      "core/dimensions": "source",
+      "core/colors_lch": "source"
+    },
+    "group": "core"
+  },
+  {
+    "id": "06c0447b12ae4d0bf224a0eb90b673f151ba8f24",
+    "name": "dark",
+    "selectedTokenSets": {
+      "mode/dark/default": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "1ab3cee078aadbe01119debf02edd406076ce57c",
+    "name": "light",
+    "selectedTokenSets": {
+      "mode/light/default": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "9fb64e70b44bb178e7fa56a196dc42d9954f86a5",
+    "name": "dark-high-contrast",
+    "selectedTokenSets": {
+      "mode/dark/high-contrast": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "465affa895afefa955b28d7f6e4f4fb8ac1216f0",
+    "name": "dark-protanopia",
+    "selectedTokenSets": {
+      "mode/dark/default-protanopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "0bea34fa7b90e9f6c84366bfe10fdf7a9fe46738",
+    "name": "dark-high-contrast-protanopia",
+    "selectedTokenSets": {
+      "mode/dark/high-contrast-protanopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "0ba820914a4b7a835ae16ab570e05388a4c122bf",
+    "name": "dark-deuteranopia",
+    "selectedTokenSets": {
+      "mode/dark/default-deuteranopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "7f80f5e6690fe1739af7a58c69a0a0f737658f42",
+    "name": "dark-high-contrast-deuteranopia",
+    "selectedTokenSets": {
+      "mode/dark/high-contrast-deuteranopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "bd69e42e558983d4c56a3140051437e81c6729c8",
+    "name": "dark-tritanopia",
+    "selectedTokenSets": {
+      "mode/dark/default-tritanopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "04442df78cb6f5028055bc8d002a42347b97e060",
+    "name": "dark-high-contrast-tritanopia",
+    "selectedTokenSets": {
+      "mode/dark/high-contrast-tritanopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "f43153843afd2dbad43db2dda6b0fa4f05209145",
+    "name": "light-high-contrast",
+    "selectedTokenSets": {
+      "mode/light/high-contrast": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "26d1309824ee633b0a4e5eff39d671e6c89c0bd7",
+    "name": "light-protanopia",
+    "selectedTokenSets": {
+      "mode/light/default-protanopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "d9839783f39c0b13df14b544704c66876c758183",
+    "name": "light-high-contrast-protanopia",
+    "selectedTokenSets": {
+      "mode/light/high-contrast-protanopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "836ca7de20bb06ba9365a2e63b65c8a472669b47",
+    "name": "light-deuteranopia",
+    "selectedTokenSets": {
+      "mode/light/default-deuteranopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "14096bcda91442f146b79b0f621c4aac26456134",
+    "name": "light-high-contrast-deuteranopia",
+    "selectedTokenSets": {
+      "mode/light/high-contrast-deuteranopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "7c69cf5c03848280cbf1cdcb001ad3e8b14b97e3",
+    "name": "light-tritanopia",
+    "selectedTokenSets": {
+      "mode/light/default-tritanopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "b3258d74d3429d881e4fd4aa5b9fb3456dcfb038",
+    "name": "light-high-contrast-tritanopia",
+    "selectedTokenSets": {
+      "mode/light/high-contrast-tritanopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "859ec40c364b0922f609dfa64a502a7a90feb206",
+    "name": "desktop",
+    "selectedTokenSets": {
+      "breakpoint/desktop": "enabled",
+      "components/desktop/base/input": "enabled",
+      "components/desktop/base/btn": "enabled",
+      "components/desktop/base/badge": "enabled",
+      "components/desktop/base/tag": "enabled",
+      "components/desktop/base/card": "enabled",
+      "components/desktop/base/tooltip": "enabled",
+      "components/desktop/base/table": "enabled",
+      "components/desktop/base/diff": "enabled",
+      "components/desktop/base/avatar": "enabled",
+      "components/desktop/base/tabs": "enabled",
+      "components/desktop/base/sidebar": "enabled",
+      "components/desktop/base/accordion": "enabled",
+      "components/desktop/base/alert": "enabled",
+      "components/desktop/base/dropdown": "enabled",
+      "components/desktop/base/drawer": "enabled",
+      "components/desktop/base/dialog": "enabled",
+      "components/desktop/base/pagination": "enabled",
+      "components/desktop/base/progress": "enabled",
+      "components/desktop/base/toast": "enabled",
+      "components/desktop/base/tree-view": "enabled",
+      "components/desktop/base/header": "enabled",
+      "components/desktop/base/popover": "enabled",
+      "components/desktop/base/pipeline": "enabled",
+      "components/desktop/base/chart": "enabled",
+      "components/desktop/base/ai-chat": "enabled"
+    },
+    "group": "breakpoint"
+  },
+  {
+    "id": "38c994e3875f18c0e27f7d87766f0b85d58945db",
+    "name": "dark-dimmer",
+    "selectedTokenSets": {
+      "mode/dark/dimmer": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "16a6184320ed89d5fb0974f727a0c264ed771695",
+    "name": "dark-dimmer-protanopia",
+    "selectedTokenSets": {
+      "mode/dark/dimmer-protanopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "363ff162c776a42300fdcb513bbcf441ac503ec0",
+    "name": "dark-dimmer-deuteranopia",
+    "selectedTokenSets": {
+      "mode/dark/dimmer-deuteranopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "9650760429e819885a0a2acec035d2df980a09dd",
+    "name": "dark-dimmer-tritanopia",
+    "selectedTokenSets": {
+      "mode/dark/dimmer-tritanopia": "enabled",
+      "mode/dark/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "1e7b21d8c870a7b76afe2e78f27747667407aeed",
+    "name": "light-dimmer",
+    "selectedTokenSets": {
+      "mode/light/dimmer": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "0b586f318efca1a6f4faef2382f14fc6acc5f496",
+    "name": "light-dimmer-protanopia",
+    "selectedTokenSets": {
+      "mode/light/dimmer-protanopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "a0d2ea5d2b605e20e7a3bd70750268d6f85952bf",
+    "name": "light-dimmer-deuteranopia",
+    "selectedTokenSets": {
+      "mode/light/dimmer-deuteranopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  },
+  {
+    "id": "d3ee9e10ed075e54d23af7c6362a35bb9867ce66",
+    "name": "light-dimmer-tritanopia",
+    "selectedTokenSets": {
+      "mode/light/dimmer-tritanopia": "enabled",
+      "mode/light/icon-stroke-width": "enabled"
+    },
+    "group": "mode"
+  }
+]

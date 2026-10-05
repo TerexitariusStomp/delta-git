@@ -1,0 +1,528 @@
+/**
+ * Items in studio card to reduce the opacity when other group card is hovered
+ */
+const StudioCardHelperItems =
+  '.cn-studio-card-header, .cn-studio-card-message, .cn-studio-card-footer, .cn-studio-card-content > .cn-studio-card-expand-button, .cn-studio-card-content > .cn-studio-card-button, .cn-studio-card-tag, .cn-studio-card-status'
+
+/**
+ * Styles to apply to StudioCardHelperItems when the other group card is hovered
+ */
+const StudioCardHelperItemsHoveredStyles = {
+  [StudioCardHelperItems]: {
+    opacity: '0.45 !important',
+    transition: 'opacity 200ms ease-in-out'
+  }
+}
+
+/**
+ * Shadow styles to apply to StudioCardHelperItems when the other group card is hovered
+ */
+const DimmedShadow3Style = {
+  boxShadow:
+    '0 4px 6px -1px lch(from var(--cn-shadow-color-3) l c h / 0.05), 0 2px 8px -2px lch(from var(--cn-shadow-color-3) l c h / 0.05)'
+}
+
+/** Cap for tags so the status badge can reserve space and truncate. */
+const StudioCardTagMaxWidth = 'var(--cn-size-28)'
+
+/** Gap between status badge and tag. */
+const StudioCardStatusTagGap = 'var(--cn-layout-2xs)'
+
+export default {
+  '.cn-studio-card': {
+    // Step cards (base, no group/stage). Three-way radius split — see overrides below.
+    borderRadius: 'var(--cn-rounded-5)',
+    // Pipeline card border: border-2 in light, border-3 in dark (see comp.pipeline.card.border token).
+    border: '1px solid var(--cn-comp-pipeline-card-border)',
+    backgroundColor: 'var(--cn-comp-pipeline-card-bg)',
+    // Pipeline card drop shadow: shadow-3 in light, shadow-4 in dark (see comp.pipeline.card.shadow token).
+    boxShadow: 'var(--cn-comp-pipeline-card-shadow)',
+    '@apply flex flex-col overflow-hidden select-none': '',
+    transitionProperty: 'background-color, opacity',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'ease-in-out',
+
+    // Default size (single card)
+    width: '220px',
+    minWidth: '220px',
+    maxWidth: '220px',
+    height: 'var(--cn-size-40)',
+
+    '&.cn-studio-card-xs': {
+      // Extra small variant - reduces dimensions for compact cards
+      width: 'auto',
+      minWidth: 'var(--cn-size-41)',
+      height: 'auto'
+    },
+
+    // Group containers that are NOT stages (e.g. parallel groups)
+    '&.cn-studio-card-group:not(.cn-studio-card-stage)': {
+      borderRadius: 'var(--cn-rounded-5)'
+    },
+
+    // Stage containers: 16px
+    '&.cn-studio-card-stage': {
+      borderRadius: 'var(--cn-rounded-6)'
+    },
+
+    '&.cn-studio-card-sm': {
+      borderWidth: '2px !important'
+    },
+
+    // Selected state with theme-based borders
+    '&[data-selected="true"]': {
+      '&[data-theme="default"]': {
+        border: '1px solid var(--cn-border-brand) !important',
+        boxShadow: '0 0 0 3px color-mix(in srgb, var(--cn-border-brand) 20%, transparent) !important'
+      },
+      '&[data-theme="success"]': {
+        border: '1px solid var(--cn-border-success) !important',
+        boxShadow: '0 0 0 3px color-mix(in srgb, var(--cn-border-success) 20%, transparent) !important'
+      },
+      '&[data-theme="warning"]:not(:has(> [data-status="executing"]))': {
+        border: '1px solid var(--cn-border-warning) !important',
+        boxShadow: '0 0 0 3px color-mix(in srgb, var(--cn-border-warning) 20%, transparent) !important'
+      },
+      '&[data-theme="danger"]': {
+        border: '1px solid var(--cn-border-danger) !important',
+        boxShadow: '0 0 0 3px color-mix(in srgb, var(--cn-border-danger) 20%, transparent) !important'
+      },
+      '&[data-theme="info"]': {
+        border: '1px solid var(--cn-set-blue-outline-border) !important',
+        boxShadow: '0 0 0 3px color-mix(in srgb, var(--cn-set-blue-outline-border) 20%, transparent) !important'
+      }
+    },
+
+    '&[data-theme="info"]': {
+      backgroundColor: 'var(--cn-set-blue-outline-bg)'
+    },
+
+    '&:has(.cn-studio-card-group:hover)': {
+      backgroundColor: 'lch(from var(--cn-bg-3) l c h / 0.45) !important',
+      ...DimmedShadow3Style,
+
+      // Selected cards keep their theme border — dimming it would hide the selection.
+      '&:not([data-selected="true"])': {
+        borderColor: 'lch(from var(--cn-border-2) l c h / 0.65) !important'
+      },
+
+      '>': {
+        ...StudioCardHelperItemsHoveredStyles
+      }
+    },
+
+    // Group card variant
+    '&:where(.cn-studio-card-group)': {
+      width: 'auto',
+      // minWidth: 'var(--cn-size-90)',
+      maxWidth: 'none',
+      height: 'auto',
+
+      '&.cn-studio-card-stage': {
+        // minWidth: 'var(--cn-size-90)'
+      },
+
+      // When expanded - remove max-width to fit children
+      '&:has(> .cn-studio-card-content > [data-expanded="true"])': {
+        '@apply bg-cn-3/50': '',
+        maxWidth: 'none'
+      },
+
+      '> .cn-studio-card-content': {
+        minHeight: '108px'
+      },
+
+      '> .cn-studio-card-content:not(:has(> .cn-studio-card-message))': {
+        '@apply justify-center items-start': ''
+      },
+
+      // When collapsed - fixed width
+      '&:has(> .cn-studio-card-content > [data-expanded="false"])': {
+        // width: 'var(--cn-size-90)',
+        // minWidth: 'var(--cn-size-90)',
+        // maxWidth: 'var(--cn-size-90)'
+      }
+    },
+
+    // Group card variant with xs size - compact layout
+    '&:where(.cn-studio-card-group.cn-studio-card-xs)': {
+      minWidth: 'var(--cn-size-41)',
+
+      '&.cn-studio-card-stage': {
+        minWidth: 'var(--cn-size-41)'
+      },
+
+      '> .cn-studio-card-content': {
+        minHeight: '63px'
+      },
+
+      // When expanded - remove max-width to fit children
+      '&:has(> .cn-studio-card-content > [data-expanded="true"])': {
+        maxWidth: 'none'
+      },
+
+      // When collapsed - fixed width
+      '&:has(> .cn-studio-card-content > [data-expanded="false"])': {
+        width: 'var(--cn-size-41)',
+        minWidth: 'var(--cn-size-41)',
+        maxWidth: 'var(--cn-size-41)'
+      }
+    },
+
+    // Shimmer effect for executing status
+    '&:not(.cn-studio-card-group):has(> [data-status="executing"])': {
+      '--border-angle': '0turn',
+      '--main-bg':
+        'conic-gradient(from var(--border-angle), var(--cn-bg-2), var(--cn-bg-2) 5%, var(--cn-bg-2) 60%, var(--cn-bg-2) 95%)',
+      '--gradient-border':
+        'conic-gradient(from var(--border-angle), var(--cn-border-2) 20%, var(--cn-gradient-pipeline-running-border-from), lch(from var(--cn-gradient-pipeline-running-border-to) l c h / 0.50) 90%, var(--cn-border-2))',
+
+      border: 'solid 2px transparent !important',
+      background:
+        'var(--main-bg) padding-box, var(--gradient-border) border-box, var(--cn-border-3) border-box !important',
+      backgroundPosition: 'center center',
+      animation: 'studio-card-border-spin 5s linear infinite',
+
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        background:
+          'conic-gradient(from var(--border-angle),transparent 20%,var(--cn-gradient-pipeline-running-glow-from),var(--cn-gradient-pipeline-running-glow-to) 99%,transparent)',
+        filter: 'blur(6px)',
+        zIndex: '-1',
+        height: 'inherit',
+        inset: '0'
+      }
+    }
+  },
+
+  '.cn-studio-card-execution': {
+    zIndex: '0'
+  },
+
+  // Header Component
+  '.cn-studio-card-header': {
+    minHeight: 'var(--cn-size-11)',
+    color: 'var(--cn-text-1)',
+    '@apply flex items-center gap-cn-2xs p-cn-xs pl-cn-md w-full min-w-0': '',
+
+    '> :not(&-title)': {
+      '@apply shrink-0': ''
+    }
+  },
+
+  // Compact header padding for xs cards
+  '.cn-studio-card-xs .cn-studio-card-header': {
+    '@apply p-cn-2xs pl-cn-xs': ''
+  },
+
+  '.cn-studio-card-code-preview': {
+    '@apply relative h-full overflow-hidden': '',
+    minHeight: 'var(--cn-size-13)',
+    '&::before': {
+      '@apply absolute inset-y-0 right-0 w-8': '',
+      content: '""',
+      zIndex: '1',
+      background: `linear-gradient(to right, color-mix(in lch, var(--cn-comp-pipeline-card-bg) 0%, transparent), var(--cn-comp-pipeline-card-bg))`
+    },
+    '&::after': {
+      '@apply absolute  absolute inset-x-0 bottom-0 h-8': '',
+      content: '""',
+      zIndex: '2',
+      background: `linear-gradient(to bottom, color-mix(in lch, var(--cn-comp-pipeline-card-bg) 0%, transparent), var(--cn-comp-pipeline-card-bg))`
+    },
+
+    // Allow pre tags to wrap and prevent width expansion
+    '& pre': {
+      position: 'absolute',
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
+      overflowWrap: 'break-word'
+    }
+  },
+
+  // Content Component
+  '.cn-studio-card-content': {
+    '@apply flex flex-col flex-grow gap-cn-sm px-cn-md pb-cn-md pt-cn-sm': '',
+    paddingTop: '0 !important',
+
+    // When a group card is hovered anywhere inside this content
+    '&:has(.cn-studio-card-group:hover)': {
+      // Dim parent card's own UI elements
+      '& > .cn-studio-card-expand-button, & > .cn-studio-card-button': {
+        opacity: '0.45 !important',
+        transitionProperty: 'opacity',
+        transitionDuration: '200ms',
+        transitionTimingFunction: 'ease-in-out'
+      },
+
+      '& .cn-studio-card:not(:hover)': {
+        backgroundColor: 'lch(from var(--cn-bg-3) l c h / 0.45) !important',
+
+        '&:not(:has(> [data-status="executing"])):not([data-selected="true"])': {
+          borderColor: 'lch(from var(--cn-border-2) l c h / 0.65) !important'
+        },
+        ...DimmedShadow3Style,
+        ...StudioCardHelperItemsHoveredStyles
+      },
+
+      // Preserve opacity for the hovered group itself
+      '& .cn-studio-card-group:hover': {
+        opacity: '1 !important'
+      },
+
+      // Preserve opacity for all descendants of the hovered group
+      '& .cn-studio-card-group:hover .cn-studio-card': {
+        opacity: '1 !important',
+
+        '&:not(:has(> [data-status="executing"])):not([data-selected="true"])': {
+          borderColor: 'var(--cn-border-2) !important'
+          // borderColor: 'lch(from var(--cn-border-2) l c h / 0.65) !important',
+        },
+        '@apply shadow-cn-3': '',
+
+        [StudioCardHelperItems]: {
+          opacity: '1 !important'
+        }
+      }
+
+      // Preserve opacity for all elements inside the hovered group
+      // '& .cn-studio-card-group:hover *': {
+      //   opacity: '1 !important',
+      // }
+    }
+  },
+
+  // Tag Component
+  '.cn-studio-card-tag': {
+    '@apply flex gap-cn-3xs p-cn-2xs border rounded-t-cn-4 top-[-28px] right-0 absolute select-none': '',
+    maxWidth: StudioCardTagMaxWidth,
+    '--cn-studio-card-tag-text': 'var(--cn-set-purple-secondary-text)',
+    '--cn-studio-card-tag-outline-bg': 'var(--cn-set-purple-outline-bg)',
+    '--cn-studio-card-tag-outline-border': 'var(--cn-set-purple-outline-border)',
+    color: 'var(--cn-studio-card-tag-text)',
+    'background-color': 'var(--cn-studio-card-tag-outline-bg)',
+    'border-color': 'var(--cn-studio-card-tag-outline-border)',
+
+    '&[data-theme="blue"]': {
+      '--cn-studio-card-tag-text': 'var(--cn-set-blue-secondary-text)',
+      '--cn-studio-card-tag-outline-bg': 'var(--cn-set-blue-outline-bg)',
+      '--cn-studio-card-tag-outline-border': 'var(--cn-set-blue-outline-border)'
+    },
+
+    '&[data-theme="gray"]': {
+      '--cn-studio-card-tag-text': 'var(--cn-set-gray-secondary-text)',
+      '--cn-studio-card-tag-outline-bg': 'var(--cn-set-gray-outline-bg)',
+      '--cn-studio-card-tag-outline-border': 'var(--cn-set-gray-outline-border)'
+    },
+
+    // NOT a reusable pattern — values are hand-tuned to --cn-rounded-6.
+    // Width, height, bottom offset, and gradient stops must all be
+    // recalculated together if the card's corner radius changes.
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      bottom: 'calc(-1 * var(--cn-rounded-6))',
+      right: '-1px',
+      width: 'var(--cn-rounded-6)',
+      height: 'var(--cn-rounded-6)',
+      background: `radial-gradient(circle at bottom left, transparent 0px, transparent calc(var(--cn-rounded-6) - 1px), var(--cn-studio-card-tag-outline-border) calc(var(--cn-rounded-6) - 1px), var(--cn-studio-card-tag-outline-border) var(--cn-rounded-6), var(--cn-studio-card-tag-outline-bg) calc(var(--cn-rounded-6) - 1px))`,
+      borderRight: '1px solid var(--cn-studio-card-tag-outline-border)'
+    }
+  },
+
+  // Message Component
+  '.cn-studio-card-message': {
+    height: 'var(--cn-size-9)'
+  },
+
+  // Status Component
+  '.cn-studio-card-status': {
+    position: 'absolute',
+    top: '-28px',
+    maxWidth: '100%',
+    // Override `.cn-badge` min-width: fit-content so max-width can take effect.
+    minWidth: '0',
+
+    '.cn-studio-card:has(> .cn-studio-card-tag) > &': {
+      maxWidth: `calc(100% - ${StudioCardTagMaxWidth} - ${StudioCardStatusTagGap})`
+    }
+  },
+
+  // Footer Component
+  '.cn-studio-card-footer': {
+    minHeight: 'var(--cn-size-29)',
+    borderTop: '1px solid var(--cn-comp-pipeline-card-border)',
+    backgroundColor: 'var(--cn-comp-pipeline-card-bg)',
+    '@apply flex flex-col px-cn-md py-cn-md font-caption-normal': '',
+
+    // Default: line-clamp-4 for regular cards
+    '& span': {
+      '@apply line-clamp-4': ''
+    },
+
+    // Explicit compact size via prop
+    '&[data-size="compact"]': {
+      minHeight: 'var(--cn-size-13)',
+      '& span': {
+        '@apply line-clamp-2': ''
+      }
+    },
+
+    // Auto-detect parent Root size - xs cards get compact footer
+    '.cn-studio-card-xs > &': {
+      minHeight: 'var(--cn-size-16)',
+      '@apply px-cn-xs py-cn-xs': '',
+      '& span': {
+        '@apply line-clamp-3': ''
+      }
+    },
+
+    // Auto-detect parent Root size - sm cards get slightly reduced footer
+    '.cn-studio-card-sm > &': {
+      minHeight: 'var(--cn-size-20)',
+      '& span': {
+        '@apply line-clamp-3': ''
+      }
+    },
+
+    // Group card variant - adjust padding and line-clamp
+    '.cn-studio-card-group > &': {
+      minHeight: 'var(--cn-size-13)',
+      '@apply py-cn-md': '',
+
+      '& span': {
+        '@apply line-clamp-2': ''
+      }
+    }
+  },
+
+  // Stage header and footer (all sizes): exclude from intrinsic card width; fill width set by steps
+  '.cn-studio-card-group.cn-studio-card-stage > .cn-studio-card-header, .cn-studio-card-group.cn-studio-card-stage > .cn-studio-card-footer':
+    {
+      width: '0',
+      minWidth: '100%',
+      maxWidth: '100%',
+      overflow: 'hidden'
+    },
+
+  '.cn-studio-card-expand-button-main': {
+    zIndex: '2',
+    height: '100%',
+    width: '100%',
+    transitionProperty: 'transform',
+    transitionDuration: '100ms',
+    '@apply relative flex flex-col gap-cn-2xs shadow-cn-1 rounded-cn-3 overflow-hidden': '',
+    border: '1px solid var(--cn-comp-pipeline-card-border)',
+    backgroundColor: 'var(--cn-comp-pipeline-card-bg)'
+  },
+
+  '.cn-studio-card-button': {
+    zIndex: '2',
+    height: '28px',
+    transitionDuration: '100ms',
+    '@apply relative flex items-center gap-cn-3xs px-cn-sm py-cn-2xs shadow-cn-1 border border-cn-2 rounded-cn-3': ''
+  },
+
+  '.cn-studio-card-expand-button-top': {
+    '@apply flex items-center gap-cn-2xs p-cn-xs pl-cn-md flex-1 min-w-0 overflow-hidden text-cn-1': ''
+  },
+
+  '.cn-studio-card-expand-button-bottom': {
+    '@apply flex items-center justify-end gap-cn-2xs py-cn-xs px-cn-md flex-1 border-t border-cn-2': '',
+    backgroundColor: 'var(--cn-comp-pipeline-card-bg)'
+  },
+
+  // Expand Button Component
+  '.cn-studio-card-expand-button': {
+    position: 'relative',
+    width: '226px',
+    maxWidth: '100%',
+    minWidth: '0',
+    height: 'var(--cn-size-22)',
+    transition: 'transform 0.1s linear',
+
+    // Stack layers - default direction is "right"
+    '&-stack': {
+      pointerEvents: 'none',
+      transitionProperty: 'transform',
+      transitionDuration: '100ms',
+      transitionTimingFunction: 'ease-out',
+      willChange: 'transform',
+      '@apply absolute shadow-cn-1 rounded-cn-3': '',
+      border: '1px solid var(--cn-comp-pipeline-card-border)',
+      backgroundColor: 'var(--cn-comp-pipeline-card-bg)',
+
+      // First stack layer (closer to button)
+      '&-1': {
+        zIndex: '1',
+        insetBlock: '3px',
+        insetInline: '0',
+        transform: 'translateX(3px)'
+      },
+
+      // Second stack layer (furthest from button)
+      '&-2': {
+        zIndex: '0',
+        insetBlock: '6px',
+        insetInline: '0',
+        transform: 'translateX(6px)'
+      }
+    },
+
+    // Hover state - expand stacks and translate button
+    '&:hover': {
+      transform: 'scale(1.02) !important',
+
+      '.cn-studio-card-expand-button-stack-1': {
+        transform: 'translateX(4px)'
+      },
+      '.cn-studio-card-expand-button-stack-2': {
+        transform: 'translateX(8px)'
+      }
+    },
+
+    // Bottom stack direction variant
+    '&[data-stack-direction="bottom"]': {
+      '.cn-studio-card-expand-button-stack-1': {
+        insetBlock: '0px',
+        insetInline: '3px',
+        transform: 'translateY(3px)'
+      },
+
+      '.cn-studio-card-expand-button-stack-2': {
+        insetBlock: '0px',
+        insetInline: '6px',
+        transform: 'translateY(6px)'
+      },
+
+      '&:hover': {
+        '.cn-studio-card-expand-button-stack-1': {
+          transform: 'translateY(4px)'
+        },
+        '.cn-studio-card-expand-button-stack-2': {
+          transform: 'translateY(8px)'
+        }
+      }
+    },
+
+    // Minimal variant
+    '&[data-variant="minimal"]': {
+      width: 'auto',
+      maxWidth: '100%',
+      minWidth: '0',
+      height: 'auto',
+
+      '.cn-studio-card-expand-button-top': {
+        '@apply p-cn-2xs px-cn-sm': ''
+      }
+    },
+
+    // Expanded state - hide stacks
+    '&:where([data-expanded="true"])': {
+      '.cn-studio-card-expand-button-stack': {
+        display: 'none'
+      }
+    }
+  }
+}

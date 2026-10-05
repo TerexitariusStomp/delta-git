@@ -1,0 +1,58 @@
+{
+  "name": "@harnessio/core-design-system",
+  "version": "0.0.1",
+  "description": "Harness Design System",
+  "type": "module",
+  "exports": {
+    "./core-styles": "./dist/styles/core-imports.css",
+    "./themes": "./dist/styles/themes.css",
+    "./mfe-themes": "./dist/styles/mfe-themes.css",
+    "./styles-esm": "./dist/styles-esm/index.ts",
+    "./themes/dark": "./dist/styles/dark.css",
+    "./themes/dark-dimmer": "./dist/styles/dark-dimmer.css",
+    "./themes/dark-high-contrast": "./dist/styles/dark-high-contrast.css",
+    "./themes/dark-protanopia": "./dist/styles/dark-protanopia.css",
+    "./themes/dark-deuteranopia": "./dist/styles/dark-deuteranopia.css",
+    "./themes/dark-tritanopia": "./dist/styles/dark-tritanopia.css",
+    "./themes/dark-dimmer-protanopia": "./dist/styles/dark-dimmer-protanopia.css",
+    "./themes/dark-dimmer-deuteranopia": "./dist/styles/dark-dimmer-deuteranopia.css",
+    "./themes/dark-dimmer-tritanopia": "./dist/styles/dark-dimmer-tritanopia.css",
+    "./themes/dark-high-contrast-protanopia": "./dist/styles/dark-high-contrast-protanopia.css",
+    "./themes/dark-high-contrast-deuteranopia": "./dist/styles/dark-high-contrast-deuteranopia.css",
+    "./themes/dark-high-contrast-tritanopia": "./dist/styles/dark-high-contrast-tritanopia.css",
+    "./themes/light": "./dist/styles/light.css",
+    "./themes/light-dimmer": "./dist/styles/light-dimmer.css",
+    "./themes/light-high-contrast": "./dist/styles/light-high-contrast.css",
+    "./themes/light-protanopia": "./dist/styles/light-protanopia.css",
+    "./themes/light-deuteranopia": "./dist/styles/light-deuteranopia.css",
+    "./themes/light-tritanopia": "./dist/styles/light-tritanopia.css",
+    "./themes/light-dimmer-protanopia": "./dist/styles/light-dimmer-protanopia.css",
+    "./themes/light-dimmer-deuteranopia": "./dist/styles/light-dimmer-deuteranopia.css",
+    "./themes/light-dimmer-tritanopia": "./dist/styles/light-dimmer-tritanopia.css",
+    "./themes/light-high-contrast-protanopia": "./dist/styles/light-high-contrast-protanopia.css",
+    "./themes/light-high-contrast-deuteranopia": "./dist/styles/light-high-contrast-deuteranopia.css",
+    "./themes/light-high-contrast-tritanopia": "./dist/styles/light-high-contrast-tritanopia.css"
+  },
+  "scripts": {
+    "build": "pnpm clean && pnpm build:styles",
+    "build:ci": "pnpm build",
+    "build:styles": "node scripts/build.js",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "design-system",
+    "css",
+    "styles"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@csstools/postcss-minify": "^3.0.0",
+    "postcss": "^8.5.8",
+    "@tokens-studio/sd-transforms": "^1.2.9",
+    "figlet": "^1.8.0",
+    "gradient-string": "^3.0.0",
+    "rimraf": "^6.0.1",
+    "style-dictionary": "^4.1.4"
+  }
+}

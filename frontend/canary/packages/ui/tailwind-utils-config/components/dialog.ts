@@ -1,0 +1,187 @@
+export default {
+  '.cn-modal-dialog-overlay': {
+    backgroundColor: 'var(--cn-comp-dialog-backdrop)',
+    padding: 'var(--cn-dialog-safezone)',
+    '@apply fixed inset-0 z-50': '',
+
+    '&[data-state="open"]': {
+      animation: 'cn-overlay-fadeIn 0.2s ease-out forwards'
+    },
+
+    '&[data-state="closed"]': {
+      animation: 'cn-overlay-fadeOut 0.2s ease forwards',
+      'animation-delay': '0.2s'
+    }
+  },
+
+  '.cn-modal-dialog-content': {
+    '--cn-dialog-width': 'min(calc(100vw - (var(--cn-dialog-safezone) * 2)), var(--cn-dialog-sm))',
+    backgroundColor: 'var(--cn-bg-3)',
+    borderRadius: 'var(--cn-dialog-radius)',
+    border: '1px solid var(--cn-border-3)',
+    borderWidth: 'var(--cn-dialog-border)',
+    boxShadow: 'var(--cn-shadow-5)',
+    width: 'var(--cn-dialog-width)',
+    maxWidth: 'calc(100vw - (var(--cn-dialog-safezone) * 2))',
+    maxHeight: 'calc(100vh - (var(--cn-dialog-safezone) * 2))',
+    '@apply fixed left-1/2 top-1/2 z-50 flex flex-col translate-x-[-50%] translate-y-[-50%] min-h-0': '',
+    overflow: 'clip',
+    '@apply duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95':
+      '',
+    '&[data-state="open"]': {
+      animation: 'cn-dialog-slideIn 0.2s ease-out forwards'
+    },
+    '&[data-state="closed"]': {
+      animation: 'cn-dialog-slideOut 0.2s ease-in forwards'
+    },
+
+    '&.cn-modal-dialog-md': {
+      '--cn-dialog-width': `min(calc(100vw - (var(--cn-dialog-safezone) * 2)), var(--cn-dialog-md))`
+    },
+    '&.cn-modal-dialog-lg': {
+      '--cn-dialog-width': `min(calc(100vw - (var(--cn-dialog-safezone) * 2)), var(--cn-dialog-lg))`
+    },
+    '&.cn-modal-dialog-max': {
+      '--cn-dialog-width': '80vw',
+      width: 'var(--cn-dialog-width)',
+      height: 'auto', // let content decide height until it reaches max
+      maxWidth: '80vw',
+      maxHeight: '80vh'
+    },
+    '&.cn-modal-dialog-fixed-height': {
+      '--cn-dialog-height': 'var(--cn-dialog-fixed-height)',
+      height: 'var(--cn-dialog-height)'
+    }
+  },
+
+  // Container (inner wrapper for header + description + body)
+  '.cn-modal-dialog-container': {
+    position: 'relative',
+    padding: 'var(--cn-dialog-container)',
+    gap: 'var(--cn-dialog-gap)',
+    '@apply flex flex-col min-h-0': ''
+  },
+
+  // Header Component
+  '.cn-modal-dialog-header': {
+    '@apply flex flex-col': '',
+
+    '&.cn-modal-dialog-theme-default': {
+      '.cn-modal-dialog-header-icon': {
+        color: 'var(--cn-text-1)'
+      }
+    },
+    '&.cn-modal-dialog-theme-warning': {
+      '.cn-modal-dialog-header-icon': {
+        color: 'var(--cn-text-warning)'
+      }
+    },
+    '&.cn-modal-dialog-theme-danger': {
+      '.cn-modal-dialog-header-icon': {
+        color: 'var(--cn-text-danger)'
+      }
+    }
+  },
+
+  // Header Icon/Logo and Title
+  '.cn-modal-dialog-header-title-row': {
+    gap: 'var(--cn-spacing-1-half)',
+    '@apply flex': '',
+    '.cn-modal-dialog-container:has(.cn-modal-dialog-close) > .cn-modal-dialog-header &': {
+      paddingRight: 'var(--cn-spacing-6)'
+    }
+  },
+  '.cn-modal-dialog-header-icon': {
+    '@apply flex items-center justify-center': '',
+    color: 'var(--cn-text-2)',
+    flexShrink: '0'
+  },
+  '.cn-modal-dialog-header-logo': {
+    '@apply flex items-center justify-center': '',
+    flexShrink: '0'
+  },
+  '.cn-modal-dialog-title': {
+    '@apply font-dialog-title': '',
+    color: 'var(--cn-text-1)',
+    paddingTop: 'var(--cn-spacing-1)'
+  },
+
+  // Header Description
+  '.cn-modal-dialog-description': {
+    color: 'var(--cn-text-2)',
+    '@apply font-body-normal': ''
+  },
+
+  // Body Component
+  '.cn-modal-dialog-body': {
+    '--cn-modal-dialog-scroll-compensation': '4px',
+    marginInline: 'calc(-1 * var(--cn-modal-dialog-scroll-compensation))',
+    paddingInline: 'var(--cn-modal-dialog-scroll-compensation)',
+    paddingBottom: 'var(--cn-modal-dialog-scroll-compensation)',
+    height: '100%',
+
+    '&.cn-scroll-area': {
+      display: 'flex',
+      flexDirection: 'column'
+    },
+
+    '&-content': {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 'var(--cn-dialog-gap)'
+    }
+  },
+
+  // Footer Component
+  '.cn-modal-dialog-footer': {
+    borderTop: '1px solid var(--cn-border-3)',
+    borderTopWidth: 'var(--cn-dialog-border)',
+    paddingTop: 'var(--cn-dialog-footer-py)',
+    paddingBottom: 'var(--cn-dialog-footer-py)',
+    paddingInline: 'var(--cn-dialog-container)'
+  },
+
+  // Close (X) Button
+  '.cn-modal-dialog-close': {
+    position: 'absolute',
+    top: 'var(--cn-dialog-container)',
+    right: 'var(--cn-dialog-container)'
+  },
+
+  '.dialog': {
+    '&-backdrop': {
+      backgroundColor: 'var(--cn-comp-dialog-backdrop)'
+    }
+  },
+
+  '@keyframes cn-overlay-fadeIn': {
+    '0%': { opacity: '0' },
+    '100%': { opacity: '1' }
+  },
+  '@keyframes cn-overlay-fadeOut': {
+    '0%': { opacity: '1' },
+    '100%': { opacity: '0' }
+  },
+
+  // Slide in and slide out animations
+  '@keyframes cn-dialog-slideIn': {
+    '0%': {
+      transform: 'translate(-50%, -48%)',
+      opacity: '0'
+    },
+    '100%': {
+      transform: 'translate(-50%, -50%)',
+      opacity: '1'
+    }
+  },
+  '@keyframes cn-dialog-slideOut': {
+    '0%': {
+      transform: 'translate(-50%, -50%)',
+      opacity: '1'
+    },
+    '100%': {
+      transform: 'translate(-50%, -48%)',
+      opacity: '0'
+    }
+  }
+}

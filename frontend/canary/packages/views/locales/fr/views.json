@@ -1,0 +1,1188 @@
+{
+  "repos": {
+    "summary": "Résumé",
+    "files": "Fichiers",
+    "pipelines": "Pipelines",
+    "commits": "Commits",
+    "tags": "Étiquettes",
+    "resourceTags": "Étiquettes de ressource",
+    "pullRequests": "Pull requests",
+    "branches": {
+      "title": "Branches",
+      "commitsBehind": "commits en retard",
+      "commitsAhead": "commits en avance",
+      "createBranch": "Create Branch"
+    },
+    "search": "Rechercher",
+    "settings": "Paramètres",
+    "descriptionPlaceholder": "Enter a description",
+    "description": "Description",
+    "error": "Erreur :",
+    "saving": "Enregistrement...",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "webhookSettings": "Webhook Settings",
+    "details": "Details",
+    "executions": "Executions",
+    "generalTab": "General",
+    "keysTab": "Keys and tokens",
+    "createTagRuleButton": "Create tag rule",
+    "createBranchRuleButton": "Create Branch rule",
+    "createPushRuleButton": "Create Push Rule",
+    "createRuleButton": "Créer une règle de branche",
+    "hadRecentPushes": "had recent pushes ",
+    "compareAndPullRequest": "Comparez et ouvrez une requête de tirage",
+    "dismiss": "Dismiss",
+    "fetchUpstream": "Récupérer en amont",
+    "fetchAndMergeCommits_one": "Récupérer et fusionner {{count}} {{commits}}",
+    "fetchAndMergeCommits_many": "Récupérer et fusionner {{count}} {{commits}}",
+    "fetchAndMergeCommits_other": "Récupérer et fusionner {{count}} {{commits}}",
+    "noCommitsToFetch": "Aucun nouveau commit à récupérer",
+    "keepForkUpToDate": "Gardez ce fork à jour avec le dépôt en amont.",
+    "learnMore": "En savoir plus",
+    "compare": "Comparer",
+    "fetchAndMerge": "Récupérer et fusionner",
+    "openPullRequest": "Ouvrir une Pull Request",
+    "branchDoesNotExist": "Branch does not exist.",
+    "default": "Par défaut",
+    "viewAll": "Voir tous les {{type}}",
+    "branchesLowercase": "branches",
+    "tagsLowercase": "tags",
+    "findBranch": "Trouver une branche",
+    "findTag": "Trouver une étiquette",
+    "account": "Account",
+    "organization": "Organization",
+    "projects": "Projects",
+    "allOrganizations": "All Organizations",
+    "selectScope": "Select scope",
+    "selectScopePlaceholder": "Select scope type",
+    "noResultsFound": "No results found",
+    "noFile": "Aucun fichier disponible",
+    "selectRepository": "Sélectionner un dépôt",
+    "switchRepositories": "Changer de dépôt",
+    "forkedFrom": "Forked from",
+    "createFile": "Create File",
+    "private": "Privé",
+    "public": "Public",
+    "archived": "Archivé",
+    "archivedBanner": "Ce dépôt a été archivé le {{date}}. Il est maintenant en lecture seule.",
+    "archivedBannerNoDate": "Ce dépôt a été archivé. Il est maintenant en lecture seule.",
+    "name": "Nom",
+    "lastCommit": "Dernier commit",
+    "date": "Date",
+    "targetRepositories": "Target Repositories",
+    "repositories": "Dépôts",
+    "selectIncluded": "Select included",
+    "selectExcluded": "Select excluded",
+    "selectReposTitle": "Dépôts {{type}}",
+    "selectReposDescription": "Choisissez les dépôts à {{action}} de cette règle",
+    "repository": "Dépôt",
+    "noRepositoriesAvailable": "No repositories available",
+    "saveSelection": "Save Selection",
+    "noReposSelectedAppliesAll": "If no repositories are selected, the rule applies to all",
+    "patterns": "Patterns",
+    "targetReposCaption": "Match repositories using globstar patterns (e.g.\"repo-*\", \"prod/**\")",
+    "targetReposPlaceholder": "Enter the target repository patterns",
+    "include": "Include",
+    "exclude": "Exclude",
+    "cloneCredential": "Générer un identifiant de clonage",
+    "expiration": "Expiration",
+    "token": "Jeton",
+    "cloneCredGenerated": "Votre jeton a été généré. Veuillez le copier et le stocker en lieu sûr car vous ne pourrez pas le voir à nouveau.",
+    "manageAPIToken": "Gérer le jeton API",
+    "prListFilterOptions": {
+      "authorOption": {
+        "label": "Auteur",
+        "noResults": "Aucun résultat trouvé",
+        "loading": "Chargement des auteurs...",
+        "placeholder": "Rechercher par auteur"
+      },
+      "beforeOption": {
+        "label": "Créé avant"
+      },
+      "afterOption": {
+        "label": "Créé après"
+      },
+      "labels": {
+        "label": "Label"
+      },
+      "review": {
+        "label": "Reviews"
+      },
+      "labelByOption": {
+        "label": "Label by"
+      }
+    },
+    "createPullReq": "Créer une requête de tirage.",
+    "BlockBranchCreation": "Bloquer la création de branches",
+    "BlockBranchCreationDescription": "Autoriser uniquement les utilisateurs ayant des permissions spécifiques à créer ces branches",
+    "BlockBranchDeletion": "Bloquer la suppression de branches",
+    "BlockBranchDeletionDescription": "Autoriser uniquement les utilisateurs ayant des permissions spécifiques à supprimer ces branches",
+    "BlockBranchUpdate": "Bloquer la mise à jour de branches",
+    "BlockBranchUpdateDescription": "Autoriser uniquement les utilisateurs ayant des permissions spécifiques à mettre à jour ces branches",
+    "BlockForcePush": "Bloquer les push forcés",
+    "BlockForcePushDescription": "Autoriser uniquement les utilisateurs ayant des permissions spécifiques à faire des push forcés sur ces branches",
+    "RequirePullRequest": "Exiger une requête de tirage",
+    "RequirePullRequestDescription": "Interdire les modifications directes sur les branches sans requête de tirage",
+    "EnableDefaultReviewers": "Activer les revueurs par défaut",
+    "EnableDefaultReviewersDescription": "Exiger l'approbation des revueurs par défaut pour chaque requête de tirage",
+    "RequireMinimumDefaultReviewerCount": "Require minimum number of default reviewers",
+    "RequireMinimumDefaultReviewerCountDescription": "Require a minimum number of default reviewers",
+    "RequireCodeReview": "Exiger un minimum de réviseurs",
+    "RequireCodeReviewDescription": "Les requêtes de tirage doivent être approuvées par un nombre minimal de réviseurs",
+    "AutoAddCodeOwners": "Ajouter les code owners comme réviseurs",
+    "AutoAddCodeOwnersDescription": "Ajouter automatiquement les code owners pertinents comme réviseurs",
+    "RequireCodeOwners": "Exiger une revue des code owners",
+    "RequireCodeOwnersDescription": "Exiger une revue des code owners sur les requêtes de tirage",
+    "RequestApprovalRule": "Demander l'approbation des nouvelles modifications",
+    "RequireLatestCommitDescription": "Exiger une nouvelle approbation pour toute modification récente dans la requête de tirage",
+    "RequireNoChangeRequest": "Exiger la résolution des demandes de modifications",
+    "RequireNoChangeRequestDescription": "Toutes les demandes de modifications doivent être résolues avant de pouvoir fusionner",
+    "RequireCommentResolution": "Exiger la résolution des commentaires",
+    "RequireCommentResolutionDescription": "Tous les commentaires doivent être résolus avant de pouvoir fusionner",
+    "RequireStatusChecks": "Exiger le succès des vérifications de statut",
+    "RequireStatusChecksDescription": "Les vérifications de statut sélectionnées doivent réussir avant de pouvoir fusionner",
+    "RequireTargetIsAncestor": "Exiger que la branche soit à jour avant la fusion",
+    "RequireTargetIsAncestorDescription": "La branche source doit être à jour avec la branche cible avant de pouvoir fusionner la requête de tirage",
+    "LimitMergeStrategies": "Limiter les stratégies de fusion",
+    "LimitMergeStrategiesDescription": "Limiter les stratégies de fusion disponibles pour fusionner une requête de tirage",
+    "MergeStrategy": {
+      "Merge": "Autoriser la fusion par commit",
+      "Squash": "Autoriser la fusion par écrasement",
+      "Rebase": "Autoriser la fusion par rebase",
+      "FastForward": "Autoriser avance rapide"
+    },
+    "AutoDeleteBranch": "Suppression automatique de la branche après fusion",
+    "AutoDeleteBranchDescription": "Supprimer automatiquement la branche source après sa fusion",
+    "enableRule": "Activer la règle",
+    "enableRuleDescription": "En activant le bouton, la règle de {{type}} sera appliquée.",
+    "enterRuleName": "Enter the rule name here",
+    "ruleDescriptionPlaceholder": "Enter the description here",
+    "targetPatterns": "Modèles cibles",
+    "createRuleCaption": "Définir les {{type}} correspondant aux modèles globaux (ex : 'feature-*', 'release/**')",
+    "rulePatternPlaceholder": "Enter the target patterns",
+    "applyRuleDefaultBranch": "Appliquer la règle à la branche par défaut",
+    "bypassList": "Liste de contournement",
+    "selectUsers": "Sélectionner les utilisateurs",
+    "editPermissionsCheckboxDescription": "Permettre aux utilisateurs ayant des permissions de modifier le dépôt de contourner cette règle",
+    "selectDefaultReviewers": "Sélectionner les revueurs par défaut",
+    "rulesTitle": "Règles : sélectionnez tout ce qui s'applique",
+    "selectStatusesPlaceholder": "Sélectionner les vérifications de statut",
+    "enterMinDefaultReviewers": "Entrer le nombre minimal de réviseurs par défaut",
+    "enterMinReviewers": "Entrer le nombre minimal de réviseurs",
+    "updateBranchRule": "Mettre à jour la règle de branche",
+    "createBranchRule": "Create branch rule",
+    "updateRuleButton": "Mettre à jour la règle",
+    "updatingRuleButton": "Mise à jour de la règle...",
+    "creatingRuleButton": "Création de la règle...",
+    "branch": "Branche",
+    "update": "Mettre à jour",
+    "checkStatus": "Vérifier le statut",
+    "behind": "Behind",
+    "ahead": "En avance",
+    "pullRequest": "Pull Request",
+    "browse": "Browse",
+    "deleteBranch": "Delete Branch",
+    "createBranchDialog": {
+      "validation": {
+        "name": "Le nom de la branche est requis",
+        "noSpaces": "Le nom ne peut pas contenir d'espaces",
+        "target": "La branche de base est requise"
+      }
+    },
+    "createBranchTitle": "Créer une branche",
+    "createNewRepo": "Create a new repository",
+    "repoContains": "A repository contains all project files, including the revision history. Already have a project repository elsewhere?",
+    "importRepo": "Import a repository",
+    "createNewRepoForm": {
+      "name": {
+        "label": "Name",
+        "placeholder": "Enter repository name"
+      },
+      "description": {
+        "placeholder": "Enter a short description for the repository",
+        "label": "Description"
+      },
+      "gitignore": {
+        "label": "Add a .gitignore",
+        "caption": "Choose which files not to track from a list of templates.",
+        "placeholder": "Select"
+      },
+      "defaultBranchDialog": {
+        "startLabel": "Your repository will be initialized with a",
+        "endLabel": "branch."
+      }
+    },
+    "learnMoreAboutReadme": "En savoir plus sur README",
+    "fileContent": {
+      "noData": {
+        "tryAgain": "Try again"
+      }
+    },
+    "noFiles": {
+      "title": "No files yet",
+      "description": "This repository is empty. Add your first file to get started."
+    },
+    "createNewFork": "Créer un nouveau fork de {{repoName}}",
+    "forkDescription": "Forker un dépôt pour créer un nouveau dépôt avec les mêmes fichiers et le même historique.",
+    "fork": {
+      "branchFork": "Branche",
+      "branchForkCaption": "Forker une seule branche",
+      "fullFork": "Fork complet du dépôt",
+      "fullForkCaption": "Forker l'intégralité du dépôt",
+      "branch": "Branche",
+      "publicCaption": "Toute personne ayant accès à Harness peut cloner ce dépôt.",
+      "privateCaption": "Vous pouvez choisir qui peut voir et contribuer à ce dépôt.",
+      "forkRepository": "Forker le dépôt",
+      "forkingRepository": "Fork en cours...",
+      "title": "Fork",
+      "changeVisibility": "Modifier la visibilité du fork",
+      "makePrivate": "Rendre privé",
+      "makePrivateCaption": "Restreindre la visibilité aux utilisateurs autorisés uniquement"
+    },
+    "visibility": "Visibilité",
+    "importing": "Importing…",
+    "updated": "Mis à jour",
+    "created": "Created",
+    "cancelImport": "Cancel import",
+    "createRepository": "Créer un dépôt",
+    "importRepository": "Importer un dépôt",
+    "importRepositories": "Import repositories",
+    "SecretScanningEnabled": "Analyse de secrets activée",
+    "SecretScanningEnabledDescription": "Autoriser uniquement les utilisateurs avec autorisation de contournement à pousser des commits contenant des secrets",
+    "PrincipalCommitterMatch": "Correspondance du committeur principal",
+    "PrincipalCommitterMatchDescription": "Autoriser uniquement les utilisateurs avec autorisation de contournement à pousser des commits en cas de non-correspondance du committeur principal",
+    "FileSizeLimit": "Limite de taille de fichier",
+    "FileSizeLimitDescription": "Autoriser uniquement les utilisateurs avec autorisation de contournement à pousser des fichiers plus volumineux que la taille spécifiée",
+    "enterFileSizeLimit": "Entrez la limite de taille de fichier",
+    "updatePushRule": "Mettre à jour la règle de push",
+    "createPushRule": "Créer une règle de push",
+    "unarchiveRepo": "Unarchive Repository",
+    "archiveRepo": "Archive Repository",
+    "unarchiveRepoDescription": "Unarchive this repository to make it read-write.",
+    "archiveRepoDescription": "Set this repository to archived and restrict it to read-only access.",
+    "unarchiving": "Unarchiving...",
+    "archiving": "Archiving...",
+    "unarchiveRepoButton": "Unarchive repository",
+    "archiveRepoButton": "Archive repository",
+    "deleteRepo": "Supprimer le dépôt",
+    "deleteRepoDescription": "Cette action supprimera définitivement ce dépôt et son contenu.",
+    "deleteRepoButton": "Supprimer le dépôt",
+    "settingsToolTip": "Impossible de modifier les paramètres lors du chargement ou de la mise à jour.",
+    "features": "Features",
+    "gitLfs": "Git LFS",
+    "gitLfsDescription": "Enable Git Large File Storage (LFS) for this repository.",
+    "repoNamePlaceholder": "Entrez le nom du dépôt",
+    "repoDescriptionPlaceholder": "Entrez une description pour ce dépôt...",
+    "defaultBranch": "Branche par défaut",
+    "publicDescription": "Toute personne ayant accès à Harness peut cloner ce dépôt.",
+    "privateDescription": "Vous pouvez choisir qui peut voir et contribuer à ce dépôt.",
+    "rulesApplied": "Règles appliquées",
+    "bypassAllowed": "Contournement autorisé",
+    "bypassNotAllowed": "Contournement non autorisé",
+    "allRules": "All Rules",
+    "branchRules": "Branch Rules",
+    "tagRules": "Tag Rules",
+    "pushRules": "Push Rules",
+    "security": "Sécurité",
+    "secretScanning": "Analyse des secrets",
+    "secretScanningDescription": "Empêcher les commits contenant des secrets comme les mots de passe ou jetons API.",
+    "vulnerabilityScanning": "Vulnerability scanning",
+    "vulnerabilityScanningDescription": "Scanner les commits entrants pour les vulnérabilités connues.",
+    "detectVulnerabilities": "Detect",
+    "detectVulnerabilitiesDescription": "Vulnérabilité passive signalera des erreurs mais ne bloquera pas",
+    "blockVulnerabilities": "Block",
+    "blockVulnerabilitiesDescription": "Une vulnérabilité active bloquera le commit si une vulnérabilité est trouvée.",
+    "verifyCommitterIdentity": "Verify committer identity",
+    "verifyCommitterIdentityDescription": "Bloquer les commits non-validés par l'utilisateur qui effectue les modifications.",
+    "generalSettings": "Paramètres généraux",
+    "general": "Général",
+    "labels": "Labels",
+    "rules": "Règles",
+    "webhooks": "Webhooks",
+    "rulesDescription": "Define standards and automate workflows to ensure better collaboration and control in your repository.",
+    "cloneRepo": "Cloner le dépôt",
+    "cloneHttps": "HTTPS",
+    "cloneSsh": "SSH",
+    "gitCloneUrl": "Git clone URL",
+    "generateCredential": "Veuillez générer un identifiant de clonage si c'est la première fois.",
+    "emptyRepoPage": {
+      "title": "Repository",
+      "subtitle": "Follow the instructions below to get started with your repository.",
+      "noData": {
+        "title": "This repository is empty.",
+        "description": {
+          "0": "We recommend every repository include a",
+          "1": "README, LICENSE, and .gitignore."
+        },
+        "createFile": "Créer un fichier"
+      },
+      "cloneInstructions": {
+        "title": "Please generate git credentials if it’s your first time cloning the repository",
+        "subTitle": "Git clone URL",
+        "http": "HTTP",
+        "ssh": "SSH",
+        "generateButton": "Generate clone credential",
+        "manageCredentials": {
+          "0": "You can also manage your git credential",
+          "1": "here"
+        },
+        "pushRepository": {
+          "0": "You might need to",
+          "1": "create an API token",
+          "2": "pour pouvoir tirer ou pousser dans ce dépôt"
+        }
+      },
+      "initialCommit": "Then push some content into it",
+      "existingRepo": {
+        "title": "Or you can push an existing repository"
+      }
+    },
+    "readme": "README",
+    "editReadme": "Edit README",
+    "createReadme": "Create README",
+    "addReadme": {
+      "title": "Créer un README",
+      "description": "Aidez les personnes intéressées par ce référentiel à comprendre votre projet en créant un README.",
+      "button": "Créer un README"
+    },
+    "openPullReq": "Requêtes de tirage ouvertes",
+    "BlockTagCreation": "Block tag creation",
+    "BlockTagCreationDescription": "Only allow users with bypass permission to create matching tags",
+    "BlockTagDeletion": "Block tag deletion",
+    "BlockTagDeletionDescription": "Only allow users with bypass permission to delete matching tags",
+    "BlockTagUpdate": "Block tag update",
+    "BlockTagUpdateDescription": "Only allow users with bypass permission to update matching tags",
+    "updateTagRule": "Mettre à jour la règle de tag",
+    "createTagRule": "Créer une règle de tag",
+    "createTagTitle": "Create a tag",
+    "repoTagDescriptionPlaceholder": "Enter a description of this tag...",
+    "creatingTagButton": "Creating tag...",
+    "createTagButton": "Create tag",
+    "createTagDialog": {
+      "validation": {
+        "name": "Tag name is required",
+        "noSpaces": "Name cannot contain spaces",
+        "target": "Base branch is required"
+      }
+    },
+    "viewFiles": "View Files",
+    "deleteTag": "Delete tag",
+    "tag": "Tag",
+    "commit": "Commit",
+    "tagger": "Tagger",
+    "creationDate": "Creation date",
+    "createTag": "Créer une balise",
+    "enableWebhookToggle": "Activer le webhook",
+    "toggleDescription": "Nous enverrons les détails lorsque ce webhook sera déclenché",
+    "urlPlaceholder": "https://example.com/harness",
+    "urlLabel": "URL de la charge utile",
+    "secret": "Secret",
+    "sslVerification": "Vérification SSL",
+    "sslVerificationLabel": "Activer la vérification SSL",
+    "disableSslLabel": "Désactiver la vérification SSL",
+    "disableSslDescription": "Non recommandé pour la production",
+    "evenTriggerLabel": "Quels événements souhaitez-vous utiliser pour déclencher ce webhook ?",
+    "evenTriggerAllLabel": "Envoyez-moi tout",
+    "eventTriggerIndividualLabel": "Permettez-moi de sélectionner des événements individuels",
+    "editWebhookTitle": "Order Status Update Webhook",
+    "createWebhookTitle": "Créer un webhook",
+    "webhookDetails": "Details",
+    "updatingWebhook": "Updating webhook...",
+    "creatingWebhook": "Creating webhook...",
+    "updateWebhook": "Update webhook",
+    "createWebhook": "Create webhook",
+    "webhookExecution": {
+      "status": {
+        "success": "Success",
+        "failed": "Failed",
+        "invalid": "Invalid"
+      },
+      "retrigger": {
+        "loading": "Re-triggering Execution",
+        "default": "Re-trigger Execution"
+      },
+      "topBar": {
+        "triggerEvent": "Trigger Event:",
+        "time": "Time:",
+        "duration": "Duration:"
+      },
+      "code": {
+        "payload": "Payload",
+        "serverResponse": "Server Response"
+      }
+    },
+    "webhookExecutions": {
+      "title": "Executions",
+      "table": {
+        "id": "ID",
+        "event": "Event",
+        "status": "Status",
+        "lastTriggeredAt": "Last triggered at",
+        "success": "Success",
+        "failed": "Failed",
+        "invalid": "Invalid"
+      }
+    },
+    "compareBranchesToSeeChanges": "Comparez les branches pour voir vos changements.",
+    "noNewCommits": "Pas encore de nouveaux commits",
+    "allCommits": "Tous les commits",
+    "uploadFiles": "Télécharger des fichiers",
+    "newPullReq": "Nouvelle requête de tirage",
+    "createBranchButton": "Créer une branche",
+    "viewRules": "Voir les règles",
+    "newBranch": "Nouvelle branche",
+    "emptyRepo": "Ce référentiel est vide.",
+    "afterComparingOpenPullRequest": "Après avoir comparé les modifications, vous pouvez ouvrir une demande d'extraction pour contribuer à vos modifications en amont.",
+    "defaultReviewers": "Default reviewers",
+    "atLeastMinReviewer": "Sélectionnez au moins {{count}} réviseur par défaut",
+    "atLeastMinReviewers": "Sélectionnez au moins {{count}} réviseurs par défaut",
+    "defaultReviewerWarning": "Les requêtes de tirage créées par le réviseur par défaut sélectionné ignoreront la vérification du réviseur par défaut obligatoire car il n'y a pas suffisamment de réviseurs par défaut pour satisfaire la condition - il est recommandé d'ajouter des réviseurs par défaut supplémentaires.",
+    "defaultReviewersWarning": "Les requêtes de tirage créées par les réviseurs par défaut sélectionnés réduiront la vérification du réviseur par défaut obligatoire d'un seul car il n'y a pas suffisamment de réviseurs par défaut pour satisfaire la condition - il est recommandé d'ajouter des réviseurs par défaut supplémentaires.",
+    "RequireMinDefaultReviewers": "Exiger un nombre minimal de revueurs par défaut",
+    "RequireMinDefaultReviewersDescription": "Exiger l'approbation des revueurs par défaut sur les requêtes de tirage",
+    "newRule": "Nouvelle règle de branche",
+    "branchCreated": "Branche créée",
+    "branchCreatedDescription": "La branche {{name}} a été créée avec succès",
+    "status": "Statut",
+    "renameBranch": "Renommer la branche",
+    "add": "Ajouter",
+    "users": "Utilisateurs",
+    "clone": "Cloner",
+    "addFile": "Ajouter un fichier"
+  },
+  "execution": {
+    "summary": "Résumé",
+    "logs": "Journaux",
+    "graph": "Graphique",
+    "inputs": "Entrées",
+    "opa": "Évaluations de politique",
+    "artifacts": "Artéfacts",
+    "tests": "Tests",
+    "sto": "Tests de sécurité",
+    "secrets": "Secrets"
+  },
+  "labelData": {
+    "form": {
+      "colorValuePlaceholder": "Enter value name",
+      "colorLabelPlaceholder": "Enter label name",
+      "removeValue": "Remove a value",
+      "editTitle": "Label details",
+      "createTitle": "Create a label",
+      "labelName": "Label name",
+      "valueName": "Label value",
+      "addValue": "Add a value",
+      "allowUsersCheckboxLabel": "Allow users to add values",
+      "previewLabel": "Label preview",
+      "previewDynamicValue": "*can be added by users*"
+    },
+    "table": {
+      "name": "Name",
+      "created": "Created in",
+      "description": "Description"
+    },
+    "edit": "Edit label",
+    "delete": "Delete label",
+    "title": "Labels",
+    "showParentLabels": "Show labels from parent scopes",
+    "createLabel": "Create label",
+    "newLabel": "Create Label",
+    "create": "Create labels"
+  },
+  "noData": {
+    "noResults": "Aucun résultat de recherche",
+    "checkSpelling": "Vérifiez votre orthographe et vos options de filtre,",
+    "changeSearch": "ou recherchez un autre mot-clé.",
+    "clearSearch": "Effacer la recherche",
+    "labels": "No labels yet",
+    "createLabel": "Create a new label to get started.",
+    "noResultsDescription": "No {{type}} match your search. Try adjusting your keywords or filters.",
+    "members": "",
+    "inviteMembers": "",
+    "noRules": "No rules yet",
+    "noRulesDescription": "There are no rules in this project. Click on the button below to start adding rules.",
+    "pullRequests": {
+      "noNewCommits": "There isn’t anything to compare",
+      "noNewCommitsDescription": "{{source}} and {{target}} are identical."
+    },
+    "compareChanges": "Comparez et révisez pratiquement tout",
+    "compareChangesDescription": "Branches, tags, plages de commits et périodes. Dans le même dépôt et entre les forks.",
+    "title": {
+      "noOpenPullRequests": "Il n'y a pas encore de demandes de tirage ouvertes",
+      "noClosedPullRequests": "Il n'y a pas encore de demandes de tirage fermées",
+      "noMergedPullRequests": "Il n'y a pas encore de demandes de tirage fusionnées"
+    },
+    "noOpenPullRequests": "Il n'y a pas encore de demandes de tirage ouvertes dans ce projet.",
+    "noClosedPullRequests": "Il n'y a pas encore de demandes de tirage fermées dans ce projet.",
+    "noMergedPullRequests": "Il n'y a pas encore de demandes de tirage fusionnées dans ce projet.",
+    "button": {
+      "createPullRequest": "Créer une demande de tirage"
+    },
+    "noPullRequestsInRepo": "Commencez votre parcours de contribution en créant un brouillon de demande de tirage.",
+    "noPullRequestsInProject": "There are no pull requests in this project yet.",
+    "noBranches": "Pas encore de branches",
+    "createBranchDescription": "Vos branches apparaîtront ici une fois créées.",
+    "startBranchDescription": "Commencez à créer des branches pour voir votre travail organisé.",
+    "noCommitsHistory": "No commits history",
+    "noCommitsYet": "No commits yet",
+    "noCommitsHistoryDescription": "There isn't any commit history to show here for the selected user, time range, or current page.",
+    "noCommitsYetDescription": "Your commits will appear here once they're made. Start committing to see your changes reflected.",
+    "clearFilters": "Effacer les filtres",
+    "errorApiTitle": "Échec du chargement de {{type}}",
+    "errorApiDescription": "Une erreur s'est produite lors du chargement des données. Veuillez réessayer et recharger la page.",
+    "noRepos": "Pas encore de dépôts",
+    "noReposProject": "Il n'y a pas encore de dépôts dans ce projet.",
+    "createOrImportRepos": "Créer un nouveau dépôt ou importer un dépôt existant.",
+    "noRepoResults": "No repositories match your search or filter criteria.",
+    "adjustFilters": "Try adjusting your filters or clearing them to see all repositories.",
+    "noResultsDescriptionWithFilter": "No {{filterName}} rules match your search. Try adjusting your keywords or filters.",
+    "noTags": "There are no tags in this project yet.",
+    "noTagsDescription": "Your tags will appear here once they're created. Start creating tags to see your work organized.",
+    "createNewTag": "Créer une balise",
+    "noWebhookExecution": "No webhook executions yet",
+    "noWebhookExecutionsDescription": "Your webhook executions will appear here once they're completed. Trigger your webhook to see the results.",
+    "noWebhooks": "No webhooks yet",
+    "noWebhooksDescription": "Add or manage webhooks to automate tasks and connect external services to your project.",
+    "noUsers": "Aucun utilisateur trouvé",
+    "noUsersDescription": "Il n'y a aucun utilisateur dans ce périmètre. Cliquez sur le bouton ci-dessous pour commencer à les ajouter.",
+    "noActivity": "There is no secret activity in this project yet.",
+    "noSecretActivity": "There is no secret activity yet.",
+    "noSecretReferences": "No secret references yet",
+    "noSecretReferencesDescription": "There are no references to this secret yet.",
+    "noSecrets": "Il n'y a pas encore de secrets dans ce projet.",
+    "createNewSecret": "Create a new Secret if required.",
+    "createSecret": "Créer un secret.",
+    "noDelegates": "There are no delegates in this project yet.",
+    "noActivities": "Aucune activité disponible",
+    "noActivitiesDescription": "Il n'y a pas d'activités disponibles.",
+    "noEntities": "Aucune entité disponible",
+    "noEntitiesDescription": "Il n'y a pas d'entités disponibles.",
+    "noConnectors": "Aucun connecteur pour le moment",
+    "rules": "No rules yet",
+    "createTagRuleButton": "Create Tag rule",
+    "createTagRule": "Create Tag rule",
+    "createBranch": "Créer une nouvelle branche",
+    "noPullRequests": "Il n'y a pas encore de demandes de tirage dans ce projet.",
+    "createConnector": "Créez un nouveau connecteur.",
+    "noConnectorsProject": "Il n'y a pas encore de connecteurs dans ce projet.",
+    "commit": "Validation",
+    "noLabels": "No labels yet",
+    "noLabelsDescription": "Use labels to organize, prioritize, and categorize tasks efficiently."
+  },
+  "projectSettings": {
+    "newLabels": "Create label",
+    "general": {
+      "mainTitle": "",
+      "projectNamePlaceholder": "",
+      "projectNameLabel": "",
+      "projectDescriptionPlaceholder": "",
+      "projectDescriptionLabel": "",
+      "formSubmitButton": {
+        "savingState": "",
+        "defaultState": "",
+        "savedState": ""
+      },
+      "formCancelButton": "Cancel",
+      "deleteProjectTitle": "",
+      "deleteProjectDescription": "",
+      "deleteProjectButton": ""
+    },
+    "newMember": "",
+    "member": "",
+    "role": "",
+    "addMember": "",
+    "membersTable": {
+      "user": "User",
+      "email": "Email",
+      "role": "Role"
+    },
+    "removeMember": "Remove member",
+    "inviteNewMember": "Invite new member",
+    "members": "",
+    "rules": "Rules",
+    "tabs": {
+      "general": "General",
+      "members": "Members",
+      "labels": "Labels",
+      "rules": "Rules"
+    },
+    "addRule": "Add new rule",
+    "newBranchRule": "New branch rule"
+  },
+  "landingPage": {
+    "selectProject": "Sélectionnez un projet pour commencer",
+    "description": "Les projets contiennent vos dépôts et pipelines. Pour commencer à utiliser Harness, sélectionnez un projet ou créez-en un nouveau.",
+    "projectSelector": "Sélectionner un projet",
+    "noProjects": "Aucun projet disponible",
+    "createProject": "Créer un projet"
+  },
+  "pullRequests": {
+    "conversation": "Conversation",
+    "commits": "Commits",
+    "changes": "Changements",
+    "noCommitsYet": "",
+    "noCommitDataDescription": "",
+    "compareChangesCreateTitle": "Créer une pull request",
+    "compareChangesCreateDescription": "Ouvrir une pull request prête pour révision.",
+    "compareChangesDraftTitle": "Créer une pull request en brouillon",
+    "compareChangesDraftDescription": "Ne demande pas de révision de code et ne peut pas être fusionnée.",
+    "compareChangesCreatedButton": "Pull request créée",
+    "expandSidebar": "Expand Sidebar",
+    "compareChangesFormTitleLabel": "Add a title",
+    "compareChangesFormTitlePlaceholder": "Saisissez le titre de la pull request",
+    "compareChangesFormDescriptionHeading": "Add a description",
+    "compareChangesFormDescriptionPlaceholder": "Ajoutez la description de la pull request ici.",
+    "validation": {
+      "titleMin": "Le titre est requis",
+      "titleMax": "Le titre doit faire moins de 256 caractères",
+      "branchSameAsSource": "La branche cible ne peut pas être la même que la branche source"
+    },
+    "compareChanges": "Comparaison des modifications",
+    "compareChangesDescription": "Choisissez deux branches pour voir les modifications ou pour créer une nouvelle pull request. Si nécessaire, vous pouvez aussi",
+    "compareChangesAbleToMerge": "Fusion possible.",
+    "compareChangesAbleToMergeDescription": "Ces branches peuvent être fusionnées automatiquement.",
+    "compareChangesApiError": "La branche principale ne contient pas de nouveaux commits.",
+    "compareChangesCantMerge": "Fusion impossible.",
+    "compareChangesCantMergeDescription": "Vous pouvez quand même créer la pull request.",
+    "compareChangesDiscussChanges": "Discutez et révisez les modifications de cette comparaison avec d'autres.",
+    "compareChangesDiscussChangesLink": "En savoir plus sur les pull requests.",
+    "compareChangesViewPRLink": "Voir la pull request",
+    "compareChangesTabOverview": "Aperçu",
+    "compareChangesTabCommits": "Commits",
+    "compareChangesTabChanges": "Modifications",
+    "findOrAddNewValue": "Find or add a new value",
+    "addNewValue": "Add a new value",
+    "searchValue": "Search value",
+    "addValue": "Add new value",
+    "labelNotFound": "Label not found",
+    "labels": "Étiquettes",
+    "searchLabels": "Rechercher des étiquettes..",
+    "noLabels": "No labels found",
+    "editLabels": "Edit labels",
+    "noLabelsSidebar": "No labels",
+    "changedSinceLastView": "Modifié depuis la dernière consultation",
+    "markViewed": "Vue",
+    "collapseSidebar": "Collapse Sidebar",
+    "deletedComment": "Ce commentaire a été supprimé.",
+    "reviewers": "Réviseurs",
+    "noUsers": "Aucun utilisateur trouvé.",
+    "approve": "Approuver",
+    "approved": "Approuvée",
+    "changereq": "Changement Demandé",
+    "missingReviewPermission": "Vous avez besoin de l'autorisation de révision du dépôt de code pour approuver",
+    "split": "Diviser",
+    "unified": "Unifié",
+    "comments": {
+      "commitSuggestion": "Commit suggestion",
+      "removeSuggestion": "Remove suggestion from batch",
+      "addSuggestion": "Add suggestion to batch",
+      "suggestionApplied": "Suggestion applied",
+      "codeSuggestion": "Code suggestion"
+    },
+    "compareChangesChooseDifferent": "Choisissez différentes branches ou forks ci-dessus pour discuter et réviser les modifications.",
+    "deleted": "Supprimé",
+    "searchUsers": "Rechercher des utilisateurs",
+    "compareChangesFormDescriptionLabel": "Description",
+    "selectUsersUGAndServiceAccounts": "Sélectionner des utilisateurs, des groupes d'utilisateurs et des comptes de service",
+    "viewed": "Vu",
+    "compareChangesForkLink": "comparer entre les forks",
+    "compareChangesOr": "ou",
+    "compareChangesDiffLink": "en savoir plus sur les comparaisons diff",
+    "compareChangesFormTitle": "Ajouter un titre",
+    "compareChangesFormDescription": "Ajouter une description",
+    "replyHere": "Repondre ici",
+    "showDiff": "Afficher la différence",
+    "deletedFileDiff": "Ce fichier a été supprimé.",
+    "largeDiff": "Les différences de grande taille ne sont pas affichées par défaut.",
+    "fileNoChanges": "Fichier sans modifications.",
+    "binaryNotShown": "Fichier binaire non affiché."
+  },
+  "notFound": {
+    "title": "Quelque chose s'est mal passé…",
+    "descriptionWithType": "La page demandée est introuvable. Vous pouvez revenir pour voir tous les {{type}} et gérer vos paramètres.",
+    "description": "La page demandée est introuvable.",
+    "button": "Recharger la page"
+  },
+  "entity": {
+    "cantDelete": "Can't delete {{entity}}",
+    "cantDeleteMessage": "The {{entity}} [{{entityId}}] is being referenced in other entities. Please remove the referenced {{entity}} from affected entities before deleting.",
+    "viewReferences": "View references",
+    "forceDelete": "Forcefully delete this {{entity}} now",
+    "forceDeleteWarning": "Forceful deletion might render entities referencing this {{entity}} invalid and will need to be updated.",
+    "delete": "Delete"
+  },
+  "profileSettings": {
+    "newSshKey": "Nouvelle clé SSH",
+    "enterNamePlaceholder": "Entrez le nom",
+    "publicKey": "Clé publique",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "name": "Nom",
+    "added": "Ajouté",
+    "lastUsedDate": "Dernière date d'utilisation",
+    "deleteSshKey": "Delete SSH key",
+    "noDataKeysDescription": "Il n'y a aucune clé SSH associée à ce compte.",
+    "createToken": "Créer un jeton",
+    "enterTokenPlaceholder": "Entrez le nom du jeton",
+    "expiration": "Expiration",
+    "token": "Jeton",
+    "tokenSuccessDescription": "Votre jeton a été généré. Assurez-vous de copier et de stocker votre jeton en lieu sûr, car vous ne pourrez plus le voir.",
+    "select": "Sélectionner",
+    "tokenExpiryNone": "Le jeton n'expirera jamais",
+    "tokenExpiryDate": "Le jeton expirera le",
+    "gotItButton": "Compris",
+    "generateTokenButton": "Générer le jeton",
+    "generatingTokenButton": "Génération du jeton...",
+    "tokenTableHeader": "Jeton",
+    "statusTableHeader": "Statut",
+    "expirationDateTableHeader": "Date d'expiration",
+    "createdTableHeader": "Créé",
+    "active": "Actif",
+    "noExpiration": "Pas d'expiration",
+    "deleteToken": "Delete token",
+    "noTokenDescription": "Il n'y a aucun jeton d'accès personnel associé à ce compte.",
+    "validation": {
+      "nameMin": "Veuillez indiquer votre nom",
+      "nameMax": "Le nom ne doit pas dépasser 256 caractères",
+      "usernameMin": "Veuillez fournir un nom d'utilisateur",
+      "emailInvalid": "Veuillez fournir une adresse e-mail valide",
+      "emailMax": "L'e-mail ne doit pas dépasser 250 caractères",
+      "passwordMin": "Le nouveau mot de passe doit contenir au moins 6 caractères",
+      "passwordMax": "Le nouveau mot de passe ne doit pas dépasser 128 caractères",
+      "confirmPasswordMin": "Veuillez confirmer votre nouveau mot de passe",
+      "passwordsDoNotMatch": "Les mots de passe ne correspondent pas"
+    },
+    "accountSettings": "Paramètres du compte",
+    "personalInfo": "Informations personnelles",
+    "enterUsernamePlaceholder": "Entrez votre nom d'utilisateur",
+    "username": "Nom d'utilisateur",
+    "enterUsernameCaption": "Ce nom d'utilisateur sera affiché sur toute la plateforme.",
+    "accountEmail": "Email du compte",
+    "updatingProfileButton": "Mise à jour...",
+    "updateProfileButton": "Mettre à jour le profil",
+    "updatedButton": "Mis à jour",
+    "passwordSettingsTitle": "Paramètres du mot de passe",
+    "passwordSettingsDesc": "Minimum 6 caractères contenant au moins un chiffre et un mélange de lettres majuscules et minuscules.",
+    "enterPasswordPlaceholder": "Entrez un nouveau mot de passe",
+    "newPassword": "Nouveau mot de passe",
+    "confirmPasswordPlaceholder": "Confirmez votre nouveau mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "updating": "Mise à jour...",
+    "updatePassword": "Mettre à jour le mot de passe",
+    "keysAndTokens": "Clés et jetons",
+    "personalAccessToken": "Jeton d'accès personnel",
+    "addTokenDescription": "Les jetons d'accès personnels vous permettent de vous authentifier avec l'API.",
+    "addToken": "Ajouter un nouveau jeton",
+    "sshKeys": "Mes clés SSH",
+    "addSshKeyDescription": "Les clés SSH vous permettent d'établir une connexion sécurisée avec votre dépôt de code.",
+    "addSshKey": "Ajouter une nouvelle clé SSH",
+    "generalTab": "Général",
+    "keysTab": "Clés et Jetons",
+    "saving": "Enregistrement..."
+  },
+  "createProject": {
+    "validation": {
+      "nameNoEmpty": "Le champ ne peut pas être vide",
+      "nameMinLength": "Le nom du projet doit contenir au moins 4 caractères"
+    },
+    "backButton": "Retour",
+    "title": "Créez votre nouveau projet",
+    "description": "Organisez vos dépôts, pipelines et plus encore.",
+    "form": {
+      "name": "Nom du projet",
+      "namePlaceholder": "Entrez le nom de votre projet",
+      "description": "Description",
+      "descriptionPlaceholder": "Entrez une description (facultatif)"
+    },
+    "create": {
+      "projectCreation": "Création du projet...",
+      "createProject": "Créer le projet"
+    },
+    "or": "ou",
+    "importProject": "Importer un projet",
+    "logout": {
+      "question": "Voulez-vous utiliser un autre compte ?",
+      "link": "Se déconnecter"
+    }
+  },
+  "forms": {
+    "selectMember": "",
+    "selectRole": "",
+    "enterBranchName": "Entrez le nom de la branche",
+    "basedOn": "Based on",
+    "tagName": "Name",
+    "enterTagName": "Enter tag name",
+    "createBranchError": "Le nom de la branche est requis",
+    "select": "Sélectionner",
+    "baseBranch": "Branche de base",
+    "selectBranchError": "La branche de base est requise",
+    "baseTag": "Basé sur",
+    "selectMemberError": "",
+    "selectRoleError": ""
+  },
+  "roles": {
+    "owner": "Owner",
+    "ownerDesc": "Admin-level access to all resources.",
+    "contributor": "Contributor",
+    "contributorDesc": "Can view, comment, and edit resources.",
+    "executor": "Executor",
+    "executorDesc": "Can view and leave comments.",
+    "reader": "Reader",
+    "readerDesc": "Can view but cannot make changes or leave comments."
+  },
+  "rules": {
+    "showParentRules": "Show rules from parent scopes",
+    "edit": "Edit rule",
+    "delete": "Delete rule"
+  },
+  "scope": {
+    "orgAndProject": "Organisations et projets",
+    "orgOnly": "Organisations uniquement",
+    "all": "Compte, organisations et projets",
+    "accountOnly": "Compte uniquement",
+    "label": "Périmètre",
+    "account": "Compte"
+  },
+  "repo": {
+    "components": {
+      "commitDetailsDiffShowing": "Affichage de",
+      "commitDetailsDiffChangedFiles": "fichiers modifiés",
+      "commitDetailsDiffWith": "avec",
+      "commitDetailsDiffAdditionsAnd": "ajouts et",
+      "commitDetailsDiffDeletions": "suppressions"
+    },
+    "pullRequest": {
+      "codeOwnersSection": {
+        "requestedChanges": "Code owners requested changes to the pull request",
+        "waitingOnReviews": "Waiting on code owner reviews of latest changes",
+        "changesPendingApproval": "Changes are pending approval from code owners",
+        "someChangesApproved": "Some changes were approved by code owners",
+        "latestChangesApproved": "Latest changes were approved by code owners",
+        "changesApproved": "Changes were approved by code owners",
+        "latestChangesPendingApproval": "Latest changes are pending approval from required reviewers",
+        "noReviewsRequired": "No codeowner reviews required",
+        "code": "Code",
+        "owners": "Owners",
+        "changesRequestedBy": "Changes requested by",
+        "approvedBy": "Approved by"
+      },
+      "requiredMessage": "Required",
+      "defaultReviewersSection": {
+        "waitingOnReviews": "Waiting on default reviewer's reviews of latest changes",
+        "changesPendingApproval": "Changes are pending approval from default reviewers",
+        "latestChangesApproved": "Latest changes were approved by default reviewers",
+        "changesApproved": "Changes were approved by default reviewers",
+        "defaultReviewersAdded": "Default reviewers were added to the PR",
+        "defaultReviewers": "Default reviewers",
+        "changesRequestedBy": "Changes requested by",
+        "approvedBy": "Approved by"
+      },
+      "changesSection": {
+        "approvalsMessage": "Changes were approved by {{approvalsCount}} {{approvedBy}}",
+        "latestApprovalsMessage": "Latest changes were approved by {{latestApprovalsCount}} {{approvedBy}}",
+        "changeRequestedMessage": "{{reviewer}} requested changes to the pull request",
+        "pendingApprovalsMessage": "{{approvalsCount}}/{{minApproval}} approvals completed",
+        "pendingLatestApprovalsMessage": "{{latestApprovalsCount}} {{approval}} pending on latest changes"
+      },
+      "checksSection": {
+        "succeededMessage": "Succeeded in {{time}}",
+        "failedMessage": "Failed in {{time}}",
+        "runningMessage": "Running...",
+        "pendingMessage": "Pending...",
+        "erroredMessage": "Errored in {{time}}",
+        "detailsLink": "Details"
+      },
+      "commentSection": {
+        "view": "View"
+      },
+      "mergeSection": {
+        "step": "Step {{number}}.",
+        "step1": "Clone the repository or update your local repository with the latest changes",
+        "step2": "Switch to the head branch of the pull request",
+        "step3": "Merge the base branch into the head branch",
+        "step4": "Fix the conflicts and commit the results",
+        "comment": {
+          "1": "See ",
+          "2": "Resolving a merge conflict using the command line",
+          "3": "for step-by-step instructions on resolving merge conflicts"
+        },
+        "step5": "Push the changes",
+        "mergeCheck": "Merge check in progress...",
+        "conflictsFound": "Conflicts found in this branch",
+        "noConflicts": "This branch has no conflicts with {{branch}} branch",
+        "automaticMergeCheck": "Checking for ability to merge automatically...",
+        "resolveConflicts": {
+          "1": "Use the ",
+          "2": "command line",
+          "3": " to resolve conflicts"
+        },
+        "resolveConflictsCommandLine": "Resolve conflicts via command line",
+        "conflictingFiles": "Conflicting files ",
+        "mergeLatestChangesTitle": "This branch is out-of-date with the base branch",
+        "mergeLatestChanges": {
+          "1": "Merge the latest changes from",
+          "2": "into"
+        },
+        "updateWithRebase": "Update with rebase"
+      }
+    }
+  },
+  "commits": {
+    "commitDetailsTitle": "Commit",
+    "browseFiles": "Parcourir les fichiers",
+    "commitDetailsAuthored": "créé par",
+    "createCommit": "Créer un commit",
+    "createNewCommit": "Créer un commit",
+    "commitDetailsDiffShowing": "Affichage de",
+    "commitDetailsDiffChangedFiles": "fichiers modifiés",
+    "commitDetailsDiffWith": "avec",
+    "commitDetailsDiffAdditionsAnd": "ajouts et",
+    "commitDetailsDiffDeletions": "suppressions",
+    "verified": "Vérifié"
+  },
+  "connectors": {
+    "filterOptions": {
+      "statusOption": {
+        "pinned": "Pinned",
+        "favorite": "Favorites",
+        "success": "Succès",
+        "failure": "Échec",
+        "label": "Statut"
+      }
+    },
+    "connector": "Connecteur",
+    "viewConnectorDetails": "Voir les détails du connecteur",
+    "status": "Status",
+    "viewDocumentation": "Voir la documentation",
+    "activity": "Activité",
+    "time": "Heure",
+    "connectorName": "Connector name",
+    "connectorId": "Connector ID",
+    "success": "Succès",
+    "failure": "Échec",
+    "editConnector": "modifier connecteur",
+    "deleteConnector": "supprimer connecteur",
+    "configuration": "Configuration",
+    "references": "Références",
+    "activityHistory": "Historique des activités",
+    "createNew": "Créer un connecteur",
+    "errorEncountered": "Erreur rencontrée",
+    "viewDetails": "Voir les détails",
+    "id": "ID du connecteur",
+    "connectivityStatus": "État de la connexion",
+    "updated": "Dernière mise à jour",
+    "delete": "Supprimer",
+    "created": "Créé"
+  },
+  "createTagDialog": {
+    "validation": {
+      "message": "Description is required"
+    }
+  },
+  "webhookData": {
+    "branchCreated": "Branche créée",
+    "branchUpdated": "Branche mise à jour",
+    "branchDeleted": "Branche supprimée",
+    "tagCreated": "Étiquette créée",
+    "tagUpdated": "Étiquette mise à jour",
+    "tagDeleted": "Étiquette supprimée",
+    "prCreated": "Requête de tirage créée",
+    "prUpdated": "Requête de tirage mise à jour",
+    "prReopened": "Requête de tirage rouverte",
+    "prClosed": "Requête de tirage fermée",
+    "prMerged": "Requête de tirage fusionnée",
+    "prBranchUpdated": "Branche de la requête de tirage mise à jour",
+    "prCommentCreated": "Commentaire de la requête de tirage créé",
+    "prCommentStatusUpdated": "PR comment status updated",
+    "prCommentUpdated": "PR comment updated",
+    "prReviewSubmitted": "PR review submitted",
+    "prLabelAssigned": "PR label assigned",
+    "editWebhookDescription": "This webhook triggers every time an order status is updated, sending data to the specified endpoint for real-time tracking",
+    "edit": "Edit webhook",
+    "delete": "Delete webhook",
+    "create": "Create webhook"
+  },
+  "search": {
+    "emptyState": {
+      "title": "Start searching",
+      "description": "Enter search terms to find relevant results"
+    },
+    "showLess": "- Show Less",
+    "showMore": "+ Show More",
+    "noResultsFound": "No search results found",
+    "startSearching": "Start searching",
+    "tryDifferentQuery": "Try a different search query or clear filters",
+    "enterSearchTerms": "Enter search terms to find relevant results",
+    "searchPlaceholder": "Search anything...",
+    "scopePlaceholder": "Select a scope",
+    "repositoryPlaceholder": "Select a repository",
+    "statsText": {
+      "matchesAndFiles": "{{matchCount}} matches found in {{fileCount}} file(s)",
+      "files": "{{fileCount}} file(s)"
+    }
+  },
+  "userManagement": {
+    "createUser": {
+      "title": "Ajouter un nouvel utilisateur",
+      "enterDisplayName": "Saisissez le nom d'affichage",
+      "inviting": "Invitation en cours...",
+      "inviteNewUser": "Inviter un nouvel utilisateur",
+      "validation": {
+        "userIdRequired": "Veuillez fournir un identifiant utilisateur",
+        "invalidEmail": "Veuillez saisir une adresse e-mail valide",
+        "displayNameRequired": "Veuillez fournir un nom d'affichage",
+        "emailInvalid": "Veuillez saisir une adresse e-mail valide"
+      }
+    },
+    "userId": "Identifiant utilisateur",
+    "userIdHint": "L'identifiant utilisateur ne peut pas être modifié une fois créé",
+    "enterName": "Saisissez le nom",
+    "enterEmail": "Saisissez l'adresse e-mail",
+    "email": "E-mail",
+    "displayName": "Nom d'affichage",
+    "cancel": "Annuler",
+    "deleteUser": {
+      "title": "Êtes-vous sûr de vouloir supprimer {{name}} ?",
+      "message": "Cela supprimera définitivement l'utilisateur \"{{name}}\" du système.",
+      "pending": "Suppression de l'utilisateur...",
+      "confirm": "Oui, supprimer l'utilisateur"
+    },
+    "editUser": {
+      "title": "Mettre à jour l'utilisateur",
+      "message": "Mettez à jour les informations de {{name}} et confirmez les modifications.",
+      "email": "E-mail",
+      "pending": "Enregistrement...",
+      "save": "Enregistrer",
+      "validation": {
+        "invalidEmail": "Veuillez saisir une adresse e-mail valide",
+        "displayNameRequired": "Veuillez fournir un nom d'affichage"
+      }
+    },
+    "removeAdmin": {
+      "title": "Êtes-vous sûr de vouloir retirer {{name}} en tant qu'administrateur ?",
+      "message": "Cela supprimera le statut d'administrateur pour \"{{name}}\".",
+      "pending": "Suppression de l'administrateur...",
+      "confirm": "Oui, retirer l'administrateur"
+    },
+    "grantAdmin": {
+      "title": "Êtes-vous sûr de vouloir accorder les privilèges d'administrateur à {{name}} ?",
+      "message": "Cela accordera les privilèges d'administrateur à \"{{name}}\".",
+      "pending": "Attribution des privilèges d'administrateur...",
+      "confirm": "Oui, accorder l'administrateur"
+    },
+    "resetPassword": {
+      "title": "Êtes-vous sûr de vouloir réinitialiser le mot de passe de {{name}} ?",
+      "passwordGeneratedMessage": "Votre mot de passe a été généré. Assurez-vous de le copier et de le stocker en lieu sûr, car vous ne pourrez plus le voir.",
+      "message": "Un nouveau mot de passe sera généré pour aider {{name}} à réinitialiser son mot de passe actuel.",
+      "pending": "Réinitialisation du mot de passe...",
+      "confirm": "Confirmer"
+    },
+    "close": "Fermer",
+    "newUserButton": "Créer utilisateur",
+    "usersHeader": "Utilisateurs",
+    "searchPlaceholder": "Rechercher",
+    "tabs": {
+      "active": "Utilisateurs actifs",
+      "inactive": "Utilisateurs en attente"
+    },
+    "usersList": {
+      "user": "Utilisateur",
+      "email": "E-mail",
+      "roleBinding": "Attribution de rôle"
+    },
+    "roles": {
+      "admin": "Administrateur",
+      "user": "Utilisateur"
+    },
+    "actions": {
+      "removeAdmin": "Retirer l'administrateur",
+      "setAsAdmin": "Définir comme administrateur",
+      "resetPassword": "Réinitialiser le mot de passe",
+      "editUser": "Modifier l'utilisateur",
+      "deleteUser": "Supprimer l'utilisateur"
+    }
+  },
+  "secretDetails": {
+    "backToSecrets": "Back to secrets",
+    "created": "Created",
+    "updated": "Updated",
+    "lastUsed": "Last used",
+    "configuration": "Configuration",
+    "references": "References",
+    "activity": "Activity",
+    "configurationView": "Secret Configuration",
+    "lastUpdated": "Last updated"
+  },
+  "secretActivity": {
+    "event": "Event",
+    "entity": "Entity",
+    "scope": "Scope",
+    "timestamp": "Timestamp",
+    "type": "Type"
+  },
+  "secrets": {
+    "search": {
+      "placeholder": "Search"
+    },
+    "filterOptions": {
+      "secretType": {
+        "label": "Secret Type"
+      },
+      "secretManagerOption": {
+        "label": "Secret Manager Identifier",
+        "placeholder": "Select Secret Manager"
+      },
+      "descriptionOption": {
+        "label": "Description"
+      },
+      "tagsOption": {
+        "label": "Tags"
+      },
+      "typeOption": {
+        "label": "Type"
+      }
+    },
+    "secretsTitle": "Secrets",
+    "createNew": "Créer un secret",
+    "viewDetails": "View Details",
+    "edit": "Edit",
+    "delete": "Supprimer",
+    "newSecret": "New Secret"
+  },
+  "entityReference": {
+    "entity": "Entity",
+    "type": "Type",
+    "scope": "Scope",
+    "created": "Created"
+  },
+  "secret": {
+    "title": "Secret"
+  },
+  "common": {
+    "manager": "Manager",
+    "created": "Created",
+    "updated": "Updated",
+    "lastActivity": "Last Activity",
+    "details": "Details",
+    "overview": "Overview",
+    "type": "Type",
+    "createdOn": "Created on",
+    "modifiedOn": "Modified on"
+  },
+  "delegates": {
+    "delegate": "Delegate",
+    "heartbeat": "Heartbeat",
+    "selected": "Selected",
+    "anyDelegate": "Any delegate",
+    "useAnyDelegate": "Use any available delegate",
+    "delegateTags": "Delegate with tags",
+    "useDelegateTags": "Use delegate with following tags",
+    "enterTags": "Enter tags",
+    "testDelegate": "Test Delegate connectivity",
+    "delegateMatches": "Matches:",
+    "connectDelegates": "Connect ",
+    "noDelegatesInstalled": "Haven't installed a delegate yet?",
+    "installDelegate": "Install Delegate"
+  },
+  "code": "Code"
+}

@@ -1,0 +1,543 @@
+import { get, isArray, isEmpty, isObject, isUndefined, merge, set } from 'lodash-es'
+import * as zod from 'zod/v3'
+
+import type { AnyFormValue, IFormDefinition, IGlobalValidationConfig, IInputDefinition } from '../../types/types'
+
+const REQUIRED_MESSAGE = 'Required field'
+
+export function processValidationParseResponse(anyArray: string | Record<string, unknown>): string | undefined {
+  let error: any
+  if (typeof anyArray === 'string') {
+    try {
+      error = JSON.parse(anyArray)
+    } catch {
+      // If it's not valid JSON, treat it as a plain string error message
+      error = anyArray
+    }
+  } else {
+    error = anyArray
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  if (isArray(error)) {
+    return processValidationParseResponse(error[0])
+  }
+
+  const errorObj = error as { message: string }
+  if (isObject(errorObj) && errorObj?.message) {
+    return error?.message
+  }
+
+  return 'Unknown error'
+}
+
+/**
+ * Internal type used for preparing data model for creating schema
+ */
+type SchemaTreeNode = { [key: string]: SchemaTreeNode } & {
+  _input?: IInputDefinition
+  _isList?: boolean
+  _isArrayItem?: boolean
+  _isTuple?: boolean
+  _schema?: zod.ZodType<unknown> | ((values: any) => zod.ZodType<unknown>)
+  _schemaObj?: { [key: string]: SchemaTreeNode }
+  _requiredOnly?: boolean
+}
+
+export interface IGetValidationSchemaOptions<T = any> {
+  /**
+   * Metadata is passed down to validation callbacks
+   */
+  metadata?: T
+  /**
+   * If formik model is nested, use prefix to extract data form matching.
+   *
+   * e.g. to get form data form {formData: {...}} use "formData." as prefix
+   */
+  prefix?: string
+  /**
+   * global validation configuration applies to all inputs
+   */
+  validationConfig?: IGlobalValidationConfig
+  // TODO: check this
+  utils?: {
+    getValuesWithDependencies?: (values: AnyFormValue, input: IInputDefinition) => AnyFormValue
+  }
+}
+
+export function getValidationSchema<T = any>(
+  inputs: IFormDefinition,
+  values: AnyFormValue,
+  options?: IGetValidationSchemaOptions<T>
+): zod.ZodObject<zod.ZodRawShape> {
+  let schemaTreeNode: SchemaTreeNode = {}
+
+  // 1. Prepare tree model
+  populateSchemaTreeRec(schemaTreeNode, inputs.inputs, values, options)
+
+  if (options?.prefix) {
+    const prefixWithoutDot = options?.prefix.replace(/.$/, '')
+    schemaTreeNode = set({}, prefixWithoutDot, schemaTreeNode)
+  }
+
+  // 2. Generate schema from model
+  const schema = zod.object(generateSchemaRec(schemaTreeNode, values, options))
+
+  return schema
+}
+
+function buildTupleSchema(
+  node: SchemaTreeNode,
+  values: AnyFormValue,
+  options?: IGetValidationSchemaOptions
+): zod.ZodTypeAny | null {
+  // Extract numeric keys (tuple indices)
+  const numericKeys = Object.keys(node)
+    .filter(k => /^\d+$/.test(k) && !k.startsWith('_'))
+    .map(k => parseInt(k, 10))
+    .sort((a, b) => a - b)
+
+  if (numericKeys.length === 0) return null
+
+  // Build tuple items, filling gaps with zod.any().optional()
+  const maxIndex = Math.max(...numericKeys)
+  const tupleItems: zod.ZodTypeAny[] = []
+
+  for (let i = 0; i <= maxIndex; i++) {
+    if (numericKeys.includes(i)) {
+      const itemNode = node[i]
+      const itemSchemas = generateSchemaRec({ item: itemNode }, values, options)
+      tupleItems.push(itemSchemas.item || zod.any().optional())
+    } else {
+      // Fill gaps with optional any
+      tupleItems.push(zod.any().optional())
+    }
+  }
+
+  return zod
+    .tuple(tupleItems as any)
+    .rest(zod.any())
+    .optional()
+}
+
+/**
+ * Internal meta markers set on a schema-tree node to describe that node itself
+ * (its input, whether it is a list/array/tuple, etc.). They are not child field
+ * paths, so `generateSchemaRec` must skip them when recursing into a node's children.
+ */
+const RESERVED_SCHEMA_KEYS = new Set([
+  '_requiredOnly',
+  '_schemaObj',
+  '_input',
+  '_isList',
+  '_isArrayItem',
+  '_isTuple',
+  '_schema'
+])
+
+function generateSchemaRec(schemaObj: SchemaTreeNode, values: AnyFormValue, options?: IGetValidationSchemaOptions) {
+  const objectSchemas: { [key: string]: zod.Schema<unknown> } = {}
+
+  Object.keys(schemaObj).forEach(key => {
+    // Skip internal meta markers; they describe the current node, not child fields.
+    if (RESERVED_SCHEMA_KEYS.has(key)) {
+      return
+    }
+
+    const { _requiredOnly, _schemaObj, _input, _isList, _isArrayItem, _isTuple, _schema /*...nestedSchemaObj*/ } =
+      schemaObj[key]
+
+    // Handle tuple schemas
+    if (_isTuple && !_isList && !_isArrayItem) {
+      const tupleSchema = buildTupleSchema(schemaObj[key], values, options)
+      if (tupleSchema) {
+        objectSchemas[key] = tupleSchema
+        return
+      }
+    }
+
+    if (_isList && _schemaObj && _input) {
+      const innerObjectSchema = zod.object(generateSchemaRec(_schemaObj, values, options))
+      const arraySchema = zod.union([
+        zod.array(innerObjectSchema).optional(),
+        createStringSchemaWithGlobalValidation(_input, options)
+      ])
+      const enhancedSchema = getSchemaForArray(_schema, _input, values, options, arraySchema)
+      objectSchemas[key] = enhancedSchema!
+    } else if (_isArrayItem && _input) {
+      const innerSchema = _schemaObj?.___array
+        ? generateSchemaRec({ ___array: _schemaObj.___array }, values, options)
+        : { ___array: zod.any() }
+      const arraySchema = createSchemaForArray(innerSchema, _input, options)
+
+      const enhancedSchema = getSchemaForArray(_schema, _input, values, options, arraySchema)
+      objectSchemas[key] = enhancedSchema!
+    } else if (_schema && _input) {
+      const ownSchema = getSchemaForPrimitive(_schema, _input, values, options)
+      // Like the list/array branches, validate nested inputs after the input's own rule.
+      objectSchemas[key] = hasNestedInputs(schemaObj[key])
+        ? ownSchema.pipe(getObjectSchema(schemaObj[key], values, options))
+        : ownSchema
+    } else if (_requiredOnly && _input) {
+      const ownSchema = getRequiredSchema(_input, options)
+      objectSchemas[key] = hasNestedInputs(schemaObj[key])
+        ? ownSchema.pipe(getObjectSchema(schemaObj[key], values, options))
+        : ownSchema
+    } else {
+      objectSchemas[key] = getObjectSchema(schemaObj[key], values, options)
+    }
+  })
+
+  return objectSchemas
+}
+
+function hasNestedInputs(node: SchemaTreeNode): boolean {
+  return Object.keys(node).some(key => !RESERVED_SCHEMA_KEYS.has(key))
+}
+
+function getObjectSchema(
+  node: SchemaTreeNode,
+  values: AnyFormValue,
+  options?: IGetValidationSchemaOptions
+): zod.ZodTypeAny {
+  // Validate a missing/null object as `{}` so required descendants are still enforced
+  // (`.optional()` would skip the whole branch). Parsed output is not used as form data.
+  const objectSchema = zod.preprocess(
+    value => (value == null ? {} : value),
+    zod.object(generateSchemaRec(node, values, options))
+  )
+  // For object/group container inputs, also accept a runtime/expression string value
+  // (e.g. the whole object switched to `<+input>`). `globalValidation` decides whether the
+  // string is acceptable — mirroring the list branch above, which unions its array schema
+  // with a string schema rather than hard-failing with "Expected object, received string".
+  return node._input
+    ? zod.union([objectSchema, createStringSchemaWithGlobalValidation(node._input, options)])
+    : objectSchema
+}
+
+/**
+ * Creates a string schema with global validation support for runtime values
+ */
+function createStringSchemaWithGlobalValidation(
+  input: IInputDefinition,
+  options?: IGetValidationSchemaOptions
+): zod.ZodEffects<zod.ZodString, string, string> {
+  return zod.string().superRefine((value, ctx) => {
+    if (options?.validationConfig?.globalValidation) {
+      const validationRes = options.validationConfig.globalValidation(value, input, options.metadata)
+
+      if (validationRes.error) {
+        ctx.addIssue({
+          code: zod.ZodIssueCode.custom,
+          message: validationRes.error
+        })
+        return false
+      }
+
+      // If continue is false, skip further validation
+      if (!validationRes.continue) {
+        return true
+      }
+    }
+
+    return true
+  })
+}
+
+function createSchemaForArray(
+  innerSchema:
+    | {
+        [key: string]: zod.ZodType<unknown, zod.ZodTypeDef, unknown>
+      }
+    | {
+        ___array: zod.ZodAny
+      },
+  input: IInputDefinition,
+  options?: IGetValidationSchemaOptions
+) {
+  return zod.union([zod.array(innerSchema.___array).optional(), createStringSchemaWithGlobalValidation(input, options)])
+}
+
+function getSchemaForPrimitive(
+  schema: zod.ZodType<unknown> | ((values: any) => zod.ZodType<unknown>) | undefined,
+  input: IInputDefinition,
+  values: any,
+  options?: IGetValidationSchemaOptions
+) {
+  return zod
+    .any()
+    .optional()
+    .superRefine(async (value, ctx) => {
+      // 1. Required validation
+      if (input.required) {
+        const requiredSchemaResponse = await getRequiredSchema(input, options).safeParseAsync(value)
+        if (!requiredSchemaResponse.success) {
+          ctx.addIssue({
+            code: zod.ZodIssueCode.custom,
+            message: getRequiredMessage(input, options)
+          })
+          return zod.NEVER
+        }
+      }
+
+      // 2. Global validation
+      if (options?.validationConfig?.globalValidation) {
+        const validationRes = options?.validationConfig?.globalValidation(value, input!, options.metadata)
+
+        if (validationRes.error) {
+          ctx.addIssue({
+            code: zod.ZodIssueCode.custom,
+            message: validationRes.error
+          })
+          return zod.NEVER
+        }
+
+        if (!validationRes.continue) {
+          return true
+        }
+      }
+
+      //3. Input validation
+      const schemaInternal = getSchema(schema, values)
+      if (schemaInternal) {
+        const schemaResponse = await schemaInternal.safeParseAsync(value)
+
+        if (!schemaResponse.success) {
+          // NOTE: Override default zod's "Required" message
+          const originalMessage = processValidationParseResponse(schemaResponse?.error.message)
+          const message = originalMessage === 'Required' ? getRequiredMessage(input, options) : originalMessage
+
+          ctx.addIssue({
+            code: zod.ZodIssueCode.custom,
+            message
+          })
+        }
+      }
+    })
+}
+
+function getSchemaForArray(
+  schema: zod.ZodType<unknown> | ((values: any) => zod.ZodType<unknown>) | undefined,
+  input: IInputDefinition,
+  values: AnyFormValue,
+  options?: IGetValidationSchemaOptions,
+  arraySchema?: zod.ZodTypeAny
+) {
+  return zod
+    .any()
+    .optional()
+    .superRefine(async (value: any, ctx) => {
+      // 1. Required validation
+      const requiredSchema = getRequiredSchema(input, options)
+      const requiredSchemaResult = await requiredSchema.safeParseAsync(value)
+      if (input.required && !requiredSchemaResult.success) {
+        // TODO: move this logic to utils. (check if there is better solution)
+        const message = processValidationParseResponse(requiredSchemaResult.error.message)
+        ctx.addIssue({ code: zod.ZodIssueCode.custom, message: message, fatal: true })
+        return zod.NEVER
+      }
+      if (!input.required && !requiredSchemaResult.success) {
+        return zod.NEVER
+      }
+
+      // 2. Global validation
+      if (options?.validationConfig?.globalValidation) {
+        const validationRes = options?.validationConfig?.globalValidation(value, input, options.metadata)
+
+        if (validationRes.error) {
+          ctx.addIssue({
+            code: zod.ZodIssueCode.custom,
+            message: processValidationParseResponse(validationRes.error)
+          })
+          return zod.NEVER
+        } else if (!validationRes.continue) {
+          return true
+        }
+      }
+
+      // 3. Prevent more validation if value is not an array
+      if (!isArray(value)) {
+        ctx.addIssue({
+          code: zod.ZodIssueCode.custom,
+          message: "'Value is not array'"
+        })
+        return zod.NEVER
+      }
+
+      // 4. Input validation
+      const schemaInternal = getSchema(schema, values)
+      if (schemaInternal) {
+        const schemaResult = await schemaInternal.safeParseAsync(value)
+
+        if (!schemaResult.success) {
+          ctx.addIssue({
+            code: zod.ZodIssueCode.custom,
+            message: processValidationParseResponse(schemaResult.error.message)
+          })
+          return zod.NEVER
+        }
+      }
+
+      // NOTE: THIS IS MOVED TO pipe(...) - delete following block
+      // // 5. Return dynamically created validation for nested inputs
+      // const arraySchemaResponse = await arraySchema?.safeParseAsync(value)
+      // if (!arraySchemaResponse?.success) {
+      //   ctx.addIssue({
+      //     code: zod.ZodIssueCode.custom,
+      //     message: arraySchemaResponse?.error.message
+      //   })
+      // }
+    })
+    .pipe(arraySchema ?? zod.any())
+}
+
+function populateSchemaTreeRec<T = any>(
+  schemaObj: SchemaTreeNode,
+  inputsArr: IInputDefinition[],
+  values: AnyFormValue,
+  options?: IGetValidationSchemaOptions<T>,
+  utils?: {
+    getValuesWithDependencies?: (values: AnyFormValue, input: IInputDefinition) => AnyFormValue
+  }
+): void {
+  inputsArr.forEach(input => {
+    const valuesWithDependencies = utils?.getValuesWithDependencies
+      ? utils?.getValuesWithDependencies(values, input)
+      : values
+
+    if (!input.isVisible || input.isVisible?.(valuesWithDependencies, options?.metadata)) {
+      const existingSchema = get(schemaObj, input.path)
+      if (input.validation?.schema) {
+        set(
+          schemaObj,
+          input.path,
+          merge(existingSchema, {
+            _schema: input.validation?.schema,
+            _input: input
+          })
+        )
+      } else if (input.required) {
+        set(schemaObj, input.path, merge(existingSchema, { _requiredOnly: true, _input: input }))
+      }
+      if (input.inputs) {
+        // Record the container input on its own node so its object schema can also accept a
+        // runtime/expression string value (see the object-container union in `generateSchemaRec`).
+        if (input.path) {
+          set(schemaObj, input.path, merge(get(schemaObj, input.path), { _input: input }))
+        }
+        populateSchemaTreeRec(schemaObj, input.inputs, values, options, utils)
+      }
+
+      // handle list
+      if (input.inputType === 'list') {
+        const listSchemaObj: SchemaTreeNode = {}
+        populateSchemaTreeRec(
+          listSchemaObj,
+          (input.inputConfig as { inputs: (IInputDefinition & { relativePath: string })[] })?.inputs?.map(item => ({
+            ...item,
+            path: item.relativePath
+          })),
+          values,
+          options,
+          utils
+        )
+
+        const existingSchema = get(schemaObj, input.path)
+        set(schemaObj, input.path, merge(existingSchema, { _schemaObj: listSchemaObj, _isList: true, _input: input }))
+      }
+
+      // handle array
+      if (!input.validation?.schema && (input.inputType as string) === 'array') {
+        const arraySchemaObj = {}
+        populateSchemaTreeRec(
+          arraySchemaObj,
+          [{ ...(input.inputConfig as { input: IInputDefinition }).input, path: '___array' }],
+          values,
+          options,
+          utils
+        )
+
+        set(
+          schemaObj,
+          input.path,
+          merge(existingSchema, {
+            _schemaObj: arraySchemaObj,
+            _schema: input.validation?.schema,
+            _isArrayItem: true,
+            _input: input
+          })
+        )
+      }
+    }
+  })
+
+  // Second pass: mark tuple containers after all nodes are created
+  inputsArr.forEach(input => {
+    const valuesWithDependencies = utils?.getValuesWithDependencies
+      ? utils?.getValuesWithDependencies(values, input)
+      : values
+
+    if ((!input.isVisible || input.isVisible?.(valuesWithDependencies, options?.metadata)) && input.path) {
+      const pathSegments = input.path.split('.')
+      pathSegments.forEach((segment, index) => {
+        if (index > 0 && /^\d+$/.test(segment)) {
+          // Found numeric segment, mark parent as tuple container
+          const parentPath = pathSegments.slice(0, index).join('.')
+          const parent = parentPath ? get(schemaObj, parentPath) : schemaObj
+          if (parent && typeof parent === 'object') {
+            parent._isTuple = true
+          }
+        }
+      })
+    }
+  })
+}
+
+function getRequiredMessage(input: IInputDefinition, options?: IGetValidationSchemaOptions): string {
+  return (
+    options?.validationConfig?.requiredMessagePerInput?.[input.inputType] ??
+    options?.validationConfig?.requiredMessage ??
+    REQUIRED_MESSAGE
+  )
+}
+
+function getRequiredSchema(input: IInputDefinition, options?: IGetValidationSchemaOptions): zod.Schema<unknown> {
+  if (options?.validationConfig?.requiredSchemaPerInput?.[input.inputType]) {
+    return options?.validationConfig?.requiredSchemaPerInput?.[input.inputType]
+  } else if (options?.validationConfig?.requiredSchema) {
+    return options?.validationConfig?.requiredSchema
+  }
+
+  const requiredMessage = getRequiredMessage(input, options)
+
+  // Default "required value" validation
+  return zod
+    .any()
+    .optional()
+    .superRefine((value, ctx) => {
+      if (typeof value === 'object' && isEmpty(value)) {
+        ctx.addIssue({
+          code: zod.ZodIssueCode.custom,
+          message: requiredMessage
+        })
+      }
+      if (isUndefined(value) || value === '') {
+        ctx.addIssue({
+          code: zod.ZodIssueCode.custom,
+          message: requiredMessage
+        })
+      }
+    })
+}
+
+function getSchema<T>(schema: zod.ZodType<unknown> | ((values: any) => zod.ZodType<unknown>) | undefined, values: T) {
+  if (schema instanceof zod.ZodType) {
+    return schema
+  } else if (typeof schema === 'function') {
+    return schema(values)
+  }
+  return undefined
+}

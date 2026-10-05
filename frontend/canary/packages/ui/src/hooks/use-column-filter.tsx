@@ -1,0 +1,136 @@
+import { useCallback, useEffect, useMemo } from 'react'
+
+import { CheckboxOptions } from '@/components'
+
+import { useLocalStorage } from './use-local-storage'
+
+interface UseColumnFilterProps {
+  /**
+   * Unique key for localStorage persistence
+   */
+  storageKey: string
+  /**
+   * Available columns configuration
+   */
+  columns: CheckboxOptions[]
+  /**
+   * Default visible columns (used when no localStorage value exists)
+   */
+  defaultVisibleColumns?: string[]
+}
+
+interface UseColumnFilterReturn {
+  /**
+   * Currently visible column identifiers
+   */
+  visibleColumns: string[]
+  /**
+   * Toggle visibility of a specific column
+   */
+  toggleColumn: (columnName: string, checked: boolean) => void
+  /**
+   * Reset to default visible columns
+   */
+  resetColumns: () => void
+}
+
+/**
+ * Hook that manages column visibility state with localStorage persistence
+ * and returns a pre-configured DataTableColumnFilterDropdown component.
+ *
+ * @example
+ * ```tsx
+ * const columns = [
+ *   { label: 'Name', value: 'name' },
+ *   { label: 'Email', value: 'email' },
+ *   { label: 'Status', value: 'status' }
+ * ]
+ *
+ * const { visibleColumns, toggleColumn, resetColumns } = useColumnFilter({
+ *   storageKey: 'users-table-columns',
+ *   columns,
+ *   defaultVisibleColumns: ['name', 'email']
+ * })
+ *
+ * return (
+ *   <div>
+ *      <DataTable.ColumnFilter
+ *        columns={columns}
+ *        visibleColumns={visibleColumns}
+ *        onCheckedChange={toggleColumn}
+ *        onReset={resetColumns}
+ *       />
+ *     <DataTable columns={columns} visibleColumns={visibleColumns} />
+ *   </div>
+ * )
+ * ```
+ */
+export function useColumnFilter({
+  storageKey,
+  columns,
+  defaultVisibleColumns
+}: UseColumnFilterProps): UseColumnFilterReturn {
+  const fixedColumnValues = useMemo(() => columns.filter(col => col.disabled).map(col => col.value), [columns])
+
+  // Initialize default visible columns (all columns if not specified)
+  const defaultColumns = useMemo(
+    () => defaultVisibleColumns ?? columns.map(col => col.value),
+    [defaultVisibleColumns, columns]
+  )
+
+  // Persist visible columns in localStorage
+  const [storedVisibleColumns, setVisibleColumns] = useLocalStorage<string[]>(storageKey, defaultColumns)
+
+  // Filter out any columns that don't exist in the current columns array
+  const validColumnValues = useMemo(() => new Set(columns.map(col => col.value)), [columns])
+  const visibleColumns = useMemo(() => {
+    const filtered = storedVisibleColumns.filter(col => validColumnValues.has(col))
+    const merged = [...filtered]
+    for (const fixed of fixedColumnValues) {
+      if (!merged.includes(fixed)) {
+        merged.push(fixed)
+      }
+    }
+    return merged
+  }, [storedVisibleColumns, validColumnValues, fixedColumnValues])
+
+  // Sync cleaned column list back to localStorage if it changed
+  useEffect(() => {
+    const hasChanged =
+      visibleColumns.length !== storedVisibleColumns.length ||
+      visibleColumns.some((col, idx) => col !== storedVisibleColumns[idx])
+    if (hasChanged) {
+      setVisibleColumns(visibleColumns)
+    }
+  }, [visibleColumns, storedVisibleColumns, setVisibleColumns])
+
+  // Toggle column visibility
+  const toggleColumn = useCallback(
+    (columnName: string, checked: boolean) => {
+      if (columns.some(col => col.value === columnName && col.disabled)) {
+        return
+      }
+      if (checked) {
+        // Add column if not already present
+        const newColumns = visibleColumns.includes(columnName) ? visibleColumns : [...visibleColumns, columnName]
+        setVisibleColumns(newColumns)
+      } else {
+        // Remove column
+        const newColumns = visibleColumns.filter(col => col !== columnName)
+        setVisibleColumns(newColumns)
+      }
+    },
+    [visibleColumns, setVisibleColumns, columns]
+  )
+
+  // Reset to default columns
+  const resetColumns = useCallback(() => {
+    setVisibleColumns([...new Set([...defaultColumns, ...fixedColumnValues])])
+  }, [setVisibleColumns, defaultColumns, fixedColumnValues])
+
+  return {
+    visibleColumns,
+    toggleColumn,
+    resetColumns
+  }
+}

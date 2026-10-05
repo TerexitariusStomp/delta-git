@@ -1,0 +1,279 @@
+{
+  "alert": {
+    "close": "Close alert",
+    "contentRegion": "Alert content",
+    "showLess": "Show less",
+    "showMore": "Show more"
+  },
+  "navbar": {
+    "pin": "Pin",
+    "remove": "Remove",
+    "reorder": "Reorder",
+    "unpin": "Unpin",
+    "command-palette": "Command Palette",
+    "nothing-found": "Nothing found",
+    "search": "Search",
+    "settings": "Settings",
+    "appearance": "Appearance",
+    "language": "Language",
+    "logout": "Log out",
+    "devops": "Devops",
+    "databases": "Databases",
+    "deployments": "Deployments",
+    "artifacts": "Artifacts",
+    "builds": "Builds",
+    "developer-portal": "Developer Portal",
+    "repositories": "Repositories",
+    "developer-environments": "Developer Environments",
+    "infrastructure": "Infrastructure",
+    "ai-ml-ops": "AI / ML Ops",
+    "testing": "Testing",
+    "featureFlags": {
+      "mainTitle": "Feature Flags",
+      "targetGroups": "Target groups"
+    },
+    "incidents": "Incidents",
+    "chaos-engineering": "Chaos Engineering",
+    "security": "Security",
+    "security-tests": "Security Tests",
+    "runtime-security": "Runtime Security",
+    "supply-chain": "Supply Chain",
+    "efficiency": "Efficiency",
+    "cloud-costs": "Cloud Costs",
+    "platform": "Platform",
+    "dashboards": "Dashboard",
+    "account": "Account",
+    "organization": "Organization",
+    "general": "General",
+    "access-control": "Access Control",
+    "notifications": "Notifications",
+    "resources": "Resources",
+    "certificates": "Certificates",
+    "connectors": "Connectors",
+    "services": "Services",
+    "secrets": "Secrets",
+    "delegates": "Delegates",
+    "environments": "Environments",
+    "variables": "Variables",
+    "templates": "Templates",
+    "policies": "Policies",
+    "webhooks": "Webhooks",
+    "more": "More",
+    "recent": "Recent",
+    "user-management": "User Management",
+    "searchButton": "Open search dialog",
+    "profile": "Profile",
+    "theme": "Theme",
+    "customNav": "Customize navigation",
+    "pipelines": "Pipelines",
+    "executions": "Executions",
+    "feature-flags": "Feature Flags",
+    "developer-insights": "Developer Insights",
+    "secops": "Secops",
+    "finops": "Finops",
+    "reliability": "Reliability",
+    "file-store": "File Store",
+    "slo-downtime": "SLO Downtime",
+    "discovery": "Discovery",
+    "monitored-services": "Monitored Services",
+    "overrides": "Overrides",
+    "users": "Users",
+    "user-groups": "User Groups",
+    "service-accounts": "Service Accounts",
+    "resource-groups": "Resource Groups",
+    "roles": "Roles",
+    "security-and-governance": "Security and Governance",
+    "freeze-windows": "Freeze Windows",
+    "external-tickets": "External Tickets",
+    "administration": "Administration"
+  },
+  "cardSelect": {
+    "comingSoon": "Coming Soon"
+  },
+  "dialog": {
+    "noDescription": "No description available"
+  },
+  "deleteDialog": {
+    "descriptionWithType": "This will permanently delete your {{type}} {{identifier}} and remove all data. This action cannot be undone.",
+    "description": "This will permanently remove all data. This action cannot be undone.",
+    "title": "Are you sure?",
+    "inputLabel": "To confirm, type",
+    "validation": {
+      "mismatch": ""
+    },
+    "violationMessages": {
+      "bypassed": "Some rules will be bypassed while deleting {{type}}",
+      "notAllow": "Some rules don't allow you to delete {{type}}"
+    },
+    "cancel": "Cancel",
+    "bypassButton": "Bypass rule and confirm delete"
+  },
+  "dropdownMenu": {
+    "noOptions": "No options available"
+  },
+  "filter": {
+    "delete": "Delete Filter",
+    "deleteSavedFilterFailed": "Failed to delete filter",
+    "inputPlaceholder": "Filter by...",
+    "buttonLabel": "Reset filters",
+    "defaultLabel": "Filter",
+    "saveFilter": "Save filter",
+    "reset": "Reset",
+    "search": {
+      "placeholder": "Search"
+    },
+    "add-filter": "Add filter",
+    "is": "is",
+    "isNot": "is not",
+    "isEmpty": "is empty",
+    "isNotEmpty": "is not empty",
+    "isBefore": "is before",
+    "isAfter": "is after",
+    "isBetween": "is between",
+    "contains": "contains",
+    "doesNotContain": "does not contain",
+    "startsWith": "starts with",
+    "endsWith": "ends with",
+    "type": "Type",
+    "public": "Public",
+    "private": "Private",
+    "fork": "Fork",
+    "createdTime": "Created Time",
+    "name": "Name",
+    "stars": "Stars",
+    "ascending": "Ascending",
+    "descending": "Descending",
+    "author": "Author",
+    "createdBefore": "Created Before",
+    "createdAfter": "Created After"
+  },
+  "select": {
+    "placeholder": "Select an option",
+    "clearSelection": "Clear selection",
+    "noResults": "No results found",
+    "noOptions": "No options available"
+  },
+  "commitDialog": {
+    "title": "Commit changes",
+    "form": {
+      "file": {
+        "label": "File name",
+        "placeholder": "Add a file name"
+      },
+      "commit": {
+        "label": "Commit message",
+        "placeholder": "Add a commit message"
+      },
+      "description": {
+        "placeholder": "Add an optional extended description",
+        "label": "Extended description"
+      },
+      "radioGroup": {
+        "directly": {
+          "labelFirst": "Commit directly to",
+          "labelSecond": "branch"
+        },
+        "new": {
+          "label": "Create a new branch for this commit and start a pull request",
+          "caption": "Learn more about pull requests",
+          "input": "New branch name"
+        }
+      },
+      "submit": {
+        "loading": "Committing...",
+        "default": "Commit changes",
+        "bypassable": {
+          "new": "Bypass rules and commit via new branch",
+          "directly": "Bypass rules and commit directly"
+        }
+      }
+    },
+    "violationMessages": {
+      "bypassed": {
+        "directly": "Some rules will be bypassed to commit directly",
+        "new": "Some rules will be bypassed to commit by creating branch"
+      },
+      "notAllow": {
+        "directly": "Some rules don't allow you to commit directly",
+        "new": "Some rules don't allow you to create new branch for commit"
+      }
+    }
+  },
+  "cancel": "Cancel",
+  "pagination": {
+    "goToPreviousPage": "Go to previous page",
+    "goToNextPage": "Go to next page",
+    "morePages": "More pages",
+    "itemsPerPage": "items per page",
+    "pageOf": "Page {{currentPage}} of {{totalPages}}",
+    "page": "Page {{currentPage}}",
+    "previous": "Prev",
+    "next": "Next"
+  },
+  "searchFile": {
+    "noFile": "No file found."
+  },
+  "sidebar": {
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "sidebarToggle": {
+      "expand": "Expand",
+      "collapse": "Collapse"
+    },
+    "toggle": "Toggle sidebar"
+  },
+  "widgets": {
+    "viewMore": "View more"
+  },
+  "entity": {
+    "cantDelete": "Can't delete {{entity}}",
+    "cantDeleteMessage": "The {{entity}} [{{entityId}}] is being referenced in other entities. Please remove the referenced {{entity}} from affected entities before deleting.",
+    "viewReferences": "View references",
+    "forceDelete": "Forcefully delete this {{entity}} now",
+    "forceDeleteWarning": "Forceful deletion might render entities referencing this {{entity}} invalid and will need to be updated.",
+    "delete": "Delete"
+  },
+  "sort": {
+    "defaultLabel": "Sort",
+    "resetSort": "Reset sort",
+    "inputPlaceholder": "Sort by...",
+    "lastUpdated": "Last updated",
+    "stars": "Stars",
+    "forks": "Forks",
+    "pullRequests": "Pull Requests",
+    "title": "Title"
+  },
+  "branchDialog": {
+    "violationMessages": {
+      "bypassed": "Some rules will be bypassed while creating branch",
+      "notAllow": "Some rules don't allow creating branch "
+    },
+    "loading": "Creating branch...",
+    "notAllowed": "Cannot create branch",
+    "default": "Create branch",
+    "bypassButton": "Bypass rules and create branch",
+    "title": "Create a branch",
+    "form": {
+      "name": {
+        "label": "Branch name",
+        "placeholder": "Add a branch name"
+      },
+      "target": {
+        "label": "Based on",
+        "placeholder": "Add a branch name"
+      }
+    }
+  },
+  "tagDialog": {
+    "violationMessages": {
+      "bypassed": "Some rules will be bypassed while creating tag",
+      "notAllow": "Some rules don't allow you to create tag"
+    },
+    "notAllowed": "Cannot create tag",
+    "bypassButton": "Bypass rules and create tag"
+  },
+  "layout": {
+    "table": "Table",
+    "list": "List"
+  }
+}

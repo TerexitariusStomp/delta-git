@@ -1,0 +1,40 @@
+import { resolve } from 'path'
+
+import react from '@vitejs/plugin-react-swc'
+import { defineConfig } from 'vite'
+import dts from 'vite-plugin-dts'
+
+const pkg = require('./package.json')
+
+const externalPackages = Array.from(
+  new Set([
+    ...Object.keys(pkg.dependencies || {}),
+    ...Object.keys(pkg.devDependencies || {}),
+    ...Object.keys(pkg.peerDependencies || {})
+  ])
+)
+
+// Use a function to match subpath imports (e.g., @harnessio/ui/components)
+const external = (id: string) => externalPackages.some(name => id === name || id.startsWith(`${name}/`))
+
+export default defineConfig({
+  define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [
+    react(),
+    dts({
+      outDir: 'dist',
+      tsconfigPath: './tsconfig.json'
+    })
+  ],
+  build: {
+    sourcemap: true,
+    copyPublicDir: false,
+    lib: {
+      entry: resolve(__dirname, 'src/index.ts'),
+      name: 'filters',
+      fileName: 'index',
+      formats: ['es']
+    },
+    rollupOptions: { external }
+  }
+})

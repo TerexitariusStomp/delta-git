@@ -1,0 +1,77 @@
+.ExtendedDiffView-RowCell-Selected.diff-line-new-num,
+.ExtendedDiffView-RowCell-Selected.diff-line-old-num,
+.ExtendedDiffView-RowCell-Selected.diff-line-num,
+.ExtendedDiffView-RowCell-Selected.diff-line-content {
+  position: relative;
+}
+
+.ExtendedDiffView-RowCell-Selected.diff-line-new-num::after,
+.ExtendedDiffView-RowCell-Selected.diff-line-old-num::after,
+.ExtendedDiffView-RowCell-Selected.diff-line-num::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0.1;
+  background-color: var(--cn-yellow-300) !important;
+  pointer-events: none;
+}
+
+.ExtendedDiffView-RowCell-Selected.diff-line-new-num::before,
+.ExtendedDiffView-RowCell-Selected.diff-line-old-num::before,
+.ExtendedDiffView-RowCell-Selected.diff-line-num::before {
+  content: '';
+  z-index: 2;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -2px;
+  width: 4px;
+  background-color: var(--cn-blue-500) !important;
+}
+
+.ExtendedDiffView-RowCell-Selected.diff-line-new-content:after,
+.ExtendedDiffView-RowCell-Selected.diff-line-old-content:after,
+.ExtendedDiffView-RowCell-Selected.diff-line-content:after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0.1;
+  background-color: var(--cn-yellow-300) !important;
+  pointer-events: none;
+}
+
+.diff-add-widget-wrapper {
+  z-index: 10 !important;
+  position: absolute !important;
+}
+
+.diff-tailwindcss-wrapper .diff-line-old-num,
+.diff-tailwindcss-wrapper .diff-line-new-num {
+  position: relative !important;
+}
+
+.diff-tailwindcss-wrapper .diff-line-old-content,
+.diff-tailwindcss-wrapper .diff-line-new-content {
+  position: relative !important;
+}
+
+.diff-line-old-num .diff-add-widget-wrapper,
+.diff-line-new-num .diff-add-widget-wrapper {
+  right: -34px !important;
+  left: unset !important;
+  display: block !important;
+}
+
+.diff-line-old-content .diff-add-widget-wrapper,
+.diff-line-new-content .diff-add-widget-wrapper {
+  left: -5px !important;
+  right: unset !important;
+  display: block !important;
+}
+
+.diff-line-new-num span[data-line-num],
+.diff-line-old-num span[data-line-num] {
+  pointer-events: none !important;
+}

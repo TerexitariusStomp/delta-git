@@ -1,0 +1,93 @@
+import { forwardRef, SVGProps } from 'react'
+
+import { cn } from '@utils/cn'
+import { cva, VariantProps } from 'class-variance-authority'
+
+import { IconNameMapV2 } from './icon-name-map'
+
+export const IconV2DisplayName = 'IconV2'
+
+export type IconV2NamesType = keyof typeof IconNameMapV2
+
+export const iconColorVariants = cva('', {
+  variants: {
+    color: {
+      inherit: '',
+      danger: 'text-cn-icon-danger',
+      warning: 'text-cn-icon-warning',
+      success: 'text-cn-icon-success',
+      info: 'text-cn-icon-info',
+      neutral: 'text-cn-disabled',
+      merged: 'text-cn-icon-merged',
+      risk: 'text-cn-icon-risk'
+    }
+  },
+  defaultVariants: {
+    color: 'inherit'
+  }
+})
+
+export type IconV2Color = VariantProps<typeof iconColorVariants>['color']
+
+export const iconVariants = cva('cn-icon', {
+  variants: {
+    size: {
+      '2xs': 'cn-icon-2xs',
+      xs: 'cn-icon-xs',
+      sm: 'cn-icon-sm',
+      md: 'cn-icon-md',
+      lg: 'cn-icon-lg',
+      xl: 'cn-icon-xl'
+    }
+  },
+  defaultVariants: {
+    size: 'sm'
+  }
+})
+
+interface BaseIconPropsV2 extends Omit<SVGProps<SVGSVGElement>, 'color'> {
+  size?: VariantProps<typeof iconVariants>['size']
+  // incase size will be added through CSS
+  skipSize?: boolean
+  color?: IconV2Color
+}
+
+interface IconDefaultPropsV2 extends BaseIconPropsV2 {
+  name: IconV2NamesType
+  fallback?: never
+}
+
+interface IconFallbackPropsV2 extends BaseIconPropsV2 {
+  name?: IconV2NamesType
+  fallback: IconV2NamesType
+}
+
+export type IconPropsV2 = IconDefaultPropsV2 | IconFallbackPropsV2
+
+const IconV2 = forwardRef<SVGSVGElement, IconPropsV2>(
+  ({ name, size = 'sm', className, skipSize = false, fallback, color = 'inherit', ...props }, ref) => {
+    const Component = name ? IconNameMapV2[name] : undefined
+
+    const sizeClasses = skipSize ? '' : iconVariants({ size })
+
+    const colorClasses = iconColorVariants({ color })
+
+    if (!Component && fallback) {
+      console.warn(`Icon "${name}" not found, falling back to "${fallback}".`)
+      const FallbackComponent = IconNameMapV2[fallback]
+
+      return <FallbackComponent className={cn(sizeClasses, colorClasses, className)} ref={ref} />
+    }
+
+    if (!Component) {
+      console.warn(`Icon "${name}" not found in IconNameMapV2.`)
+      return null
+    }
+
+    return <Component className={cn(sizeClasses, colorClasses, className)} ref={ref} {...props} />
+  }
+)
+
+export { IconV2 }
+
+IconV2.displayName = IconV2DisplayName

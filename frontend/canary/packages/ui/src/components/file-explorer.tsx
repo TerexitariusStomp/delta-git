@@ -1,0 +1,250 @@
+import { ForwardedRef, forwardRef, ReactNode, useMemo } from 'react'
+
+import {
+  Accordion,
+  Button,
+  ButtonProps,
+  GridProps,
+  IconPropsV2,
+  IconV2,
+  IconV2Color,
+  IconV2NamesType,
+  Layout,
+  Text,
+  Tooltip,
+  TooltipProps
+} from '@/components'
+import { LinkProps, useRouterContext } from '@/context'
+import { cn } from '@utils/cn'
+
+type SidebarItemActionButtonPropsType = ButtonProps & {
+  title?: string
+  iconName?: IconV2NamesType
+  iconProps?: Omit<IconPropsV2, 'ref' | 'name' | 'fallback'>
+  onClick: React.MouseEventHandler<HTMLButtonElement>
+}
+
+interface BaseItemProps {
+  icon: NonNullable<IconPropsV2['name']>
+  iconColor?: IconV2Color
+  hideIcon?: boolean
+  isActive?: boolean
+  actionButtons?: SidebarItemActionButtonPropsType[]
+}
+
+interface DefaultItemProps extends BaseItemProps, GridProps {
+  link?: never
+  isFolder?: boolean
+}
+
+interface LinkItemProps extends BaseItemProps, Omit<LinkProps, 'to'> {
+  link?: LinkProps['to']
+  isFolder?: boolean
+}
+
+type ItemProps = DefaultItemProps | LinkItemProps
+
+const InteractiveItem = forwardRef<HTMLDivElement, ItemProps>(
+  (
+    { className, children, icon, iconColor, hideIcon, isActive, link, isFolder, actionButtons, ...props }: ItemProps,
+    ref
+  ) => {
+    const { Link } = useRouterContext()
+
+    const showIcon = !hideIcon
+
+    const actionButtonsContent = useMemo(() => {
+      if (!actionButtons) return null
+
+      return (
+        <Layout.Horizontal gap="none">
+          {actionButtons?.map((buttonProps, index) => {
+            const { title, iconOnly = true, iconName, iconProps, ...rest } = buttonProps
+            return (
+              <Button key={index} size="2xs" variant="ghost" iconOnly={iconOnly} {...rest}>
+                {iconName && <IconV2 name={iconName} {...iconProps} />}
+                {title}
+              </Button>
+            )
+          })}
+        </Layout.Horizontal>
+      )
+    }, [actionButtons])
+
+    const commonClassnames = cn(
+      'cn-file-tree-item',
+      {
+        'cn-file-tree-item-wrapper cn-file-tree-item-leaf': !isFolder,
+        'cn-file-tree-item-active': !isFolder && isActive
+      },
+      className
+    )
+
+    return link ? (
+      <Link
+        ref={ref as ForwardedRef<HTMLAnchorElement>}
+        to={link}
+        className={commonClassnames}
+        {...(props as Omit<LinkItemProps, 'to'>)}
+      >
+        {showIcon && <IconV2 name={icon} size="md" color={iconColor} />}
+        <Text className="flex-1" align="left" color="inherit" truncate>
+          {children}
+        </Text>
+        {actionButtonsContent}
+      </Link>
+    ) : (
+      <Layout.Flex ref={ref} className={commonClassnames} as="button" {...(props as DefaultItemProps)}>
+        {showIcon && <IconV2 name={icon} size="md" color={iconColor} />}
+        <Text className="flex-1" align="left" color="inherit" truncate>
+          {children}
+        </Text>
+        {actionButtonsContent}
+      </Layout.Flex>
+    )
+  }
+)
+InteractiveItem.displayName = 'FileExplorerInteractiveItem'
+
+// Simple CustomItem component using base-item class
+interface CustomItemProps extends React.HTMLAttributes<HTMLDivElement> {
+  children: ReactNode
+}
+
+const CustomItem = forwardRef<HTMLDivElement, CustomItemProps>(
+  ({ className, children, ...props }: CustomItemProps, ref) => {
+    return (
+      <div ref={ref} className={cn('cn-file-tree-base-item', className)} {...props}>
+        {children}
+      </div>
+    )
+  }
+)
+CustomItem.displayName = 'FileExplorerCustomItem'
+
+interface FolderItemProps extends Partial<Omit<BaseItemProps, 'actionButtons'>> {
+  children: ReactNode
+  level: number
+  value: string
+  className?: string
+  wrapperClassName?: string
+  content?: ReactNode
+  onClick?: (value: string) => void
+  link?: string
+}
+
+function FolderItem({
+  children,
+  value = '',
+  isActive,
+  content,
+  link,
+  className,
+  wrapperClassName,
+  onClick,
+  icon = 'folder',
+  ...otherProps
+}: FolderItemProps) {
+  const itemElement = (
+    <InteractiveItem
+      icon={icon}
+      isActive={isActive}
+      link={link}
+      isFolder
+      className={className}
+      onClick={() => onClick?.(value)}
+      {...otherProps}
+    >
+      {children}
+    </InteractiveItem>
+  )
+
+  return (
+    <Accordion.Item value={value} className="group border-none">
+      <Layout.Flex
+        className={cn(
+          'cn-file-tree-folder-item cn-file-tree-item-wrapper pl-0',
+          {
+            'cn-file-tree-item-active': isActive
+          },
+          wrapperClassName
+        )}
+      >
+        <Accordion.Trigger
+          className="cn-file-tree-folder-trigger"
+          headerClassName="rounded-l-4 hover:bg-cn-hover"
+          indicatorProps={{ size: '2xs' }}
+        />
+        {itemElement}
+      </Layout.Flex>
+
+      {!!content && (
+        <Accordion.Content
+          containerClassName="overflow-visible data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 relative after:absolute after:left-cn-sm after:top-0 after:block after:h-full after:w-px after:bg-cn-separator-subtle after:-translate-x-1/2"
+          className="cn-file-tree-item-content"
+        >
+          {content}
+          {/* LOADER */}
+        </Accordion.Content>
+      )}
+    </Accordion.Item>
+  )
+}
+
+interface FileItemProps extends Partial<Omit<BaseItemProps, 'actionButtons'>> {
+  level: number
+  children: ReactNode
+  link?: string
+  value: string
+  onClick?: (value: string) => void
+  tooltip?: TooltipProps['content']
+  [key: `data-${string}`]: any
+}
+
+function FileItem({
+  children,
+  isActive,
+  value,
+  link,
+  onClick,
+  tooltip,
+  icon = 'empty-page',
+  ...dataProps
+}: FileItemProps) {
+  const comp = (
+    <InteractiveItem
+      icon={icon}
+      isActive={isActive}
+      className="mb-cn-4xs"
+      onClick={() => onClick?.(value)}
+      link={link}
+      {...dataProps}
+    >
+      {children}
+    </InteractiveItem>
+  )
+
+  return tooltip ? <Tooltip content={tooltip}>{comp}</Tooltip> : comp
+}
+
+interface RootProps {
+  children: ReactNode
+  onValueChange: (value: string | string[]) => void
+  value: string[]
+}
+
+function Root({ children, onValueChange, value }: RootProps) {
+  return (
+    <Accordion.Root
+      type="multiple"
+      className="min-w-0"
+      onValueChange={onValueChange}
+      value={value}
+      indicatorPosition="left"
+    >
+      {children}
+    </Accordion.Root>
+  )
+}
+
+export { Root, FileItem, FolderItem, CustomItem }

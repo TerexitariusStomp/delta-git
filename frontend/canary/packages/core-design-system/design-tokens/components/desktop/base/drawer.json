@@ -1,0 +1,52 @@
+{
+  "drawer": {
+    "2xs": {
+      "$type": "sizing",
+      "$value": "280"
+    },
+    "xs": {
+      "$type": "sizing",
+      "$value": "388"
+    },
+    "sm": {
+      "$type": "sizing",
+      "$value": "480"
+    },
+    "md": {
+      "$type": "sizing",
+      "$value": "700"
+    },
+    "lg": {
+      "$type": "sizing",
+      "$value": "920"
+    },
+    "xl": {
+      "$type": "sizing",
+      "$value": "1200"
+    },
+    "full": {
+      "$type": "sizing",
+      "$value": "100%"
+    },
+    "container": {
+      "$type": "spacing",
+      "$value": "{spacing.5}"
+    },
+    "gap": {
+      "$type": "spacing",
+      "$value": "{spacing.4}"
+    },
+    "border": {
+      "$type": "borderWidth",
+      "$value": "{borderWidth.1}"
+    },
+    "radius": {
+      "$type": "borderRadius",
+      "$value": "{rounded.4}"
+    },
+    "fade-height": {
+      "$type": "sizing",
+      "$value": "{size.8}"
+    }
+  }
+}

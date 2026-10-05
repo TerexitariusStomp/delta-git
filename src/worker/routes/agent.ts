@@ -1,4 +1,5 @@
 import type { AppContext, AppRouter } from "./hono";
+import { workerExecutionContext } from "./hono";
 import type { RepositoryRoute } from "@/worker/repositories/route";
 import type { AgentRow } from "@/worker/db/d1/schema";
 import type {
@@ -1324,7 +1325,7 @@ export function registerAgentRoutes(router: AppRouter): void {
       if (attached.status === "exists") return bad(c, "workspace-name-collision", 409);
       // Subscribe the fork to `pushed` events so workspace pushes reach the
       // artifacts-events consumer (best-effort, deferred past the response).
-      ensureArtifactsPushSubscription(c.executionCtx, c.env, wsName);
+      ensureArtifactsPushSubscription(workerExecutionContext(c), c.env, wsName);
       metric(c.env, "arena.enter", { scope: "workspace", index: route.repositoryId });
       return json(c, {
         workspace: wsName,
@@ -1505,7 +1506,7 @@ export function registerAgentRoutes(router: AppRouter): void {
       return bad(c, `enter:${entered.status}`, status);
     }
     // Entry accepted — subscribe the entry fork so `pushed` events flow.
-    ensureArtifactsPushSubscription(c.executionCtx, c.env, wsName);
+    ensureArtifactsPushSubscription(workerExecutionContext(c), c.env, wsName);
     await bumpArenaMatchEntryCount(c.var.db, matchId);
     metric(c.env, "arena.enter", { scope: "match", index: matchId });
     return json(

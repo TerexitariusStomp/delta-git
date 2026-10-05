@@ -1,0 +1,287 @@
+{
+  "alert": {
+    "close": "Close alert",
+    "contentRegion": "Alert content",
+    "showLess": "Show less",
+    "showMore": "Show more"
+  },
+  "navbar": {
+    "pin": "Épingler",
+    "remove": "Supprimer",
+    "reorder": "Réorganiser",
+    "unpin": "Désépingler",
+    "command-palette": "Palette de commandes",
+    "nothing-found": "Rien trouvé",
+    "search": "Rechercher",
+    "settings": "Paramètres",
+    "appearance": "Appearance",
+    "language": "Language",
+    "logout": "Se déconnecter",
+    "devops": "Devops",
+    "databases": "Bases de données",
+    "deployments": "Deployments",
+    "artifacts": "Artefacts",
+    "builds": "Builds",
+    "developer-portal": "Portail développeur",
+    "repositories": "Dépôts",
+    "developer-environments": "Environnements développeurs",
+    "infrastructure": "Infrastructure",
+    "ai-ml-ops": "AI / ML Ops",
+    "testing": "Testing",
+    "featureFlags": {
+      "mainTitle": "Feature Flags",
+      "targetGroups": "Target groups"
+    },
+    "incidents": "Incidents",
+    "chaos-engineering": "Ingénierie du chaos",
+    "security": "Security",
+    "security-tests": "Tests de sécurité",
+    "runtime-security": "Runtime Security",
+    "supply-chain": "Chaîne d'approvisionnement",
+    "efficiency": "Efficiency",
+    "cloud-costs": "Coûts cloud",
+    "platform": "Plateforme",
+    "dashboards": "Tableaux de bord",
+    "account": "Compte",
+    "organization": "Organization",
+    "general": "Général",
+    "access-control": "Contrôle d'accès",
+    "notifications": "Notifications",
+    "resources": "Ressources",
+    "certificates": "Certificats",
+    "connectors": "Connecteurs",
+    "services": "Services",
+    "secrets": "Secrets",
+    "delegates": "Délégués",
+    "environments": "Environnements",
+    "variables": "Variables",
+    "templates": "Modèles",
+    "policies": "Politiques",
+    "webhooks": "Webhooks",
+    "more": "Plus",
+    "recent": "Récent",
+    "user-management": "Gestion des utilisateurs",
+    "searchButton": "Ouvrir la boîte de dialogue de recherche",
+    "profile": "Profile",
+    "theme": "Thème",
+    "customNav": "Personnaliser la navigation",
+    "pipelines": "Pipelines",
+    "executions": "Exécutions",
+    "feature-flags": "Indicateurs de fonctionnalités",
+    "developer-insights": "Aperçus développeurs",
+    "secops": "Sécurité opérationnelle",
+    "finops": "Gestion financière",
+    "reliability": "Fiabilité",
+    "file-store": "Stockage de fichiers",
+    "slo-downtime": "Temps d'arrêt SLO",
+    "discovery": "Découverte",
+    "monitored-services": "Services surveillés",
+    "overrides": "Substitutions",
+    "users": "Utilisateurs",
+    "user-groups": "Groupes d'utilisateurs",
+    "service-accounts": "Comptes de service",
+    "resource-groups": "Groupes de ressources",
+    "roles": "Rôles",
+    "security-and-governance": "Sécurité et gouvernance",
+    "freeze-windows": "Fenêtres de gel",
+    "external-tickets": "Tickets externes",
+    "administration": "Administration"
+  },
+  "cardSelect": {
+    "comingSoon": "Coming Soon"
+  },
+  "dialog": {
+    "noDescription": "No description available"
+  },
+  "deleteDialog": {
+    "descriptionWithType": "This will permanently delete your {{type}} {{identifier}} and remove all data. This action cannot be undone.",
+    "description": "This will permanently remove all data. This action cannot be undone.",
+    "title": "Êtes-vous sûr ?",
+    "inputLabel": "To confirm, type",
+    "validation": {
+      "mismatch": ""
+    },
+    "violationMessages": {
+      "bypassed": "",
+      "notAllow": ""
+    },
+    "cancel": "Annuler"
+  },
+  "dropdownMenu": {
+    "noOptions": "Aucune option disponible"
+  },
+  "filter": {
+    "delete": "Delete filter",
+    "deleteSavedFilterFailed": "Failed to delete filter",
+    "inputPlaceholder": "Filtrer par...",
+    "buttonLabel": "Réinitialiser les filtres",
+    "defaultLabel": "Filtrer",
+    "saveFilter": "Save Filter",
+    "reset": "Réinitialiser",
+    "search": {
+      "placeholder": "Search"
+    },
+    "add-filter": "Ajouter un filtre",
+    "is": "est",
+    "isNot": "n'est pas",
+    "isEmpty": "est vide",
+    "isNotEmpty": "n'est pas vide",
+    "isBefore": "est avant",
+    "isAfter": "est après",
+    "isBetween": "est entre",
+    "contains": "contient",
+    "doesNotContain": "ne contient pas",
+    "startsWith": "commence par",
+    "endsWith": "se termine par",
+    "type": "Type",
+    "public": "Public",
+    "private": "Privé",
+    "fork": "Bifurcation",
+    "createdTime": "Date de création",
+    "name": "Nom",
+    "stars": "Étoiles",
+    "ascending": "Croissant",
+    "descending": "Décroissant",
+    "author": "Auteur",
+    "createdBefore": "Created Before",
+    "createdAfter": "Created After"
+  },
+  "select": {
+    "placeholder": "Sélectionnez une option",
+    "clearSelection": "Clear selection",
+    "noResults": "Aucun résultat trouvé",
+    "noOptions": "Aucune option disponible"
+  },
+  "commitDialog": {
+    "title": "Commit changes",
+    "form": {
+      "file": {
+        "label": "File name",
+        "placeholder": "Add a file name"
+      },
+      "commit": {
+        "label": "Commit message",
+        "placeholder": "Add a commit message"
+      },
+      "description": {
+        "placeholder": "Add an optional extended description",
+        "label": "Extended description"
+      },
+      "radioGroup": {
+        "directly": {
+          "labelFirst": "Commit directly to",
+          "labelSecond": "branch"
+        },
+        "new": {
+          "label": "Create a new branch for this commit and start a pull request",
+          "caption": "Learn more about pull requests",
+          "input": "New branch name"
+        }
+      },
+      "submit": {
+        "loading": "Committing...",
+        "default": "Commit changes",
+        "bypassable": {
+          "new": "Bypass rules and commit via new branch",
+          "directly": "Bypass rules and commit directly"
+        }
+      }
+    },
+    "violationMessages": {
+      "bypassed": {
+        "directly": "Some rules will be bypassed to commit directly",
+        "new": "Some rules will be bypassed to commit by creating branch"
+      },
+      "notAllow": {
+        "directly": "Some rules don't allow you to commit directly",
+        "new": "Some rules don't allow you to create new branch for commit"
+      }
+    }
+  },
+  "cancel": "Cancel",
+  "pagination": {
+    "goToPreviousPage": "Go to previous page",
+    "goToNextPage": "Go to next page",
+    "morePages": "More pages",
+    "itemsPerPage": "items per page",
+    "pageOf": "Page {{currentPage}} of {{totalPages}}",
+    "page": "Page {{currentPage}}",
+    "previous": "Précédent",
+    "next": "Suivant"
+  },
+  "searchFile": {
+    "noFile": "Aucun fichier trouvé."
+  },
+  "sidebar": {
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "sidebarToggle": {
+      "expand": "Développer",
+      "collapse": "Réduire"
+    },
+    "toggle": "Basculer la barre latérale"
+  },
+  "widgets": {
+    "viewMore": "View more"
+  },
+  "entity": {
+    "cantDelete": "Can't delete {{entity}}",
+    "cantDeleteMessage": "The {{entity}} [{{entityId}}] is being referenced in other entities. Please remove the referenced {{entity}} from affected entities before deleting.",
+    "viewReferences": "View references",
+    "forceDelete": "Forcefully delete this {{entity}} now",
+    "forceDeleteWarning": "Forceful deletion might render entities referencing this {{entity}} invalid and will need to be updated.",
+    "delete": "Delete"
+  },
+  "sort": {
+    "defaultLabel": "Trier",
+    "resetSort": "Reset sort",
+    "buttonLabel": "Réinitialiser le tri",
+    "inputPlaceholder": "Trier par...",
+    "lastUpdated": "Dernière mise à jour",
+    "stars": "Étoiles",
+    "forks": "Bifurcations",
+    "pullRequests": "Demandes de fusion",
+    "title": "Titre"
+  },
+  "branchDialog": {
+    "violationMessages": {
+      "bypassed": "Some rules will be bypassed while creating branch",
+      "notAllow": "Some rules don't allow creating branch "
+    },
+    "loading": "Creating branch...",
+    "notAllowed": "Cannot create branch",
+    "default": "Create branch",
+    "bypassButton": "Bypass rules and create branch",
+    "title": "Create a branch",
+    "form": {
+      "name": {
+        "label": "Branch name",
+        "placeholder": "Add a branch name"
+      },
+      "target": {
+        "label": "Based on",
+        "placeholder": "Add a branch name"
+      }
+    }
+  },
+  "tagDialog": {
+    "violationMessages": {
+      "bypassed": "Some rules will be bypassed while creating tag",
+      "notAllow": "Some rules don't allow you to create tag"
+    },
+    "notAllowed": "Cannot create tag",
+    "bypassButton": "Bypass rules and create tag"
+  },
+  "layout": {
+    "table": "Table",
+    "list": "List"
+  },
+  "projectSettings": {
+    "members": "membres",
+    "newMember": "Nouveau membre"
+  },
+  "noData": {
+    "members": "Aucun membre pour l'instant.",
+    "inviteMembers": "Ajoutez les premiers membres de votre équipe en les invitant à rejoindre ce projet."
+  }
+}
