@@ -1,0 +1,22 @@
+{
+	# FrankenPHP worker mode: WordPress stays memory-resident between
+	# requests (3–10x faster than PHP-FPM cold calls) and cheaper per
+	# request when billing is per-awake-second.
+	frankenphp {
+		worker /srv/site/index.php
+	}
+	auto_https off
+	order php before file_server
+}
+
+:80 {
+	root * /srv/site
+	encode zstd gzip
+	php {
+		worker /srv/site/index.php
+	}
+	file_server
+	# Woo-aware edge hint: cart/checkout/account bypassed upstream too
+	@woo path /cart/* /checkout/* /my-account/*
+	header @woo Cache-Control "no-store"
+}

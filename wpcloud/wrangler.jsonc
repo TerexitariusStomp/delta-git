@@ -1,0 +1,80 @@
+{
+  "name": "wpcloud",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "ddf0cf5b4491ba59765378877fe8c697",
+  // Free-tier only: no DOs, no Queues, no paid CPU.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "wpcloud", "database_id": "5c93b960-cfc9-4828-87db-a86ffcb40d82", "migrations_dir": "d1/migrations" }
+  ],
+  "r2_buckets": [
+    { "binding": "ARTIFACTS", "bucket_name": "wpcloud-artifacts" }
+  ],
+  // Worker-to-worker fetch between workers.dev subdomains is blocked (CF error
+  // 1042) — the service binding is the only way deploy-git can reach the forge.
+  "services": [{ "binding": "FORGE", "service": "git-on-cloudflare" }],
+  "vars": {
+    "SITE_HOST_SUFFIX": "pages.dev",
+    "APP_HOST": "wpcloud.delta-git.workers.dev",
+    "FORGE_URL": "https://git-on-cloudflare.delta-git.workers.dev",
+    "USDC_CHAIN": "base",
+    "USDC_CONTRACT": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "USDC_RPC": "https://mainnet.base.org",
+    "USDC_CONFIRMATIONS": "3",
+    // Chimera visitor-compute network — coordinator ws/http base.
+    // DISPATCH_AUTH_TOKEN stays a secret (wrangler secret put).
+    "COORDINATOR_URL": "wss://coordinator.localchimera.com"
+  },
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "triggers": {
+    // free tier: 5 cron triggers
+    "crons": ["*/5 * * * *"]
+  },
+  "routes": [],
+  // ---- paid tier (deploy: wrangler deploy -e paid) — client-funded only ----
+  // env.* does not inherit top-level config — everything must be restated.
+  "env": {
+    "paid": {
+      // Canonical deploy: `wrangler deploy -e paid` targets the SAME worker name
+      // so wpcloud.delta-git.workers.dev always carries the paid bindings.
+      "name": "wpcloud",
+      "d1_databases": [
+        { "binding": "DB", "database_name": "wpcloud", "database_id": "5c93b960-cfc9-4828-87db-a86ffcb40d82" }
+      ],
+      "r2_buckets": [
+        { "binding": "ARTIFACTS", "bucket_name": "wpcloud-artifacts" }
+      ],
+      "services": [{ "binding": "FORGE", "service": "git-on-cloudflare" }],
+      "vars": {
+        "SITE_HOST_SUFFIX": "pages.dev",
+        "APP_HOST": "wpcloud.delta-git.workers.dev",
+        "FORGE_URL": "https://git-on-cloudflare.delta-git.workers.dev",
+        "USDC_CHAIN": "base",
+        "USDC_CONTRACT": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "USDC_RPC": "https://mainnet.base.org",
+        "USDC_CONFIRMATIONS": "3",
+        "COORDINATOR_URL": "wss://coordinator.localchimera.com"
+      },
+      "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+      "triggers": { "crons": ["*/5 * * * *"] },
+      "durable_objects": {
+        "bindings": [{ "name": "TENANT", "class_name": "TenantDO" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TenantDO"] }],
+      "containers": [{
+        "class_name": "TenantDO",
+        "image": "./container/Dockerfile",
+        "instance_type": "lite",
+        "max_instances": 100,
+        "name": "tenant-site"
+      }],
+      "queues": {
+        "producers": [{ "binding": "PROVISION", "queue": "wpcloud-provision" }],
+        "consumers": [{ "queue": "wpcloud-provision", "max_batch_size": 10 }]
+      },
+      "send_email": [{ "name": "MAIL" }],
+      "ai": { "binding": "AI" }
+    }
+  }
+}

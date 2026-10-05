@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sync-out",
+    "execute-command": "/usr/local/bin/sync-out.sh",
+    "command-working-directory": "/",
+    "response-message": "synced"
+  },
+  {
+    "id": "restore",
+    "execute-command": "/usr/local/bin/restore.sh",
+    "command-working-directory": "/",
+    "response-message": "restored"
+  },
+  {
+    "id": "exec",
+    "execute-command": "/bin/sh",
+    "command-working-directory": "/srv/site",
+    "pass-arguments-to-command": [{ "source": "payload", "name": "cmd" }],
+    "include-command-output-in-response": true
+  },
+  {
+    "id": "compat-scan",
+    "execute-command": "/usr/local/bin/compat-scan.sh",
+    "command-working-directory": "/srv/site",
+    "response-message": "scanned"
+  },
+  {
+    "id": "daemon",
+    "execute-command": "/usr/local/bin/daemon-svc.sh",
+    "command-working-directory": "/",
+    "pass-arguments-to-command": [
+      { "source": "payload", "name": "op" },
+      { "source": "payload", "name": "slug" },
+      { "source": "payload", "name": "cmd" }
+    ],
+    "response-message": "done"
+  }
+]

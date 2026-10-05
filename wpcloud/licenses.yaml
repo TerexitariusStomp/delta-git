@@ -1,0 +1,75 @@
+# OSS inventory — every runtime dependency, license-verified for commercial use.
+# Enforced by CI: trivy fs --scanners license fails on unlisted/changed licenses.
+site_image:
+  - { name: wordpress,            license: "GPL-2.0+",    url: https://wordpress.org }
+  - { name: woocommerce,          license: "GPL-3.0",     url: https://woocommerce.com }
+  - { name: sqlite-database-integration, license: "GPL-2.0+", url: https://wordpress.org/plugins/sqlite-database-integration }
+  - { name: s3-uploads,           license: MIT,           url: https://github.com/humanmade/S3-Uploads }
+  - { name: fluent-smtp,          license: "GPL-2.0+",    url: https://wordpress.org/plugins/fluent-smtp }
+  - { name: sqlite-object-cache,  license: "GPL-2.0+",    url: https://wordpress.org/plugins/sqlite-object-cache }
+  - { name: simply-static,        license: "GPL-2.0+",    url: https://wordpress.org/plugins/simply-static }
+  - { name: cloudflare-plugin,    license: "GPL-2.0+",    url: https://wordpress.org/plugins/cloudflare }
+  - { name: wordpress-importer,   license: "GPL-2.0+",    url: https://wordpress.org/plugins/wordpress-importer }
+  - { name: updraftplus,          license: "GPL-2.0+",    url: https://wordpress.org/plugins/updraftplus, optional: true }
+runtime:
+  - { name: frankenphp,           license: MIT,           url: https://frankenphp.dev }
+  - { name: apache-httpd,         license: "Apache-2.0",  url: https://httpd.apache.org, note: "Apache SAPI variant — real .htaccess" }
+  - { name: php,                  license: "PHP-3.01",    url: https://php.net }
+  - { name: sqlite,               license: "blessing/public-domain", url: https://sqlite.org }
+  - { name: alpine,               license: "MIT (musl) + mixed-free", url: https://alpinelinux.org }
+  - { name: runit,                license: "BSD-3-Clause", url: http://smarden.org/runit, note: "plugin daemon supervisor" }
+  - { name: php-wasm,             license: "Apache-2.0",  url: https://github.com/seanmorris/php-wasm }
+sidecars:
+  - { name: mariadb,              license: "GPL-2.0",     url: https://mariadb.org, conditional: "pro+ tier" }
+  - { name: mysql,                license: "GPL-2.0",     url: https://www.mysql.com, conditional: "business+ tier — MySQL-8-specific plugins" }
+  - { name: redis,                license: "RSALv2/SSPLv1", url: https://redis.io, conditional: "pro+ object cache — source-available, self-hosted use permitted" }
+  - { name: memcached,            license: "BSD-3-Clause", url: https://memcached.org, conditional: "pro+ object cache" }
+  - { name: elasticsearch,        license: "Elastic-2.0/SSPLv1/AGPL-3.0", url: https://elastic.co, conditional: "enterprise only — ElasticPress" }
+control_dev:
+  - { name: adnanh-webhook,       license: MIT,           url: https://github.com/adnanh/webhook }
+  - { name: ttyd,                 license: MIT,           url: https://github.com/tsl0922/ttyd }
+  - { name: adminer,              license: "Apache-2.0",  url: https://www.adminer.org }
+  - { name: wp-cli,               license: MIT,           url: https://wp-cli.org }
+storage:
+  - { name: rclone,               license: MIT,           url: https://rclone.org }
+  - { name: tigrisfs,             license: "Apache-2.0",  url: https://github.com/tigrisdata/tigrisfs, conditional: "fuse fallback only" }
+authoring:
+  - { name: wp-playground-client, license: "GPL-2.0+",    url: https://github.com/WordPress/wordpress-playground, note: "embedded via hosted iframe boundary" }
+edge:
+  - { name: itty-router,          license: MIT,           url: https://github.com/kwhitley/itty-router }
+  - { name: cloudflare-workers-sdk, license: "Apache-2.0/MIT", url: https://github.com/cloudflare/workers-sdk }
+  - { name: aws4fetch,            license: MIT,           url: https://github.com/mhart/aws4fetch }
+  - { name: viem,                 license: MIT,           url: https://github.com/wevm/viem }
+  - { name: typescript,           license: "Apache-2.0",  url: https://typescriptlang.org }
+versioning:
+  - { name: delta-git,            license: MIT,           url: https://github.com/zllovesuki/git-on-cloudflare, note: "own fork; needs DOs+Queues (paid)" }
+  - { name: isomorphic-git,       license: MIT,           url: https://isomorphic-git.org }
+dashboard:
+  - { name: htmx,                 license: BSD-2-Clause,  url: https://htmx.org }
+visitor_compute:
+  - { name: localchimera-browser-sdk, license: MIT,      url: https://github.com/localchimera/browser-sdk, note: "npm pkg only — monorepo is AGPL-3.0, never vendor repo code" }
+  - { name: localchimera-coordinator, license: "own-code (private)", url: https://localchimera.com, note: "volunteer/job coordinator DO — deployed service" }
+  - { name: web-llm,              license: "Apache-2.0",  url: https://github.com/mlc-ai/web-llm, note: "WebGPU visitor inference, optional peer" }
+  - { name: transformersjs,       license: "Apache-2.0",  url: https://github.com/huggingface/transformers.js, note: "CPU/WASM fallback inference" }
+  - { name: helia,                license: "Apache-2.0 OR MIT", url: https://github.com/ipfs/helia, note: "IPFS storage jobs, optional peer" }
+  - { name: wasmer-sdk,           license: "MIT (verify LICENSE)", url: https://github.com/wasmerio/wasmer-js, note: "WASI sandboxed compute jobs, optional peer" }
+  - { name: multiformats,         license: "Apache-2.0 OR MIT", url: https://github.com/multiformats/js-multiformats }
+  - { name: web3auth,             license: "MIT/ISC (per-pkg varies)", url: https://github.com/Web3Auth, note: "visitor wallet connect — earn path only, optional" }
+  - { name: wllama,               license: MIT,           url: https://github.com/ngxson/wllama, conditional: "device path only, not browser plugin" }
+model_weights:
+  - { name: "Qwen2.5 (default)",  license: "Apache-2.0",  url: https://huggingface.co/Qwen, note: "default visitor-inference model — permissive weights" }
+  - { name: "SmolLM2",            license: "Apache-2.0",  url: https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct }
+  - { name: "Phi-4-mini",         license: MIT,           url: https://huggingface.co/microsoft/Phi-4-mini-instruct }
+  - { name: "Llama-3.x",          license: "Meta Community License", restricted: "ToU-bound — site-owner opt-in only, never default" }
+  - { name: "Gemma",              license: "Gemma Terms of Use", restricted: "ToU-bound — site-owner opt-in only" }
+search:
+  - { name: pagefind,             license: MIT,           url: https://pagefind.app }
+tooling:
+  - { name: node,                 license: MIT,           url: https://nodejs.org }
+  - { name: vitest,               license: MIT,           url: https://vitest.dev }
+  - { name: prettier,             license: MIT,           url: https://prettier.io }
+  - { name: tokei,                license: "MIT/Apache-2.0", url: https://github.com/XAMPPRocky/tokei }
+  - { name: trivy,                license: "Apache-2.0",  url: https://trivy.dev }
+non_oss_services_not_repos:
+  - "Cloudflare: Pages, R2, D1, DOs, Queues, Workers AI, Turnstile, Email Routing/Service, Registrar, CF for SaaS, Analytics Engine, Secrets Store, KV, Cache API"
+  - "External concessions: Resend (free ESP until Email Service flips), Coinbase Pay / Stripe Crypto Onramp (customer fiat→USDC only)"

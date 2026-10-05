@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wp-cloud — WordPress in your browser (forged)</title>
+<style>
+  :root { font-family: system-ui, sans-serif; color-scheme: dark; }
+  body { margin: 0; background: #0b0e14; color: #e6e9ef; }
+  header { display: flex; gap: 1rem; align-items: center; padding: .6rem 1rem; border-bottom: 1px solid #232838; }
+  header h1 { font-size: 1rem; margin: 0; }
+  button { background: #3b82f6; color: #fff; border: 0; border-radius: 6px; padding: .45rem .9rem; cursor: pointer; font: inherit; }
+  button.secondary { background: #232838; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-left: auto; font-size: .8rem; color: #9aa4b8; }
+  main { display: grid; grid-template-columns: 1fr 300px; height: calc(100vh - 52px); }
+  iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  aside { border-left: 1px solid #232838; padding: 1rem; overflow-y: auto; font-size: .85rem; }
+  aside h2 { font-size: .9rem; margin: 1rem 0 .4rem; }
+  aside h2:first-child { margin-top: 0; }
+  .card { background: #141926; border: 1px solid #232838; border-radius: 8px; padding: .7rem; margin-bottom: .7rem; }
+  code { color: #7dd3fc; word-break: break-all; }
+  a { color: #7dd3fc; }
+  #log { font-family: ui-monospace, monospace; font-size: .72rem; color: #6b7688; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>wp-cloud</h1>
+  <a href="/auth/delta-git"><button class="secondary" type="button">Sign in with delta-git</button></a>
+  <button id="connect">Connect wallet</button>
+  <button id="newSite" disabled>New site</button>
+  <button id="publish" disabled>Publish</button>
+  <button id="deployGit" disabled>Deploy from delta-git</button>
+  <button id="versions" class="secondary" disabled>Versions</button>
+  <button id="compat" class="secondary" disabled>Compatibility</button>
+  <span id="status"></span>
+</header>
+<main>
+  <iframe id="wp" title="WordPress"></iframe>
+  <aside>
+    <h2>Site</h2>
+    <div class="card" id="siteCard">No site yet. Sign in with delta-git or connect a wallet, then create a site.</div>
+    <h2>Credits</h2>
+    <div class="card"><span id="balance">—</span><br>
+      <button id="topup" class="secondary" style="margin-top:.4rem">Top up USDC</button>
+      <div id="deposit"></div></div>
+    <h2>Activity</h2>
+    <div id="log"></div>
+  </aside>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
