@@ -16,7 +16,7 @@ import {
  * the space-level artifact browser. All backed by real D1/R2 endpoints.
  */
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function deltaApi<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: "same-origin",
     headers: init?.body ? { "Content-Type": "application/json" } : undefined,
@@ -32,18 +32,18 @@ interface Membership {
 }
 
 const useSpaces = () =>
-  useQuery(["modules", "spaces"], () => api<Membership[]>("/api/v1/user/memberships"), {
+  useQuery(["modules", "spaces"], () => deltaApi<Membership[]>("/api/v1/user/memberships"), {
     select: (rows) => rows.map((r) => r.space.identifier),
   });
 
-function useSpacePicker() {
+export function useSpacePicker() {
   const { data: spaces } = useSpaces();
   const [space, setSpace] = useState<string | null>(null);
   const active = space ?? spaces?.[0] ?? null;
   return { spaces: spaces ?? [], space: active, setSpace };
 }
 
-function SpacePicker({
+export function SpacePicker({
   spaces,
   space,
   setSpace,
@@ -86,18 +86,18 @@ export function NotificationsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data } = useQuery(["notifications"], () =>
-    api<{ notifications: NotificationItem[]; unread: number }>("/api/v1/notifications")
+    deltaApi<{ notifications: NotificationItem[]; unread: number }>("/api/v1/notifications")
   );
   const mark = useMutation(
     (vars: { id: string; read: boolean }) =>
-      api(`/api/v1/notifications/${vars.id}`, {
+      deltaApi(`/api/v1/notifications/${vars.id}`, {
         method: "PATCH",
         body: JSON.stringify({ read: vars.read }),
       }),
     { onSuccess: () => queryClient.invalidateQueries(["notifications"]) }
   );
   const markAll = useMutation(
-    () => api("/api/v1/notifications/read-all", { method: "PATCH", body: "{}" }),
+    () => deltaApi("/api/v1/notifications/read-all", { method: "PATCH", body: "{}" }),
     { onSuccess: () => queryClient.invalidateQueries(["notifications"]) }
   );
 
@@ -179,12 +179,12 @@ export function EnvironmentsPage() {
 
   const { data: envs } = useQuery(
     ["environments", space],
-    () => api<EnvironmentItem[]>(`/api/v1/spaces/${space}/environments`),
+    () => deltaApi<EnvironmentItem[]>(`/api/v1/spaces/${space}/environments`),
     { enabled: !!space }
   );
   const create = useMutation(
     () =>
-      api(`/api/v1/spaces/${space}/environments`, {
+      deltaApi(`/api/v1/spaces/${space}/environments`, {
         method: "POST",
         body: JSON.stringify({ identifier, type }),
       }),
@@ -196,7 +196,7 @@ export function EnvironmentsPage() {
     }
   );
   const remove = useMutation(
-    (id: string) => api(`/api/v1/spaces/${space}/environments/${id}`, { method: "DELETE" }),
+    (id: string) => deltaApi(`/api/v1/spaces/${space}/environments/${id}`, { method: "DELETE" }),
     { onSuccess: () => queryClient.invalidateQueries(["environments", space]) }
   );
 
@@ -279,7 +279,7 @@ export function ArtifactsPage() {
   const { spaces, space, setSpace } = useSpacePicker();
   const { data: artifacts } = useQuery(
     ["artifacts", space],
-    () => api<ArtifactItem[]>(`/api/v1/spaces/${space}/artifacts`),
+    () => deltaApi<ArtifactItem[]>(`/api/v1/spaces/${space}/artifacts`),
     { enabled: !!space }
   );
 

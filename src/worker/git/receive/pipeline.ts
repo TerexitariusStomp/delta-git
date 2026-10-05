@@ -18,6 +18,7 @@ import { insertNotification } from "@/worker/db/d1/dal/modules";
 import { findScanRunForHead, scanStatusSatisfiesPolicy } from "@/worker/db/d1/dal/scanRuns";
 import { newPrefixedId } from "@/worker/common";
 import { readSecuritySettings } from "@/worker/api/gitness/stores";
+import { evaluateDeliveryGates } from "@/worker/api/gitness/delivery";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
 import { enqueuePipelineTrigger } from "@/worker/tasks/pipeline";
 import { enqueueKnowledgeRefresh } from "@/worker/tasks/knowledge";
@@ -268,6 +269,45 @@ export async function executeReceivePipeline(
             empty: false,
           });
         }
+      }
+    }
+
+    // Delivery gates: namespace freeze windows + enforce-mode policies reject
+    // pushes before the pack is staged. Warn-mode hits are logged only.
+    if (hasNonDelete && args.namespaceId) {
+      const db = createDb(args.env.DB);
+      const gate = await evaluateDeliveryGates(db, args.namespaceId, {
+        op: "push",
+        branch: args.commands
+          .find((c) => !/^0{40}$/i.test(c.newOid))
+          ?.ref.replace(/^refs\/heads\//, ""),
+        actor: args.actor,
+      });
+      for (const warning of gate.warnings) {
+        args.log.warn("receive:policy-warn", { repoId: args.repoId, warning });
+      }
+      if (!gate.ok) {
+        args.log.warn("receive:gate-deny", { repoId: args.repoId, deny: gate.deny });
+        await abortReceiveLease({
+          stub: args.stub,
+          leaseToken: args.leaseToken,
+          log: args.log,
+          reason: "gate-deny",
+          attempt: "inline",
+        });
+        const message = gate.deny ?? "push denied by delivery gate";
+        return buildReceiveResult({
+          unpackOk: false,
+          unpackMessage: message,
+          commands: args.commands,
+          statuses: args.commands.map((command) => ({
+            ref: command.ref,
+            ok: false,
+            message,
+          })),
+          changed: false,
+          empty: false,
+        });
       }
     }
 

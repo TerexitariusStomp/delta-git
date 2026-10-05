@@ -31,6 +31,7 @@ import { adjustRep, findRepTarget } from "@/worker/db/d1/dal/reputation";
 import { applyUnifiedPatch } from "@/worker/agent/patch";
 import { scanTextForSecrets } from "@/worker/agent/secretscan";
 import { attemptMerge, mergeDryRun } from "@/worker/merge/engine";
+import { evaluateDeliveryGates } from "@/worker/api/gitness/delivery";
 import { writeServerPack } from "@/worker/merge/packWriter";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { encryptRepoSecret } from "@/worker/agent/secrets";
@@ -401,6 +402,19 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
+    // Delivery gates apply to merges the same way they apply to pushes —
+    // freeze windows and enforce-mode policies can hold a merge intent.
+    const gate = await evaluateDeliveryGates(c.var.db, route.namespaceId, {
+      op: "merge",
+      actor: principal.actor,
+    });
+    for (const warning of gate.warnings) {
+      c.var.logFor({ service: "Gates" }).warn("merge:policy-warn", {
+        repo: route.doName,
+        warning,
+      });
+    }
+    if (!gate.ok) return bad(c, gate.deny ?? "merge denied by delivery gate", 403);
     const stub = getRepoStub(c.env, route.doName);
     const result = await attemptMerge({
       env: c.env,

@@ -29,6 +29,18 @@ import {
 } from "./pages-v2/delta/admin-rbac-pages";
 import { RepoDeltaKnowledgePage } from "./pages-v2/delta/knowledge-page";
 import { ArtifactsPage, EnvironmentsPage, NotificationsPage } from "./pages-v2/delta/module-pages";
+import {
+  ConnectorsPage,
+  DelegatesPage,
+  ExternalTicketsPage,
+  FileStorePage,
+  FreezeWindowsPage,
+  GitOpsPage,
+  IaCPage,
+  PoliciesPage,
+  SpaceTemplatesPage,
+  VariablesPage,
+} from "./pages-v2/delta/delivery-pages";
 import { SecretsVaultPage } from "./pages-v2/delta/secrets-vault-page";
 import {
   RepoDeltaAgentsPage,
@@ -988,6 +1000,59 @@ export const routes: CustomRouteObject[] = [
           breadcrumb: () => <span>Artifacts</span>,
           routeName: RouteConstants.toArtifacts,
           pageTitle: "Artifacts",
+        },
+      },
+      {
+        path: "connectors",
+        element: <ConnectorsPage />,
+        handle: { routeName: RouteConstants.toConnectors, pageTitle: "Connectors" },
+      },
+      {
+        path: "delegates",
+        element: <DelegatesPage />,
+        handle: { routeName: RouteConstants.toDelegates, pageTitle: "Delegates" },
+      },
+      {
+        path: "file-store",
+        element: <FileStorePage />,
+        handle: { routeName: RouteConstants.toFileStore, pageTitle: "File store" },
+      },
+      {
+        path: "templates",
+        element: <SpaceTemplatesPage />,
+        handle: { routeName: RouteConstants.toTemplates, pageTitle: "Templates" },
+      },
+      {
+        path: "variables",
+        element: <VariablesPage />,
+        handle: { routeName: RouteConstants.toVariables, pageTitle: "Variables" },
+      },
+      {
+        path: "freeze-windows",
+        element: <FreezeWindowsPage />,
+        handle: { routeName: RouteConstants.toFreezeWindows, pageTitle: "Freeze windows" },
+      },
+      {
+        path: "external-tickets",
+        element: <ExternalTicketsPage />,
+        handle: { routeName: RouteConstants.toExternalTickets, pageTitle: "External tickets" },
+      },
+      {
+        path: "policies",
+        element: <PoliciesPage />,
+        handle: { routeName: RouteConstants.toPolicies, pageTitle: "Policies" },
+      },
+      {
+        path: "gitops",
+        element: <GitOpsPage />,
+        handle: { routeName: RouteConstants.toGitOps, pageTitle: "GitOps" },
+      },
+      {
+        path: "iac",
+        element: <IaCPage />,
+        handle: {
+          routeName: RouteConstants.toInfrastructureAsCode,
+          pageTitle: "Infrastructure as Code",
         },
       },
       {

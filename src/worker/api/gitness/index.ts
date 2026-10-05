@@ -37,6 +37,7 @@ import { registerGitnessRepoKeys } from "./repokeys";
 import { registerGitnessKnowledge } from "./knowledge";
 import { registerGitnessRbac } from "./rbac";
 import { registerGitnessModules } from "./modules";
+import { registerGitnessDelivery } from "./delivery";
 
 const GITIGNORE_PRESETS = ["Node", "Python", "Go", "Rust", "Java", "C++"];
 const LICENSE_PRESETS = ["MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause", "ISC"];
@@ -61,6 +62,9 @@ export function registerGitnessApi(router: AppRouter) {
   // Modules claim `/spaces/{ref}/{environments,artifacts}` tails plus the
   // top-level `/notifications` inbox — before the greedy space routes.
   registerGitnessModules(router);
+  // Delivery-plane claims `/spaces/{ref}/{connectors,delegates,files,
+  // freezewindows,tickets,gitops,policies,iac}` tails — same ordering rule.
+  registerGitnessDelivery(router);
   registerGitnessSpaces(router);
   // Search claims `/api/v1/search` and `/repos/{ref}/+/...` tails — register
   // before the greedy suffix routes below.

@@ -50,9 +50,12 @@ describe("notifications", () => {
 
     const list = await req("/api/v1/notifications", { cookie: seeded.cookieHeader });
     expect(list.status).toBe(200);
-    const inbox = list.body as { notifications: { id: string; read: boolean }[]; unread: number };
+    const inbox = list.body as {
+      notifications: { id: string; read: boolean; title: string }[];
+      unread: number;
+    };
     expect(inbox.unread).toBeGreaterThan(0);
-    const n = inbox.notifications.find((x) => x.title === undefined) ?? inbox.notifications[0]!;
+    const n = inbox.notifications.find((x) => x.title === "test push")!;
 
     const mark = await req(`/api/v1/notifications/${n.id}`, {
       method: "PATCH",
