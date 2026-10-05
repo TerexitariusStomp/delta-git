@@ -21,6 +21,12 @@ export interface RateLimitSpec {
   limit: number;
   /** Window size in seconds. */
   windowSec: number;
+  /**
+   * Optional Workers Rate Limiting binding to prefer over the KV counter.
+   * Bindings only support 10s/60s windows — the hourly lanes keep the KV
+   * path. Global edge-consistent vs the KV counter's per-colo windows.
+   */
+  binding?: "RATE_LIMIT_AUTH_CHALLENGE" | "RATE_LIMIT_AUTH_VERIFY" | "RATE_LIMIT_PATCH" | "RATE_LIMIT_VOTE";
 }
 
 export interface RateLimitResult {
@@ -29,12 +35,33 @@ export interface RateLimitResult {
   retryAfterSec: number;
 }
 
-/** Fixed-window counter. `key` should be a principal (did, ip hash, ...). */
+/**
+ * Fixed-window counter. `key` should be a principal (did, ip hash, ...).
+ * When the spec names a `ratelimit` binding and it's bound, the platform
+ * limiter runs (globally consistent); otherwise the KV fallback counts in
+ * ROUTES — the path vitest and bindingless dev environments take.
+ */
 export async function rateLimit(
-  kv: KVNamespace,
+  env: Env,
   spec: RateLimitSpec,
   key: string
 ): Promise<RateLimitResult> {
+  if (spec.binding) {
+    // Generated Env marks bindings non-optional; the runtime may still lack
+    // them in test/dev contexts, so keep the guard.
+    const limiter = env[spec.binding] as RateLimit | undefined;
+    if (limiter) {
+      const { success } = await limiter.limit({ key });
+      return {
+        ok: success,
+        // The binding doesn't report remaining budget — report the
+        // full-window retry so Retry-After stays accurate.
+        remaining: success ? spec.limit - 1 : 0,
+        retryAfterSec: spec.windowSec,
+      };
+    }
+  }
+  const kv = env.ROUTES;
   const windowStart = Math.floor(Date.now() / 1000 / spec.windowSec);
   const kvKey = `${RATE_PREFIX}${spec.bucket}:${key}:${windowStart}`;
   const raw = await kv.get(kvKey);
@@ -52,14 +79,14 @@ export async function rateLimit(
 
 // Lane-specific specs — the single place the limits live.
 export const LIMITS = {
-  authChallenge: { bucket: "auth.challenge", limit: 10, windowSec: 60 },
-  authVerify: { bucket: "auth.verify", limit: 20, windowSec: 60 },
+  authChallenge: { bucket: "auth.challenge", limit: 10, windowSec: 60, binding: "RATE_LIMIT_AUTH_CHALLENGE" },
+  authVerify: { bucket: "auth.verify", limit: 20, windowSec: 60, binding: "RATE_LIMIT_AUTH_VERIFY" },
   repoCreate: { bucket: "repo.create", limit: 10, windowSec: 3600 },
   ideaPost: { bucket: "idea.post", limit: 10, windowSec: 3600 },
   ideaImport: { bucket: "idea.import", limit: 5, windowSec: 3600 },
   siteBuild: { bucket: "site.build", limit: 5, windowSec: 3600 },
-  patch: { bucket: "patch", limit: 60, windowSec: 60 },
-  vote: { bucket: "vote", limit: 30, windowSec: 60 },
+  patch: { bucket: "patch", limit: 60, windowSec: 60, binding: "RATE_LIMIT_PATCH" },
+  vote: { bucket: "vote", limit: 30, windowSec: 60, binding: "RATE_LIMIT_VOTE" },
   tokenMint: { bucket: "token.mint", limit: 20, windowSec: 3600 },
   matchCreate: { bucket: "match.create", limit: 10, windowSec: 3600 },
   matchEnter: { bucket: "match.enter", limit: 10, windowSec: 3600 },

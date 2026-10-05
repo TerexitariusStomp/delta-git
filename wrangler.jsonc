@@ -123,6 +123,38 @@
       }
     ]
   },
+  // Workers Rate Limiting bindings — global edge-consistent counters for
+  // the 60s-window abuse lanes (the hourly lanes stay on the KV fixed
+  // window, which the binding can't express). `rateLimit()` falls back to
+  // KV when a binding is absent (e.g. vitest env).
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "RATE_LIMIT_AUTH_CHALLENGE",
+        "type": "ratelimit",
+        "namespace_id": "auth-challenge",
+        "simple": { "limit": 10, "period": 60 }
+      },
+      {
+        "name": "RATE_LIMIT_AUTH_VERIFY",
+        "type": "ratelimit",
+        "namespace_id": "auth-verify",
+        "simple": { "limit": 20, "period": 60 }
+      },
+      {
+        "name": "RATE_LIMIT_PATCH",
+        "type": "ratelimit",
+        "namespace_id": "patch",
+        "simple": { "limit": 60, "period": 60 }
+      },
+      {
+        "name": "RATE_LIMIT_VOTE",
+        "type": "ratelimit",
+        "namespace_id": "vote",
+        "simple": { "limit": 30, "period": 60 }
+      }
+    ]
+  },
   "observability": {
     "enabled": true
   },

@@ -96,7 +96,7 @@ export function registerReputationRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticateActor(c, body);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.vote, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.vote, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
     const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {

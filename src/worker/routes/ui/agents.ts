@@ -136,7 +136,7 @@ export async function handleIdeasSiteBuild(c: AppContext<"/:owner/:repo/ideas">)
   if (!access.viewer) {
     return c.redirect(`/auth?next=${encodeURIComponent(back)}`, 302);
   }
-  const limited = await rateLimit(c.env.ROUTES, LIMITS.siteBuild, access.viewer.userId);
+  const limited = await rateLimit(c.env, LIMITS.siteBuild, access.viewer.userId);
   if (!limited.ok) return c.redirect(`${back}?error=rate-limited`, 303);
 
   const form = await c.req.raw.formData().catch(() => null);

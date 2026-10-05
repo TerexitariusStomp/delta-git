@@ -552,7 +552,7 @@ export function registerAgentRoutes(router: AppRouter): void {
       actor = verified.agent.did;
     }
 
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.tokenMint, actor);
+    const limited = await rateLimit(c.env, LIMITS.tokenMint, actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
     const artifacts = c.env.ARTIFACTS;
@@ -871,7 +871,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.ideaPost, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.ideaPost, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
     const parsed = JSON.parse(new TextDecoder().decode(body)) as {
       title?: string;
@@ -909,7 +909,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.ideaImport, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.ideaImport, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
     const parsed = JSON.parse(new TextDecoder().decode(body)) as {
       url?: string;
@@ -967,7 +967,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.vote, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.vote, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
     // Earned-rep gate — verify votes are governance; contribution is free.
     const voter = await findRepTarget(c.var.db, principal.actor);
@@ -1044,7 +1044,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.siteBuild, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.siteBuild, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
     const parsed = JSON.parse(new TextDecoder().decode(body)) as {
       description?: string;
@@ -1247,7 +1247,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.workspaceCreate, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.workspaceCreate, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
     const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
@@ -1297,7 +1297,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.matchCreate, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.matchCreate, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
     const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
@@ -1427,7 +1427,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.matchEnter, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.matchEnter, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
     const artifacts = c.env.ARTIFACTS;
@@ -1486,7 +1486,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const principal = await authenticate(c, body, route);
     if (principal instanceof Response) return principal;
 
-    const limited = await rateLimit(c.env.ROUTES, LIMITS.matchVote, principal.actor);
+    const limited = await rateLimit(c.env, LIMITS.matchVote, principal.actor);
     if (!limited.ok) return bad(c, "rate-limited", 429);
 
     const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {

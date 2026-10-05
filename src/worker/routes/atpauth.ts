@@ -63,7 +63,7 @@ async function rateGate(
   spec: (typeof LIMITS)[keyof typeof LIMITS],
   key: string
 ): Promise<Response | null> {
-  const result = await rateLimit(c.env.ROUTES, spec, key);
+  const result = await rateLimit(c.env, spec, key);
   if (result.ok) return null;
   metric(c.env, "rate.limited", { scope: spec.bucket, index: key.slice(0, 32) });
   return c.json(
