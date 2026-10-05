@@ -132,25 +132,25 @@
       {
         "name": "RATE_LIMIT_AUTH_CHALLENGE",
         "type": "ratelimit",
-        "namespace_id": "auth-challenge",
+        "namespace_id": "1001",
         "simple": { "limit": 10, "period": 60 }
       },
       {
         "name": "RATE_LIMIT_AUTH_VERIFY",
         "type": "ratelimit",
-        "namespace_id": "auth-verify",
+        "namespace_id": "1002",
         "simple": { "limit": 20, "period": 60 }
       },
       {
         "name": "RATE_LIMIT_PATCH",
         "type": "ratelimit",
-        "namespace_id": "patch",
+        "namespace_id": "1003",
         "simple": { "limit": 60, "period": 60 }
       },
       {
         "name": "RATE_LIMIT_VOTE",
         "type": "ratelimit",
-        "namespace_id": "vote",
+        "namespace_id": "1004",
         "simple": { "limit": 30, "period": 60 }
       }
     ]
