@@ -144,7 +144,9 @@ export const defaultContext: MFEContextProps = {
   },
   customHooks: {
     usePreferenceStore: () => ({ preference: undefined, setPreference: noop }),
-    useFeatureFlags: () => ({})
+    // delta-git ships a real semantic-search lane (Vectorize + Workers AI
+    // behind `/repos/{ref}/+/semantic/search`) — enable the SPA toggle.
+    useFeatureFlags: () => ({ [FeatureFlag.SEMANTIC_SEARCH_ENABLED]: true })
   },
   customUtils: {},
   routes: {},

@@ -83,6 +83,15 @@
   "ai": {
     "binding": "AI"
   },
+  // Semantic code search — @cf/baai/bge-base-en-v1.5 embeddings upserted by
+  // src/worker/search. The index ("dg-repo-embed", dims 768, cosine) must
+  // exist on the account before deploy: `wrangler vectorize create`.
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "dg-repo-embed"
+    }
+  ],
   // Cloudflare Artifacts: hybrid backend for opted-in repositories. The
   // namespace ("delta-git") must exist on the account before deploy.
   "artifacts": [
