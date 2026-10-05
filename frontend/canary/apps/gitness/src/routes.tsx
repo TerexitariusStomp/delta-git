@@ -41,6 +41,15 @@ import {
   SpaceTemplatesPage,
   VariablesPage,
 } from "./pages-v2/delta/delivery-pages";
+import {
+  CertificatesPage,
+  ChaosPage,
+  CloudCostsPage,
+  IncidentsPage,
+  MonitorsPage,
+  ServiceReliabilityPage,
+  SloDowntimePage,
+} from "./pages-v2/delta/reliability-pages";
 import { SecretsVaultPage } from "./pages-v2/delta/secrets-vault-page";
 import {
   RepoDeltaAgentsPage,
@@ -1053,6 +1062,44 @@ export const routes: CustomRouteObject[] = [
         handle: {
           routeName: RouteConstants.toInfrastructureAsCode,
           pageTitle: "Infrastructure as Code",
+        },
+      },
+      {
+        path: "monitored-services",
+        element: <MonitorsPage />,
+        handle: { routeName: RouteConstants.toMonitoredServices, pageTitle: "Monitors" },
+      },
+      {
+        path: "slo-downtime",
+        element: <SloDowntimePage />,
+        handle: { routeName: RouteConstants.toSloDowntime, pageTitle: "SLOs & downtime" },
+      },
+      {
+        path: "incidents",
+        element: <IncidentsPage />,
+        handle: { routeName: RouteConstants.toIncidents, pageTitle: "Incidents" },
+      },
+      {
+        path: "certificates",
+        element: <CertificatesPage />,
+        handle: { routeName: RouteConstants.toCertificates, pageTitle: "Certificates" },
+      },
+      {
+        path: "cloud-costs",
+        element: <CloudCostsPage />,
+        handle: { routeName: RouteConstants.toCloudCosts, pageTitle: "Cloud costs" },
+      },
+      {
+        path: "chaos",
+        element: <ChaosPage />,
+        handle: { routeName: RouteConstants.toChaos, pageTitle: "Chaos engineering" },
+      },
+      {
+        path: "service-reliability",
+        element: <ServiceReliabilityPage />,
+        handle: {
+          routeName: RouteConstants.toServiceReliability,
+          pageTitle: "Service reliability",
         },
       },
       {

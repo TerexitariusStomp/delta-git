@@ -375,3 +375,174 @@ export async function updateIacState(
 ): Promise<void> {
   await db.update(iacStates).set(patch).where(eq(iacStates.id, id)).run();
 }
+
+// --- reliability-plane registries (monitors, slos, downtime, incidents,
+//     certificates, costs, chaos) -------------------------------------------
+
+import {
+  certificates,
+  chaosExperiments,
+  costSnapshots,
+  downtimes,
+  incidentUpdates,
+  incidents,
+  monitorChecks,
+  monitors,
+  slos,
+  type CertificateRow,
+  type ChaosExperimentRow,
+  type CostSnapshotRow,
+  type DowntimeRow,
+  type IncidentRow,
+  type IncidentUpdateRow,
+  type MonitorCheckRow,
+  type MonitorRow,
+  type NewCertificateRow,
+  type NewChaosExperimentRow,
+  type NewCostSnapshotRow,
+  type NewDowntimeRow,
+  type NewIncidentRow,
+  type NewIncidentUpdateRow,
+  type NewMonitorCheckRow,
+  type NewMonitorRow,
+  type NewSloRow,
+  type SloRow,
+} from "../schema";
+
+export async function listMonitors(db: Db, namespaceId: string): Promise<MonitorRow[]> {
+  return db.select().from(monitors).where(eq(monitors.namespaceId, namespaceId)).all();
+}
+export async function findMonitor(db: Db, namespaceId: string, identifier: string) {
+  return db
+    .select()
+    .from(monitors)
+    .where(and(eq(monitors.namespaceId, namespaceId), eq(monitors.identifier, identifier)))
+    .get();
+}
+export async function insertMonitor(db: Db, row: NewMonitorRow): Promise<void> {
+  await db.insert(monitors).values(row).run();
+}
+export async function updateMonitor(db: Db, id: string, patch: Partial<MonitorRow>): Promise<void> {
+  await db.update(monitors).set(patch).where(eq(monitors.id, id)).run();
+}
+export async function deleteMonitor(db: Db, id: string): Promise<void> {
+  await db.delete(monitors).where(eq(monitors.id, id)).run();
+}
+export async function insertMonitorCheck(db: Db, row: NewMonitorCheckRow): Promise<void> {
+  await db.insert(monitorChecks).values(row).run();
+}
+export async function listMonitorChecks(
+  db: Db,
+  monitorId: string,
+  limit: number
+): Promise<MonitorCheckRow[]> {
+  return db
+    .select()
+    .from(monitorChecks)
+    .where(eq(monitorChecks.monitorId, monitorId))
+    .orderBy(desc(monitorChecks.checkedAt))
+    .limit(limit)
+    .all();
+}
+
+export async function listSlos(db: Db, namespaceId: string): Promise<SloRow[]> {
+  return db.select().from(slos).where(eq(slos.namespaceId, namespaceId)).all();
+}
+export async function insertSlo(db: Db, row: NewSloRow): Promise<void> {
+  await db.insert(slos).values(row).run();
+}
+export async function deleteSlo(db: Db, id: string): Promise<void> {
+  await db.delete(slos).where(eq(slos.id, id)).run();
+}
+
+export async function listDowntimes(db: Db, namespaceId: string): Promise<DowntimeRow[]> {
+  return db.select().from(downtimes).where(eq(downtimes.namespaceId, namespaceId)).all();
+}
+export async function insertDowntime(db: Db, row: NewDowntimeRow): Promise<void> {
+  await db.insert(downtimes).values(row).run();
+}
+export async function endDowntime(db: Db, id: string, endedAt: number): Promise<void> {
+  await db.update(downtimes).set({ endedAt }).where(eq(downtimes.id, id)).run();
+}
+
+export async function listIncidents(db: Db, namespaceId: string): Promise<IncidentRow[]> {
+  return db
+    .select()
+    .from(incidents)
+    .where(eq(incidents.namespaceId, namespaceId))
+    .orderBy(desc(incidents.createdAt))
+    .all();
+}
+export async function findIncident(db: Db, id: string) {
+  return db.select().from(incidents).where(eq(incidents.id, id)).get();
+}
+export async function insertIncident(db: Db, row: NewIncidentRow): Promise<void> {
+  await db.insert(incidents).values(row).run();
+}
+export async function updateIncident(
+  db: Db,
+  id: string,
+  patch: Partial<IncidentRow>
+): Promise<void> {
+  await db.update(incidents).set(patch).where(eq(incidents.id, id)).run();
+}
+export async function insertIncidentUpdate(db: Db, row: NewIncidentUpdateRow): Promise<void> {
+  await db.insert(incidentUpdates).values(row).run();
+}
+export async function listIncidentUpdates(
+  db: Db,
+  incidentId: string
+): Promise<IncidentUpdateRow[]> {
+  return db
+    .select()
+    .from(incidentUpdates)
+    .where(eq(incidentUpdates.incidentId, incidentId))
+    .orderBy(incidentUpdates.createdAt)
+    .all();
+}
+
+export async function listCertificates(db: Db, namespaceId: string): Promise<CertificateRow[]> {
+  return db.select().from(certificates).where(eq(certificates.namespaceId, namespaceId)).all();
+}
+export async function insertCertificate(db: Db, row: NewCertificateRow): Promise<void> {
+  await db.insert(certificates).values(row).run();
+}
+export async function deleteCertificate(db: Db, id: string): Promise<void> {
+  await db.delete(certificates).where(eq(certificates.id, id)).run();
+}
+
+export async function listCostSnapshots(db: Db, namespaceId: string): Promise<CostSnapshotRow[]> {
+  return db
+    .select()
+    .from(costSnapshots)
+    .where(eq(costSnapshots.namespaceId, namespaceId))
+    .orderBy(desc(costSnapshots.periodStart))
+    .all();
+}
+export async function insertCostSnapshot(db: Db, row: NewCostSnapshotRow): Promise<void> {
+  await db.insert(costSnapshots).values(row).run();
+}
+
+export async function listChaosExperiments(
+  db: Db,
+  namespaceId: string
+): Promise<ChaosExperimentRow[]> {
+  return db
+    .select()
+    .from(chaosExperiments)
+    .where(eq(chaosExperiments.namespaceId, namespaceId))
+    .all();
+}
+export async function insertChaosExperiment(db: Db, row: NewChaosExperimentRow): Promise<void> {
+  await db.insert(chaosExperiments).values(row).run();
+}
+export async function updateChaosExperiment(
+  db: Db,
+  id: string,
+  patch: Partial<ChaosExperimentRow>
+): Promise<void> {
+  await db.update(chaosExperiments).set(patch).where(eq(chaosExperiments.id, id)).run();
+}
+export async function deleteChaosExperiment(db: Db, id: string): Promise<void> {
+  await db.delete(chaosExperiments).where(eq(chaosExperiments.id, id)).run();
+}
