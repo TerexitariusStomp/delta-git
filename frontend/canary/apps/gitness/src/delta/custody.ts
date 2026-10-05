@@ -58,3 +58,126 @@ export function signDpop(url: string, method: string): Promise<string> {
 export function clearDpopKey(): Promise<void> {
   return call<void>('clearDpopKey')
 }
+
+// ─── Secrets broker ops ─────────────────────────────────────────────────────
+// Types mirror the vendored broker; kept structurally compatible so the page
+// never imports worker internals.
+
+export interface SecretHandleMeta {
+  handle: string
+  label: string
+  kind: 'sealed' | 'platform' | 'cloud' | 'key' | 'frost'
+  allowedHosts: string[]
+  canary: boolean
+  createdAt: number
+}
+
+export interface SecretGrantInfo {
+  id: string
+  label: string
+  handles: string[] | '*'
+  hosts: string[] | '*'
+  consentRequired?: boolean
+  maxInvokes?: number
+  expiresAt?: number
+  invokeCount: number
+  createdAt: number
+  revokedAt?: number
+}
+
+export interface SecretInvokeSpec {
+  url: string
+  method: string
+  headers?: Record<string, string>
+  body?: string
+  inject: { type: 'bearer' | 'header' | 'bodyField' | 'dpop'; name?: string }
+}
+
+export interface SecretInvokeResult {
+  status: number
+  body: string
+  pending?: boolean
+}
+
+export interface SecretAuditEntry {
+  seq: number
+  ts: number
+  op: string
+  handle?: string
+  grantId?: string
+  outcome: 'ok' | 'denied' | 'trip'
+  detail?: string
+  prevHash: string
+  hash: string
+}
+
+function b64encode(bytes: Uint8Array): string {
+  let s = ''
+  for (const b of bytes) s += String.fromCharCode(b)
+  return btoa(s)
+}
+
+/** Seal a secret — write-only. Returns the handle metadata, never the value. */
+export function sealSecret(
+  label: string,
+  secret: string,
+  allowedHosts: string[],
+  canary = false
+): Promise<SecretHandleMeta> {
+  return call<SecretHandleMeta>('sealSecret', {
+    label,
+    secretB64: b64encode(new TextEncoder().encode(secret)),
+    allowedHosts,
+    canary,
+  })
+}
+
+export function unsealSecret(handle: string): Promise<boolean> {
+  return call<boolean>('unsealSecret', { handle })
+}
+
+export function listSecrets(): Promise<SecretHandleMeta[]> {
+  return call<SecretHandleMeta[]>('listSecrets')
+}
+
+export function createGrant(
+  label: string,
+  handles: string[] | '*',
+  hosts: string[] | '*',
+  opts?: { consentRequired?: boolean; maxInvokes?: number; expiresAt?: number }
+): Promise<SecretGrantInfo> {
+  return call<SecretGrantInfo>('createGrant', { label, handles, hosts, opts })
+}
+
+export function listGrants(): Promise<SecretGrantInfo[]> {
+  return call<SecretGrantInfo[]>('listGrants')
+}
+
+export function revokeGrant(grantId: string): Promise<boolean> {
+  return call<boolean>('revokeGrant', { grantId })
+}
+
+/**
+ * Invoke through the broker — the worker authorizes (grant scope, host
+ * allowlist, canary checks), injects the secret, executes the fetch, redacts
+ * the response, and returns only the sanitized result.
+ */
+export function invokeSecret(
+  handle: string,
+  spec: SecretInvokeSpec,
+  grantId?: string,
+  ownerOk = false
+): Promise<SecretInvokeResult> {
+  return call<SecretInvokeResult>('invokeSecret', { handle, spec, grantId, ownerOk })
+}
+
+export function secretsAudit(limit = 200): Promise<SecretAuditEntry[]> {
+  return call<SecretAuditEntry[]>('secretsAudit', { limit })
+}
+
+export function secretsKillswitch(wipe = false): Promise<{
+  revokedGrants: number
+  wipedSecrets: number
+}> {
+  return call('secretsKillswitch', { wipe })
+}

@@ -57,8 +57,10 @@ import {
   writeRepoTemplates,
   readSecuritySettings,
   writeSecuritySettings,
+  readSecrets,
+  writeSecrets,
 } from "./stores";
-import type { RepoLabel, RepoRule, RepoPipeline, RepoTemplate } from "./stores";
+import type { RepoLabel, RepoRule, RepoPipeline, RepoTemplate, SecretRecord } from "./stores";
 import {
   gErr,
   gNotFound,
@@ -173,20 +175,10 @@ export function toGitnessRepo(
 
 export function registerGitnessRepos(router: AppRouter) {
   // --- mutations (subset) ---------------------------------------------------
-
-  router.patch("/api/v1/repos/:repo_ref{.+}", async (c) => {
-    const parsed = parseRepoRef(c.req.param("repo_ref"));
-    if (!parsed) return gNotFound(c, "repository");
-    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
-    if (access.kind !== "ok") return access.response;
-    if (!access.viewer) return gErr(c, 401, "unauthorized");
-    const body = (await c.req.json().catch(() => null)) as { description?: string } | null;
-    if (body?.description !== undefined) {
-      const row = await findRepositoryByDoName(c.var.db, access.route.doName);
-      if (row) await updateRepositoryDescription(c.var.db, row.id, body.description, Date.now());
-    }
-    return c.json({});
-  });
+  //
+  // NOTE: the bare greedy PATCH/DELETE `/repos/:repo_ref{.+}` routes are
+  // registered LAST in this function — `{.+}` would otherwise swallow the
+  // `…/labels/:id`, `…/secrets/:id`, etc. subresource paths and 404 them.
 
   router.post("/api/v1/repos/:repo_ref{.+}/public-access", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
@@ -201,39 +193,6 @@ export function registerGitnessRepos(router: AppRouter) {
       body?.is_public === false ? "private" : "public",
       Date.now()
     );
-    return c.json({});
-  });
-
-  // Repo delete rides the same durable pipeline as the admin purge:
-  // enqueue only — the queue consumer owns D1/ROUTES/R2/DO teardown.
-  router.delete("/api/v1/repos/:repo_ref{.+}", async (c) => {
-    const log = c.var.logFor({ service: "GitnessRepoDelete" });
-    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
-    if (access.kind !== "ok") return access.response;
-    if (!access.viewer) return gErr(c, 401, "unauthorized");
-    const row = await findRepositoryByDoName(c.var.db, access.route.doName);
-    if (!row) return gNotFound(c, "repository");
-    if (!(await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId))) {
-      return gErr(c, 403, "not a member of this space");
-    }
-    const parsed = parseRepoRef(c.req.param("repo_ref"))!;
-    const message: RepositoryDeleteMessage = {
-      kind: "repository-delete",
-      repositoryId: row.id,
-      namespaceId: row.namespaceId,
-      namespaceSlug: parsed.owner,
-      repoSlug: parsed.repo,
-      doName: access.route.doName,
-      actor: access.viewer.userId,
-      requestedAt: Date.now(),
-    };
-    try {
-      await c.env.REPO_TASKS_QUEUE.send(message);
-    } catch (error) {
-      log.error("repo-delete:enqueue-failed", { error: String(error) });
-      return gErr(c, 503, "failed to enqueue delete; please retry");
-    }
-    log.info("repo-delete:enqueued", { repositoryId: row.id });
     return c.json({});
   });
 
@@ -926,6 +885,68 @@ export function registerGitnessRepos(router: AppRouter) {
     return c.json({});
   });
 
+  // --- sealed secrets --------------------------------------------------------
+  // Client-sovereign custody: values are sealed in the browser's key-custody
+  // worker; the server stores metadata + optional client-wrapped ciphertext
+  // only (see stores.ts SecretRecord).
+
+  router.get("/api/v1/repos/:repo_ref{.+}/secrets", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    return c.json(await readSecrets(c.env, access.route.doName));
+  });
+
+  router.put("/api/v1/repos/:repo_ref{.+}/secrets", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as {
+      id?: string;
+      name?: string;
+      description?: string;
+      allowed_hosts?: string[];
+      canary?: boolean;
+      ciphertext?: string;
+    } | null;
+    if (!body?.name?.trim()) return gErr(c, 400, "name required");
+    const secrets = await readSecrets(c.env, gate.route.doName);
+    const now = Date.now();
+    const existing = secrets.find((s) => s.id === body.id || s.name === body.name!.trim());
+    if (existing) {
+      if (body.description !== undefined) existing.description = body.description;
+      if (body.allowed_hosts) existing.allowed_hosts = body.allowed_hosts;
+      if (body.ciphertext !== undefined) existing.ciphertext = body.ciphertext;
+      if (body.canary !== undefined) existing.canary = body.canary;
+      existing.updated = now;
+      await writeSecrets(c.env, gate.route.doName, secrets);
+      return c.json(existing);
+    }
+    if (!body.id) return gErr(c, 400, "client handle id required");
+    const rec: SecretRecord = {
+      id: body.id,
+      name: body.name.trim(),
+      description: body.description,
+      allowed_hosts: body.allowed_hosts ?? [],
+      canary: body.canary,
+      ciphertext: body.ciphertext,
+      created_by: gate.actor,
+      created: now,
+      updated: now,
+    };
+    await writeSecrets(c.env, gate.route.doName, [...secrets, rec]);
+    return c.json(rec);
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/secrets/:secret_id", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const secrets = await readSecrets(c.env, gate.route.doName);
+    const id = c.req.param("secret_id");
+    const next = secrets.filter((s) => s.id !== id && s.name !== id);
+    if (next.length === secrets.length) return gNotFound(c, "secret");
+    await writeSecrets(c.env, gate.route.doName, next);
+    return c.json({});
+  });
+
   // Label assignments = the labels currently applied across open PRs.
   router.get("/api/v1/repos/:repo_ref{.+}/labels/assignments", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
@@ -1505,5 +1526,56 @@ export function registerGitnessRepos(router: AppRouter) {
         favorites,
       })
     );
+  });
+
+  // --- bare repo mutations ---------------------------------------------------
+  // Greedy `:repo_ref{.+}` matches any `…/x` subresource path, so these two
+  // must be the LAST repo routes registered — see the note at the top.
+
+  router.patch("/api/v1/repos/:repo_ref{.+}", async (c) => {
+    const parsed = parseRepoRef(c.req.param("repo_ref"));
+    if (!parsed) return gNotFound(c, "repository");
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    if (!access.viewer) return gErr(c, 401, "unauthorized");
+    const body = (await c.req.json().catch(() => null)) as { description?: string } | null;
+    if (body?.description !== undefined) {
+      const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+      if (row) await updateRepositoryDescription(c.var.db, row.id, body.description, Date.now());
+    }
+    return c.json({});
+  });
+
+  // Repo delete rides the same durable pipeline as the admin purge:
+  // enqueue only — the queue consumer owns D1/ROUTES/R2/DO teardown.
+  router.delete("/api/v1/repos/:repo_ref{.+}", async (c) => {
+    const log = c.var.logFor({ service: "GitnessRepoDelete" });
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    if (!access.viewer) return gErr(c, 401, "unauthorized");
+    const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+    if (!row) return gNotFound(c, "repository");
+    if (!(await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    const parsed = parseRepoRef(c.req.param("repo_ref"))!;
+    const message: RepositoryDeleteMessage = {
+      kind: "repository-delete",
+      repositoryId: row.id,
+      namespaceId: row.namespaceId,
+      namespaceSlug: parsed.owner,
+      repoSlug: parsed.repo,
+      doName: access.route.doName,
+      actor: access.viewer.userId,
+      requestedAt: Date.now(),
+    };
+    try {
+      await c.env.REPO_TASKS_QUEUE.send(message);
+    } catch (error) {
+      log.error("repo-delete:enqueue-failed", { error: String(error) });
+      return gErr(c, 503, "failed to enqueue delete; please retry");
+    }
+    log.info("repo-delete:enqueued", { repositoryId: row.id });
+    return c.json({});
   });
 }

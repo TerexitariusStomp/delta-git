@@ -32,6 +32,8 @@
     "@harnessio/views": "workspace:*",
     "@harnessio/yaml-editor": "workspace:*",
     "@hookform/resolvers": "^5.4.0",
+    "@noble/ciphers": "2.4.0",
+    "@noble/hashes": "2.4.0",
     "@tanstack/react-query": "4.20.4",
     "clipboard-copy": "^3.1.0",
     "clsx": "^2.1.1",

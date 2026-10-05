@@ -27,6 +27,7 @@ import { CustomRouteObject, RouteConstants } from './framework/routing/types'
 import { MFERouteRenderer } from './MFERouteRenderer'
 import { CreateProject } from './pages-v2/create-project'
 import { DeltaArenaFeedPage, DeltaLeaderboardPage } from './pages-v2/delta/global-pages'
+import { SecretsVaultPage } from './pages-v2/delta/secrets-vault-page'
 import {
   RepoDeltaAgentsPage,
   RepoDeltaArenaMatchPage,
@@ -1008,7 +1009,7 @@ export const routes: CustomRouteObject[] = [
       },
       {
         path: 'secrets',
-        element: <EmptyPage pathName="Secrets" />,
+        element: <SecretsVaultPage />,
         handle: {
           routeName: RouteConstants.toSecrets,
           pageTitle: 'Secrets'

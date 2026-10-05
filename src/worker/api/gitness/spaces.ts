@@ -51,6 +51,8 @@ import {
   toGitnessUser,
 } from "./shared";
 import type { GitnessContext } from "./shared";
+import { readSecrets, writeSecrets } from "./stores";
+import type { SecretRecord } from "./stores";
 import { toGitnessRepo } from "./repos";
 
 function toGitnessSpace(ns: NamespaceRow) {
@@ -360,40 +362,6 @@ export function registerGitnessSpaces(router: AppRouter) {
     return c.json(toGitnessSpace(ns));
   });
 
-  // Namespaces have no mutable fields beyond slug; rename is rejected at
-  // the route layer (slugs are identity) — patch is a no-op returning the
-  // real record.
-  router.patch("/api/v1/spaces/:space_ref{.+}", async (c) => {
-    const viewer = await loadViewer(c);
-    if (!viewer) return gErr(c, 401, "unauthorized");
-    const ns = await resolveSpace(c, c.req.param("space_ref"));
-    if (ns instanceof Response) return ns;
-    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
-      return gErr(c, 403, "not a member of this space");
-    }
-    return c.json(toGitnessSpace(ns));
-  });
-
-  // Delete only when the namespace owns no repositories — the cascade takes
-  // memberships; repos would orphan (their DO/R2 teardown needs the queue
-  // path, so a non-empty space refuses).
-  router.delete("/api/v1/spaces/:space_ref{.+}", async (c) => {
-    const viewer = await loadViewer(c);
-    if (!viewer) return gErr(c, 401, "unauthorized");
-    const ns = await resolveSpace(c, c.req.param("space_ref"));
-    if (ns instanceof Response) return ns;
-    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
-      return gErr(c, 403, "not a member of this space");
-    }
-    const repos = await listRepositoriesForNamespace(c.var.db, ns.id, viewer.userId);
-    if (repos.length > 0) {
-      return gErr(c, 409, "space owns repositories — delete or move them first");
-    }
-    const removed = await deleteNamespaceRow(c.var.db, ns.id);
-    if (!removed) return gNotFound(c, "space");
-    return c.json({});
-  });
-
   // Space import = namespace create + a batch of repo imports the caller
   // drives through POST /repos/import afterwards — this endpoint creates the
   // real space and returns it so the SPA's import wizard can proceed.
@@ -478,6 +446,82 @@ export function registerGitnessSpaces(router: AppRouter) {
     const next = labels.filter((l) => l.key !== c.req.param("key"));
     if (next.length === labels.length) return gNotFound(c, "label");
     await c.env.ROUTES.put(`glabels:space:${ns.id}`, JSON.stringify(next));
+    return c.json({});
+  });
+
+  // Space-scoped sealed secrets — client-custody values, metadata-only here
+  // (same model as repo secrets; see stores.ts SecretRecord).
+  router.get("/api/v1/spaces/:space_ref{.+}/secrets", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const ns = await resolveSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    return c.json(await readSecrets(c.env, `space:${ns.id}`));
+  });
+
+  router.put("/api/v1/spaces/:space_ref{.+}/secrets", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const ns = await resolveSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    const body = (await c.req.json().catch(() => null)) as {
+      id?: string;
+      name?: string;
+      description?: string;
+      allowed_hosts?: string[];
+      canary?: boolean;
+      ciphertext?: string;
+    } | null;
+    if (!body?.name?.trim()) return gErr(c, 400, "name required");
+    const key = `space:${ns.id}`;
+    const secrets = await readSecrets(c.env, key);
+    const now = Date.now();
+    const existing = secrets.find((s) => s.id === body.id || s.name === body.name!.trim());
+    if (existing) {
+      if (body.description !== undefined) existing.description = body.description;
+      if (body.allowed_hosts) existing.allowed_hosts = body.allowed_hosts;
+      if (body.ciphertext !== undefined) existing.ciphertext = body.ciphertext;
+      if (body.canary !== undefined) existing.canary = body.canary;
+      existing.updated = now;
+      await writeSecrets(c.env, key, secrets);
+      return c.json({ ...existing, scope: 1 });
+    }
+    if (!body.id) return gErr(c, 400, "client handle id required");
+    const rec: SecretRecord = {
+      id: body.id,
+      name: body.name.trim(),
+      description: body.description,
+      allowed_hosts: body.allowed_hosts ?? [],
+      canary: body.canary,
+      ciphertext: body.ciphertext,
+      created_by: viewer.userId,
+      created: now,
+      updated: now,
+    };
+    await writeSecrets(c.env, key, [...secrets, rec]);
+    return c.json({ ...rec, scope: 1 });
+  });
+
+  router.delete("/api/v1/spaces/:space_ref{.+}/secrets/:secret_id", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const ns = await resolveSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    const key = `space:${ns.id}`;
+    const secrets = await readSecrets(c.env, key);
+    const id = c.req.param("secret_id");
+    const next = secrets.filter((s) => s.id !== id && s.name !== id);
+    if (next.length === secrets.length) return gNotFound(c, "secret");
+    await writeSecrets(c.env, key, next);
     return c.json({});
   });
 
@@ -655,6 +699,45 @@ export function registerGitnessSpaces(router: AppRouter) {
     }
     out.sort((a, b) => b.created - a.created);
     return c.json(out.slice(0, 50));
+  });
+
+  // Bare greedy space mutations — same last-registered rule as the bare GET
+  // below: `:space_ref{.+}` would otherwise swallow `/spaces/{ref}/<tail>`
+  // PATCH/DELETE subresources (members patch is registered earlier, before
+  // the greedy block, and stays first).
+
+  // Namespaces have no mutable fields beyond slug; rename is rejected at
+  // the route layer (slugs are identity) — patch is a no-op returning the
+  // real record.
+  router.patch("/api/v1/spaces/:space_ref{.+}", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const ns = await resolveSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    return c.json(toGitnessSpace(ns));
+  });
+
+  // Delete only when the namespace owns no repositories — the cascade takes
+  // memberships; repos would orphan (their DO/R2 teardown needs the queue
+  // path, so a non-empty space refuses).
+  router.delete("/api/v1/spaces/:space_ref{.+}", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const ns = await resolveSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    const repos = await listRepositoriesForNamespace(c.var.db, ns.id, viewer.userId);
+    if (repos.length > 0) {
+      return gErr(c, 409, "space owns repositories — delete or move them first");
+    }
+    const removed = await deleteNamespaceRow(c.var.db, ns.id);
+    if (!removed) return gNotFound(c, "space");
+    return c.json({});
   });
 
   // Bare space GET is registered last: `:space_ref{.+}` is greedy and would

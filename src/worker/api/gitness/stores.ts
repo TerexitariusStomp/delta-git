@@ -221,6 +221,40 @@ export async function writeUserFavorites(env: Env, userId: string, favs: Favorit
 // and writes.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Sealed secrets — client-sovereign custody
+// ---------------------------------------------------------------------------
+// Secret VALUES never reach the server: the browser's key-custody worker
+// seals them and holds the bytes. What we persist is metadata plus an
+// optional client-wrapped ciphertext blob (AES-GCM to the client's vault
+// key) for same-device restore and later delegate delivery — the server
+// cannot unwrap it. A compromised platform leaks names and ciphertext only.
+// ---------------------------------------------------------------------------
+
+export interface SecretRecord {
+  /** Client custody handle (`sec_…`) — opaque, issued by the broker. */
+  id: string;
+  name: string;
+  description?: string;
+  /** Hostnames this secret may be sent to (broker-enforced client-side). */
+  allowed_hosts: string[];
+  canary?: boolean;
+  /** Optional client-wrapped ciphertext (opaque to the server). */
+  ciphertext?: string;
+  created_by?: string;
+  created: number;
+  updated: number;
+}
+
+export async function readSecrets(env: Env, scopeKey: string): Promise<SecretRecord[]> {
+  const raw = await env.ROUTES.get(`gsecrets:${scopeKey}`, "json").catch(() => null);
+  return (raw as SecretRecord[] | null) ?? [];
+}
+
+export async function writeSecrets(env: Env, scopeKey: string, secrets: SecretRecord[]) {
+  await env.ROUTES.put(`gsecrets:${scopeKey}`, JSON.stringify(secrets));
+}
+
 export interface SecuritySettings {
   /** Reject pushes whose packs trip the secret scanner. */
   secret_scanning?: boolean;

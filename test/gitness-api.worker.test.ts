@@ -310,4 +310,88 @@ describe("gitness /api/v1 write paths", () => {
     );
     expect(del.status).toBe(200);
   });
+
+  // Client-sovereign secrets: the store round-trips metadata + opaque
+  // ciphertext; the server never sees a plaintext value.
+  it("sealed secrets CRUD — repo and space scope", async () => {
+    const repoRef = `${w.namespaceSlug}/gwrepo/+`;
+    const spaceRef = w.namespaceSlug;
+
+    const put = (path: string, body: unknown, cookie?: string) =>
+      workerExports.default.fetch(`https://example.com${path}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+        body: JSON.stringify(body),
+      });
+
+    // Unauthenticated write → 401.
+    const anon = await put(`/api/v1/repos/${repoRef}/secrets`, {
+      id: "sec_x",
+      name: "api-key",
+    });
+    expect(anon.status).toBe(401);
+
+    // Repo-scope create: client handle + wrapped ciphertext + host scope.
+    const created = await put(
+      `/api/v1/repos/${repoRef}/secrets`,
+      {
+        id: "sec_abc123",
+        name: "deploy-key",
+        allowed_hosts: ["ci.example.com"],
+        ciphertext: "opaque-blob-never-plaintext",
+        description: "ci deploy",
+      },
+      w.cookieHeader
+    );
+    expect(created.status).toBe(200);
+    const rec = (await created.json()) as { id: string; name: string; ciphertext?: string };
+    expect(rec.id).toBe("sec_abc123");
+
+    const list = await get(`/api/v1/repos/${repoRef}/secrets`, w.cookieHeader);
+    expect(list.status).toBe(200);
+    const items = list.body as { id: string; name: string; allowed_hosts: string[] }[];
+    expect(items.map((s) => s.name)).toContain("deploy-key");
+    expect(items.find((s) => s.id === "sec_abc123")?.allowed_hosts).toEqual(["ci.example.com"]);
+
+    // Upsert by name updates ciphertext.
+    const upd = await put(
+      `/api/v1/repos/${repoRef}/secrets`,
+      { name: "deploy-key", ciphertext: "rotated-blob" },
+      w.cookieHeader
+    );
+    expect(upd.status).toBe(200);
+    const list2 = await get(`/api/v1/repos/${repoRef}/secrets`, w.cookieHeader);
+    const after = list2.body as { ciphertext?: string }[];
+    expect(after.find((s) => (s as { name: string }).name === "deploy-key")?.ciphertext).toBe(
+      "rotated-blob"
+    );
+
+    // Space-scope round-trip.
+    const sp = await put(
+      `/api/v1/spaces/${spaceRef}/secrets`,
+      { id: "sec_space1", name: "org-token", allowed_hosts: ["*.example.com"] },
+      w.cookieHeader
+    );
+    expect(sp.status).toBe(200);
+    expect(((await sp.json()) as { scope: number }).scope).toBe(1);
+    const spList = await get(`/api/v1/spaces/${spaceRef}/secrets`, w.cookieHeader);
+    expect((spList.body as { name: string }[]).map((s) => s.name)).toContain("org-token");
+    // Space secrets are member-gated — anonymous read is denied.
+    const anonList = await get(`/api/v1/spaces/${spaceRef}/secrets`);
+    expect(anonList.status).toBe(401);
+
+    // Delete both scopes.
+    const del1 = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${repoRef}/secrets/sec_abc123`,
+      { method: "DELETE", headers: { Cookie: w.cookieHeader } }
+    );
+    expect(del1.status).toBe(200);
+    const del2 = await workerExports.default.fetch(
+      `https://example.com/api/v1/spaces/${spaceRef}/secrets/sec_space1`,
+      { method: "DELETE", headers: { Cookie: w.cookieHeader } }
+    );
+    expect(del2.status).toBe(200);
+    const final = await get(`/api/v1/repos/${repoRef}/secrets`, w.cookieHeader);
+    expect((final.body as unknown[]).length).toBe(0);
+  });
 });
