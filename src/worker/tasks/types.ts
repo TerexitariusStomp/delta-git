@@ -153,6 +153,18 @@ export const PipelineTriggerQueueMessageSchema = z.object({
 
 export type PipelineTriggerQueueMessage = z.infer<typeof PipelineTriggerQueueMessageSchema>;
 
+// Knowledge refresh: a head ref advanced → rebuild the repo knowledge base
+// (symbols, dep graph, summaries) keyed to the new HEAD.
+export const KnowledgeRefreshQueueMessageSchema = z.object({
+  kind: z.literal("knowledge-refresh"),
+  doId: z.string(),
+  repoId: z.string(),
+  ref: z.string(),
+  sha: z.string(),
+});
+
+export type KnowledgeRefreshQueueMessage = z.infer<typeof KnowledgeRefreshQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
@@ -167,6 +179,7 @@ export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   ArenaResolveQueueMessageSchema,
   SiteBuildQueueMessageSchema,
   PipelineTriggerQueueMessageSchema,
+  KnowledgeRefreshQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;

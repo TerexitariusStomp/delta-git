@@ -56,7 +56,13 @@ export async function setTreePath(args: {
   const segments = args.path.split("/").filter((s) => s.length > 0);
   if (segments.length === 0) return undefined;
 
-  const treeObj = await readPayload(env, repoId, args.treeOid, cacheCtx);
+  // Trees created earlier in this same operation are only in `objects` —
+  // readPayload can't see them yet. Check pending objects first or later
+  // writes to the same subtree silently drop earlier entries.
+  const pending = objects.find((o) => o.type === "tree" && o.oid === args.treeOid);
+  const treeObj = pending
+    ? { type: "tree" as const, payload: pending.payload }
+    : await readPayload(env, repoId, args.treeOid, cacheCtx);
   const tree: Tree = treeObj ? parseTree(treeObj.payload) : new Map();
   const head = segments[0];
 
@@ -274,12 +280,17 @@ export async function resolvePathEntry(
   repoId: string,
   treeOid: string,
   path: string,
-  cacheCtx: CacheContext | undefined
+  cacheCtx: CacheContext | undefined,
+  objects?: NewObject[]
 ): Promise<{ mode: string; oid: string } | undefined> {
   let current = treeOid;
   const segments = path.split("/");
   for (let i = 0; i < segments.length; i++) {
-    const treeObj = await readPayload(env, repoId, current, cacheCtx);
+    // See setTreePath: trees staged this operation live only in `objects`.
+    const pending = objects?.find((o) => o.type === "tree" && o.oid === current);
+    const treeObj = pending
+      ? { type: "tree" as const, payload: pending.payload }
+      : await readPayload(env, repoId, current, cacheCtx);
     if (!treeObj || treeObj.type !== "tree") return undefined;
     const entry = parseTree(treeObj.payload).get(segments[i]);
     if (!entry) return undefined;

@@ -13,6 +13,7 @@ import {
 import { doPrefix, r2PackKey } from "@/worker/keys";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
 import { enqueuePipelineTrigger } from "@/worker/tasks/pipeline";
+import { enqueueKnowledgeRefresh } from "@/worker/tasks/knowledge";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { chargeStorageQuota, metric } from "@/worker/agent/abuse";
 import { deleteStagedPack, stagePackToR2, type StagedPackUpload } from "./r2Upload";
@@ -461,6 +462,18 @@ export async function executeReceivePipeline(
       // The task no-ops when the repo has none.
       args.ctx.waitUntil(
         enqueuePipelineTrigger(
+          args.env,
+          args.stub.id.toString(),
+          args.repoId,
+          command.ref,
+          command.newOid
+        ).catch(() => {})
+      );
+      // Knowledge-base refresh: rebuild symbols/graph/summary for the new
+      // HEAD. The task itself skips E2E-encrypted repos (no server-side
+      // plaintext); endpoints enforce read access on serving.
+      args.ctx.waitUntil(
+        enqueueKnowledgeRefresh(
           args.env,
           args.stub.id.toString(),
           args.repoId,

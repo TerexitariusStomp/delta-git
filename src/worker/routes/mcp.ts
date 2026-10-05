@@ -171,6 +171,87 @@ export function registerMcpRoutes(router: AppRouter): void {
         }
       );
 
+      server.registerTool(
+        "dgit_kb",
+        {
+          description:
+            "Read the repo knowledge base: summary, module map, symbols, dependency edges, entrypoints, glossary, mermaid diagrams",
+          inputSchema: {
+            owner: z.string(),
+            repo: z.string(),
+            section: z
+              .enum(["all", "summary", "graph", "diagrams", "glossary", "tours"])
+              .optional(),
+          },
+        },
+        async ({ owner, repo, section }) => {
+          const resolved = await resolveDoName(c, request, owner, repo);
+          if (!resolved)
+            return { content: [{ type: "text", text: "repo not found" }], isError: true };
+          // Read-only tool — anonymous callers only reach public repos
+          // (resolveDoName 404s private routes for unauthenticated reads).
+          const stub = getRepoStub(c.env, resolved.doName);
+          const { head } = await stub.getHeadAndRefs();
+          const { refreshRepoKnowledge, topModule } = await import("@/worker/knowledge");
+          const kb = await refreshRepoKnowledge(
+            c.env,
+            resolved.doName,
+            head?.oid ?? null,
+            c.var.cacheCtx
+          ).catch(() => null);
+          if (!kb)
+            return { content: [{ type: "text", text: "knowledge unavailable" }], isError: true };
+          switch (section ?? "all") {
+            case "summary":
+              return textResult({
+                summary: kb.summary,
+                modules: kb.moduleBlurbs,
+                entrypoints: kb.entrypoints,
+                packages: kb.packages,
+              });
+            case "graph":
+              return textResult({
+                nodes: kb.files.map((f) => ({
+                  path: f.path,
+                  module: topModule(f.path),
+                  symbols: f.symbols.length,
+                })),
+                edges: kb.edges,
+              });
+            case "diagrams":
+              return textResult(kb.diagrams);
+            case "glossary":
+              return textResult(kb.glossary);
+            case "tours":
+              return textResult(kb.tours);
+            default:
+              return textResult(kb);
+          }
+        }
+      );
+
+      server.registerTool(
+        "dgit_symbol",
+        {
+          description: "Symbol cross-reference: where a symbol is defined and which files use it",
+          inputSchema: {
+            owner: z.string(),
+            repo: z.string(),
+            name: z.string(),
+          },
+        },
+        async ({ owner, repo, name }) => {
+          const resolved = await resolveDoName(c, request, owner, repo);
+          if (!resolved)
+            return { content: [{ type: "text", text: "repo not found" }], isError: true };
+          const { readRepoKnowledge, symbolXref } = await import("@/worker/knowledge");
+          const kb = await readRepoKnowledge(c.env, resolved.doName);
+          if (!kb)
+            return { content: [{ type: "text", text: "knowledge unavailable" }], isError: true };
+          return textResult(symbolXref(kb, name));
+        }
+      );
+
       return server;
     });
     return await handler.fetch(c.req.raw);

@@ -121,14 +121,14 @@ export async function commitFileActions(args: {
         // `payload` is the source path; reuse its blob oid under `path`.
         const source = action.payload?.replace(/^\/+|\/+$/g, "");
         if (!source) return { kind: "failed", reason: "move-missing-source" };
-        const entry = await resolvePathEntry(env, repoId, treeOid, source, cacheCtx);
+        const entry = await resolvePathEntry(env, repoId, treeOid, source, cacheCtx, objects);
         if (!entry) return { kind: "failed", reason: `missing-file:${source}` };
         await setPath(source, null);
         await setPath(path, entry);
         continue;
       }
       if (kind === "PATCH_TEXT") {
-        const entry = await resolvePathEntry(env, repoId, treeOid, path, cacheCtx);
+        const entry = await resolvePathEntry(env, repoId, treeOid, path, cacheCtx, objects);
         const blob = entry ? await readPayload(env, repoId, entry.oid, cacheCtx) : undefined;
         const oldText = blob?.type === "blob" ? td.decode(blob.payload) : "";
         const patched = applyPatch(oldText, action.payload ?? "", { fuzzFactor: 0 });
