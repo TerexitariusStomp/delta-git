@@ -59,8 +59,13 @@
   let pipe = null;
   async function infer(payload) {
     if (!pipe) {
-      const { pipeline } = await import("https://esm.sh/@huggingface/transformers@3");
-      pipe = await pipeline("text-generation", "Xenova/Qwen2.5-0.5B-Instruct");
+      const { pipeline, env: tenv } = await import("https://esm.sh/@huggingface/transformers@3");
+      // Model host is configurable — deployments can serve weights from R2 or
+      // a CDN mirror (HF is unreachable in some regions and per-visitor egress
+      // is better served from your own edge anyway).
+      if (cfg.host) { tenv.remoteHost = cfg.host; tenv.allowRemoteModels = true; }
+      if (cfg.local) { tenv.allowLocalModels = true; tenv.localModelPath = cfg.local; }
+      pipe = await pipeline("text-generation", cfg.model || "Xenova/Qwen2.5-0.5B-Instruct");
     }
     const prompt = JSON.parse(payload).prompt ?? payload;
     const out = await pipe(prompt, { max_new_tokens: 256 });
@@ -96,7 +101,9 @@
   }
 
   function connect() {
-    ws = new WebSocket(`${COORD}?token=volunteer`);
+    // VOLUNTEER_TOKEN is a public handshake marker, not a secret — override
+    // via data-token if the coordinator ever rotates it.
+    ws = new WebSocket(`${COORD}?token=${encodeURIComponent(cfg.token || "widespread-volunteer")}`);
     ws.onopen = () => {
       send({
         type: "REGISTER", volunteerId, site: SITE,
