@@ -57,6 +57,7 @@
     "@orama/orama": "^2.1.1",
     "@primer/octicons-react": "19.38.0",
     "@primer/primitives": "11.10.0",
+    "casbin": "^5.38.0",
     "chokidar": "^5.0.0",
     "commander": "^15.0.0",
     "diff": "^9.0.0",

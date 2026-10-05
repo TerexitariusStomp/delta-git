@@ -3,8 +3,9 @@ import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlit
 import { namespaces } from "./namespaces";
 import { users } from "./users";
 
-// Any membership row implies owner-level access. Roles are intentionally
-// deferred — only the user/namespace edge is recorded today.
+// Membership now carries a real role — "owner" (full space admin),
+// "developer" (write/push, no admin), "viewer" (read only). Pre-RBAC rows
+// migrate in as owners, matching the old every-member-is-an-owner semantic.
 export const namespaceMemberships = sqliteTable(
   "namespace_memberships",
   {
@@ -14,6 +15,7 @@ export const namespaceMemberships = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("owner"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [

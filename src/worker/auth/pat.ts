@@ -259,5 +259,9 @@ export async function viewerIsNamespaceMember(
   userId: string,
   namespaceId: string
 ): Promise<boolean> {
-  return (await findMembership(db, namespaceId, userId)) !== undefined;
+  if ((await findMembership(db, namespaceId, userId)) !== undefined) return true;
+  // User-group expansion: a group member is a namespace member at the
+  // group's role (casbin evaluates the same g-rows for actions).
+  const { listGroupsForUserInNamespace } = await import("@/worker/db/d1/dal/rbac");
+  return (await listGroupsForUserInNamespace(db, namespaceId, userId)).length > 0;
 }

@@ -93,12 +93,35 @@ export async function findMembership(
 export async function listMembershipsForNamespace(
   db: Db,
   namespaceId: string
-): Promise<{ userId: string; createdAt: number }[]> {
+): Promise<{ userId: string; role: string; createdAt: number }[]> {
   const rows = await db
-    .select({ userId: namespaceMemberships.userId, createdAt: namespaceMemberships.createdAt })
+    .select({
+      userId: namespaceMemberships.userId,
+      role: namespaceMemberships.role,
+      createdAt: namespaceMemberships.createdAt,
+    })
     .from(namespaceMemberships)
     .where(eq(namespaceMemberships.namespaceId, namespaceId));
   return rows;
+}
+
+export async function updateMembershipRole(
+  db: Db,
+  namespaceId: string,
+  userId: string,
+  role: string
+): Promise<boolean> {
+  const res = await db
+    .update(namespaceMemberships)
+    .set({ role })
+    .where(
+      and(
+        eq(namespaceMemberships.namespaceId, namespaceId),
+        eq(namespaceMemberships.userId, userId)
+      )
+    )
+    .run();
+  return (res.meta?.changes ?? 0) > 0;
 }
 
 export async function deleteMembership(

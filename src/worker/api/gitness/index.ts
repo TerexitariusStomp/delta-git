@@ -27,7 +27,7 @@ import { generatePatPlaintext, hashPatPlaintext } from "@/worker/auth/pat";
 import { newPrefixedId } from "@/worker/common";
 import { numericId, gErr, gNotFound, normalizeIdentifier } from "./shared";
 import { readUserFavorites, writeUserFavorites } from "./stores";
-import { registerGitnessSpaces } from "./spaces";
+import { registerGitnessSpaceDetail, registerGitnessSpaces } from "./spaces";
 import { registerGitnessGitdata } from "./gitdata";
 import { registerGitnessPullreqs } from "./pullreqs";
 import { registerGitnessRepos } from "./repos";
@@ -35,6 +35,7 @@ import { registerGitnessSearch } from "./search";
 import { registerGitnessExecutions } from "./executions";
 import { registerGitnessRepoKeys } from "./repokeys";
 import { registerGitnessKnowledge } from "./knowledge";
+import { registerGitnessRbac } from "./rbac";
 
 const GITIGNORE_PRESETS = ["Node", "Python", "Go", "Rust", "Java", "C++"];
 const LICENSE_PRESETS = ["MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause", "ISC"];
@@ -51,6 +52,11 @@ export function registerGitnessApi(router: AppRouter) {
     }
   });
 
+  // RBAC's `/spaces/{ref}/{usergroups,serviceaccounts,resourcegroups}/...`
+  // tails must register before spaces.ts's greedy `/spaces/{ref}/members`
+  // patterns — `:space_ref{.+}` would otherwise swallow the group/segment
+  // structure into the ref.
+  registerGitnessRbac(router);
   registerGitnessSpaces(router);
   // Search claims `/api/v1/search` and `/repos/{ref}/+/...` tails — register
   // before the greedy suffix routes below.
@@ -64,6 +70,9 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);
+  // Bare-space detail (PATCH/DELETE/GET `/spaces/{ref}`) — greedy, after all
+  // space-subroute modules.
+  registerGitnessSpaceDetail(router);
 
   // PATs surface as gitness "tokens" — the full lifecycle is real.
   router.get("/api/v1/user/tokens", async (c) => {

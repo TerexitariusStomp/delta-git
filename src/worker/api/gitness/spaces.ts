@@ -31,6 +31,7 @@ import {
   listMembershipsForNamespace,
   listNamespacesForUser,
   searchNamespacesBySlug,
+  updateMembershipRole,
 } from "@/worker/db/d1/dal/namespaces";
 import { insertUserIfNew } from "@/worker/db/d1/dal/users";
 import { listRepositoriesForNamespace } from "@/worker/db/d1/dal/repositories";
@@ -244,9 +245,28 @@ export function registerGitnessSpaces(router: AppRouter) {
     );
   });
 
-  // Usergroups are not a delta-git concept — no rows exist anywhere, so the
-  // list is genuinely empty (not a stubbed feature).
-  router.get("/api/v1/usergroups/scoped", async (c) => c.json([]));
+  // Scoped usergroups — the real group list for the space's member pickers.
+  router.get("/api/v1/usergroups/scoped", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const spaceRef = c.req.query("space_ref") ?? "";
+    const ns = spaceRef ? await findNamespaceBySlug(c.var.db, spaceRef) : undefined;
+    if (!ns) return c.json([]);
+    const { listUserGroups, listUserGroupMembers } = await import("@/worker/db/d1/dal/rbac");
+    const groups = await listUserGroups(c.var.db, ns.id);
+    return c.json(
+      await Promise.all(
+        groups.map(async (g) => ({
+          id: numericId(g.id),
+          identifier: g.identifier,
+          description: g.description,
+          role: g.role,
+          users: (await listUserGroupMembers(c.var.db, g.id)).length,
+          created: g.createdAt,
+        }))
+      )
+    );
+  });
 
   // --- spaces ---------------------------------------------------------------
 
@@ -336,6 +356,16 @@ export function registerGitnessSpaces(router: AppRouter) {
     if (!targetNs) return gNotFound(c, "member");
     const member = await findMembership(c.var.db, ns.id, targetNs.createdBy);
     if (!member) return gNotFound(c, "member");
+    // Role updates are real — PATCH {role} flips the membership's role
+    // column; casbin enforces the new tier on the next request.
+    const body = (await c.req.json().catch(() => null)) as { role?: string } | null;
+    if (body?.role) {
+      const { VALID_ROLES } = await import("@/worker/rbac");
+      if (!VALID_ROLES.includes(body.role)) {
+        return gErr(c, 400, `role must be one of ${VALID_ROLES.join("/")}`);
+      }
+      await updateMembershipRole(c.var.db, ns.id, targetNs.createdBy, body.role);
+    }
     return c.json(await memberView(c, targetNs.createdBy, member.createdAt));
   });
 
@@ -387,12 +417,7 @@ export function registerGitnessSpaces(router: AppRouter) {
     return c.json(toGitnessSpace(ns));
   });
 
-  // Space-level usergroups don't exist as a concept — genuinely empty.
-  router.get("/api/v1/spaces/:space_ref{.+}/usergroups", async (c) => {
-    const ns = await resolveSpace(c, c.req.param("space_ref"));
-    if (ns instanceof Response) return ns;
-    return c.json([]);
-  });
+  // Space usergroups are served by registerGitnessRbac (real D1 rows).
 
   // Space labels/rules are space-scoped records in KV (`g{…}:space:{nsId}`),
   // aggregated into repo views alongside repo-local records.
@@ -707,6 +732,14 @@ export function registerGitnessSpaces(router: AppRouter) {
   // the greedy block, and stays first).
 
   // Namespaces have no mutable fields beyond slug; rename is rejected at
+  // The bare space PATCH/DELETE/GET live in registerGitnessSpaceDetail —
+  // their greedy `:space_ref{.+}` pattern must register after EVERY module
+  // that owns `/spaces/{ref}/<tail>` subroutes (rbac, labels, secrets, …).
+}
+
+/** Bare-space PATCH/DELETE/GET — registered last in index.ts so they can't
+ *  shadow subresource routes defined in other modules. */
+export function registerGitnessSpaceDetail(router: AppRouter) {
   // the route layer (slugs are identity) — patch is a no-op returning the
   // real record.
   router.patch("/api/v1/spaces/:space_ref{.+}", async (c) => {

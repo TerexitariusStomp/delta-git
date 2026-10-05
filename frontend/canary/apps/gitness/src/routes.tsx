@@ -3,7 +3,7 @@ import { Navigate, redirect } from 'react-router-dom'
 import { Breadcrumb, Layout, Sidebar } from '@harnessio/ui/components'
 import { ComponentProvider } from '@harnessio/ui/context'
 import { getTrimmedSha } from '@harnessio/ui/utils'
-import { EmptyPage, ProfileSettingsLayout, RepoSettingsLayout, WebhookSettingsLayout } from '@harnessio/views'
+import { ProfileSettingsLayout, RepoSettingsLayout, WebhookSettingsLayout } from '@harnessio/views'
 
 import { FeatureGuard } from './components-v2/feature-guard'
 import { AppShellMFE } from './components-v2/mfe/app-shell'
@@ -21,6 +21,12 @@ import { CustomRouteObject, RouteConstants } from './framework/routing/types'
 import { MFERouteRenderer } from './MFERouteRenderer'
 import { CreateProject } from './pages-v2/create-project'
 import { DeltaArenaFeedPage, DeltaLeaderboardPage } from './pages-v2/delta/global-pages'
+import {
+  AdminResourceGroupsPage,
+  AdminRolesPage,
+  AdminServiceAccountsPage,
+  AdminUserGroupsPage
+} from './pages-v2/delta/admin-rbac-pages'
 import { RepoDeltaKnowledgePage } from './pages-v2/delta/knowledge-page'
 import { SecretsVaultPage } from './pages-v2/delta/secrets-vault-page'
 import {
@@ -983,7 +989,7 @@ export const routes: CustomRouteObject[] = [
           },
           {
             path: 'user-groups',
-            element: <EmptyPage pathName="User Groups" />,
+            element: <AdminUserGroupsPage />,
             handle: {
               breadcrumb: () => <span>User Groups</span>,
               routeName: RouteConstants.toUserGroups,
@@ -992,7 +998,7 @@ export const routes: CustomRouteObject[] = [
           },
           {
             path: 'service-accounts',
-            element: <EmptyPage pathName="Service Accounts" />,
+            element: <AdminServiceAccountsPage />,
             handle: {
               breadcrumb: () => <span>Service Accounts</span>,
               routeName: RouteConstants.toServiceAccounts
@@ -1000,7 +1006,7 @@ export const routes: CustomRouteObject[] = [
           },
           {
             path: 'resource-groups',
-            element: <EmptyPage pathName="Resource Groups" />,
+            element: <AdminResourceGroupsPage />,
             handle: {
               breadcrumb: () => <span>Resource Groups</span>,
               routeName: RouteConstants.toResourceGroups
@@ -1008,7 +1014,7 @@ export const routes: CustomRouteObject[] = [
           },
           {
             path: 'roles',
-            element: <EmptyPage pathName="Roles" />,
+            element: <AdminRolesPage />,
             handle: {
               breadcrumb: () => <span>Roles</span>,
               routeName: RouteConstants.toRoles

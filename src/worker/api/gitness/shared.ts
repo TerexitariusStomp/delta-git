@@ -21,6 +21,7 @@ import { isValidOwnerRepo } from "@/shared/web";
 import { resolveUiRepoAccess } from "@/worker/routes/ui/helpers";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { viewerIsNamespaceMember } from "@/worker/auth/pat";
+import { enforceInNamespace, principalForUser } from "@/worker/rbac";
 import { readUserFavorites } from "./stores";
 
 export type GitnessContext = AppContext;
@@ -227,6 +228,16 @@ export async function requireWriter(
   if (!(await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId))) {
     return gErr(c, 403, "not a member of this space");
   }
+  // RBAC: writes need a developer-or-owner role in this namespace (casbin
+  // evaluates memberships + group expansion + custom rules).
+  const allowed = await enforceInNamespace(
+    c.var.db,
+    row.namespaceId,
+    principalForUser(access.viewer.userId),
+    `repo:${row.doName}`,
+    "write"
+  );
+  if (!allowed) return gErr(c, 403, "insufficient role for writes");
   return {
     ...access,
     actor: access.viewer.primaryNamespaceSlug ?? access.viewer.userId,
