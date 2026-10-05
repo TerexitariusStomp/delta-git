@@ -7,6 +7,8 @@ import { signDidSession, signHs256Jwt, verifyDidSession } from "@/worker/agent/a
 import { canonicalJson, utf8, verifyKeySignature } from "@/worker/agent/atpauth/verify";
 import { completeOAuth, startOAuth } from "@/worker/agent/atpauth/oauth";
 import { decodeKeyMultibase } from "@/worker/agent/atpauth/didkey";
+import { verifyServiceAuth } from "@/worker/agent/atpauth/serviceAuth";
+import { computeJwkThumbprint } from "@/vendor/widespread/auth/dpop";
 import {
   clearDidSessionCookie,
   getDidSessionCookie,
@@ -44,6 +46,8 @@ import { generateNamespaceId } from "@/worker/auth/session";
 //   GET  /client-metadata.json            → atproto OAuth client metadata (client_id doc)
 //   GET  /auth/did/challenge?did|handle   → nonce + canonical payload
 //   POST /auth/did/verify                 → verify sig → httpOnly dg_session
+//   POST /auth/atp/verify                 → serviceAuth JWT → DPoP-bound dg_session
+//                                          (browser-native lane: OAuth tokens never transit)
 //   POST /auth/did/logout                 → revoke jti, clear cookie
 //   GET  /auth/did/session                → current identity
 //   POST /auth/did/keys                   → bind/revoke device keys (audit-trailed)
@@ -81,11 +85,17 @@ function callerKey(c: AppContext): string {
  * Shared post-identity step for every sign-in path (challenge verify, OAuth
  * callback): upsert the identity/user bridge, bootstrap the caller's
  * namespace, and issue the dg_session cookie. Returns the namespace slug.
+ *
+ * `dpopJwk` (client-side OAuth lane only) binds the session to the browser's
+ * custody-worker DPoP key — every subsequent request must carry a proof from
+ * that key (see readActiveSession's sessdpop check). The private key never
+ * leaves the browser; only the public JWK's thumbprint is stored.
  */
 async function establishDidSession(
   c: AppContext,
   did: string,
-  handle: string | undefined
+  handle: string | undefined,
+  dpopJwk?: { kty: string; x: string; y: string }
 ): Promise<{ namespaceSlug: string | undefined } | Response> {
   const config = loadSessionConfig(c.env);
   if (!config.ok) return bad(c, "session-unavailable", 500);
@@ -139,6 +149,14 @@ async function establishDidSession(
     did,
     expiresAt: Date.now() + SESSION_TTL_SEC * 1000,
   });
+  if (dpopJwk) {
+    // sessdpop:{jti} → expected JWK thumbprint. Session lifetime bound; the
+    // KV entry expires with the session so stale bindings never linger.
+    const jkt = await computeJwkThumbprint(dpopJwk);
+    await c.env.ROUTES.put(`sessdpop:${jti}`, jkt, {
+      expirationTtl: SESSION_TTL_SEC,
+    });
+  }
   const token = await signDidSession(config.secret, {
     sub: did,
     handle,
@@ -273,8 +291,14 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
       client_id: `${origin}/client-metadata.json`,
       client_name: "delta-git",
       client_uri: origin,
-      redirect_uris: [`${origin}/auth/oauth/callback`],
-      scope: "atproto",
+      // /oauth/callback first: @atproto/oauth-client-browser defaults to
+      // redirect_uris[0] — the SPA callback. The server lane builds
+      // /auth/oauth/callback explicitly, so ordering is safe there.
+      redirect_uris: [`${origin}/oauth/callback`, `${origin}/auth/oauth/callback`],
+      // `atproto` alone can't mint service-auth JWTs — the client-side lane
+      // needs rpc:* scoped to this deployment's service ref so the PDS's
+      // assertRpc({aud, lxm:*}) check inside getServiceAuth passes.
+      scope: `atproto rpc:*?aud=did:web:${new URL(c.req.url).hostname}#delta_git`,
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       application_type: "web",
@@ -374,6 +398,57 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
       return c.redirect(`${result.returnTo}${sep}dg_token=${dgToken}`);
     }
     return c.redirect("/");
+  });
+
+  // --- client-side OAuth lane ---------------------------------------------------
+  // POST /auth/atp/verify { did, jwt, dpop_jwk? }
+  //
+  // Browser-native sign-in: @atproto/oauth-client-browser runs the whole
+  // PAR/PKCE/DPoP flow client-side (tokens stay in browser IndexedDB, never
+  // transit delta-git). The browser then asks its own PDS for a service-auth
+  // JWT proving DID control and submits it here. The resulting dg_session is
+  // bound to the client's custody-worker DPoP key — cookie theft alone can
+  // never mint proofs, so the session is non-transferable.
+
+  router.post("/auth/atp/verify", async (c) => {
+    const limited = await rateGate(c, LIMITS.authVerify, callerKey(c));
+    if (limited) return limited;
+
+    const parsed = await c.req
+      .json<{
+        did?: string;
+        jwt?: string;
+        dpop_jwk?: { kty?: string; crv?: string; x?: string; y?: string };
+      }>()
+      .catch(() => null);
+    if (!parsed?.did || !parsed.jwt) return bad(c, "did+jwt required");
+
+    // Audience binds to this deployment's service identifier.
+    const expectedAud = `did:web:${new URL(c.req.url).host}`;
+    const verified = await verifyServiceAuth(c.env, parsed.did, parsed.jwt, expectedAud);
+    if (!verified) {
+      metric(c.env, "auth.did", { scope: "serviceauth-failed", index: parsed.did });
+      return bad(c, "service-auth-invalid", 401);
+    }
+
+    const jwk =
+      parsed.dpop_jwk?.kty === "EC" &&
+      parsed.dpop_jwk.crv === "P-256" &&
+      parsed.dpop_jwk.x &&
+      parsed.dpop_jwk.y
+        ? { kty: parsed.dpop_jwk.kty, x: parsed.dpop_jwk.x, y: parsed.dpop_jwk.y }
+        : undefined;
+
+    const established = await establishDidSession(c, verified.did, verified.handle, jwk);
+    if (established instanceof Response) return established;
+    metric(c.env, "auth.did", { scope: "serviceauth-verified", index: verified.did });
+    return c.json({
+      did: verified.did,
+      handle: verified.handle ?? null,
+      namespace: established.namespaceSlug ?? null,
+      dpop_bound: Boolean(jwk),
+      session_expires_at: Date.now() + SESSION_TTL_SEC * 1000,
+    });
   });
 
   // --- logout / session -------------------------------------------------------

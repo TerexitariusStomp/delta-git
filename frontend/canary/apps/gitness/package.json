@@ -21,6 +21,7 @@
     "start:webpack": "webpack serve --config webpack.config.cjs --mode=development"
   },
   "dependencies": {
+    "@atproto/oauth-client-browser": "0.5.7",
     "@emotion/is-prop-valid": "^1.4.0",
     "@harnessio/code-service-client": "3.12.7",
     "@harnessio/filters": "workspace:*",

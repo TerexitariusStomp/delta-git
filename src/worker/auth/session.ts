@@ -17,6 +17,7 @@ import {
   setSessionCookie,
 } from "./cookies";
 import { verifyDidSession } from "@/worker/agent/atpauth/jwt";
+import { verifyDpopProof } from "@/vendor/widespread/auth/dpop";
 
 // Session cookie value shape: `goc_sess_<base64url AES-GCM blob>`.
 // The sealed blob contains the user id and expiry and is authenticated with
@@ -185,6 +186,24 @@ async function readActiveSessionUncached(c: AppContext): Promise<ActiveSession |
       if (claims) {
         const live = await findLiveDidSession(c.var.db, claims.jti);
         if (live) {
+          // DPoP-bound sessions (client-side OAuth lane): the session was
+          // issued to a custody-worker key — every request must carry a
+          // valid proof or the cookie alone is worthless.
+          const boundJkt = await c.env.ROUTES.get(`sessdpop:${claims.jti}`);
+          if (boundJkt) {
+            const proof = c.req.header("dpop");
+            const url = new URL(c.req.url);
+            const valid =
+              proof &&
+              (await verifyDpopProof(
+                proof,
+                c.req.method,
+                `${url.origin}${url.pathname}`,
+                boundJkt,
+                c.env.ROUTES
+              ));
+            if (!valid) return null;
+          }
           const identity = await findIdentityByDid(c.var.db, claims.sub);
           const user = identity ? await findUserById(c.var.db, identity.userId) : undefined;
           if (identity && user) {
