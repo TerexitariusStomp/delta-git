@@ -5,6 +5,7 @@ import { getRepoStub } from "@/worker/common";
 import { readObject } from "@/worker/git/object-store/store";
 import { resolveRepositoryRoute, type RepositoryRoute } from "@/worker/repositories/route";
 import { authenticateGitRequest, getBasicCredentials } from "@/worker/auth/gitAuth";
+import { createTarPacker } from "modern-tar";
 import { isValidOwnerRepo } from "@/shared/web";
 import { isTreeMode, parseTree } from "@/worker/merge/tree";
 import { parseCommitText, parseTagTarget } from "@/worker/git/core";
@@ -18,7 +19,6 @@ import { parseCommitText, parseTagTarget } from "@/worker/git/core";
 // The response is an uncompressed POSIX/ustar stream of the commit's full
 // tree, emitted lazily so memory stays flat regardless of archive size.
 
-const te = new TextEncoder();
 const td = new TextDecoder();
 
 const MAX_FILES = 5_000;
@@ -44,6 +44,10 @@ function notFound(): Response {
 }
 
 // ---- tar ----
+//
+// The archive is emitted as a POSIX ustar stream via modern-tar — the
+// packer handles octal/checksum fields, the ustar 155/100 prefix split for
+// long paths, and PAX `linkpath` records for >100-byte symlink targets.
 
 type TarFile = {
   /** Path relative to repo root, forward slashes, no leading slash. */
@@ -55,49 +59,6 @@ type TarFile = {
   linkname?: string;
   type: "file" | "dir" | "symlink";
 };
-
-function octal(n: number, width: number): Uint8Array {
-  const s = n.toString(8).padStart(width - 1, "0") + "\0";
-  return te.encode(s);
-}
-
-function writeField(buf: Uint8Array, offset: number, bytes: Uint8Array, max: number) {
-  buf.set(bytes.subarray(0, max), offset);
-}
-
-// One 512-byte ustar header. Long names/links get GNU "L"/"K" longname
-// entries emitted by the caller; this writer just truncates to fit.
-function tarHeader(
-  name: string,
-  mode: number,
-  size: number,
-  mtime: number,
-  typeflag: string,
-  linkname: string
-): Uint8Array {
-  const h = new Uint8Array(512);
-  writeField(h, 0, te.encode(name), 100);
-  h.set(octal(mode, 8), 100);
-  h.set(octal(0, 8), 108); // uid
-  h.set(octal(0, 8), 116); // gid
-  h.set(octal(size, 12), 124);
-  h.set(octal(mtime, 12), 136);
-  h.set(te.encode("        "), 148); // checksum field is 8 spaces during sum
-  writeField(h, 156, te.encode(typeflag), 1);
-  writeField(h, 157, te.encode(linkname), 100);
-  writeField(h, 257, te.encode("ustar\0"), 6);
-  writeField(h, 263, te.encode("00"), 2);
-  writeField(h, 265, te.encode("git"), 32);
-  writeField(h, 297, te.encode("git"), 32);
-  let sum = 0;
-  for (const b of h) sum += b;
-  h.set(te.encode(sum.toString(8).padStart(6, "0") + "\0 "), 148);
-  return h;
-}
-
-function pad512(len: number): number {
-  return (512 - (len % 512)) % 512;
-}
 
 // ---- tree walk ----
 
@@ -248,28 +209,17 @@ export function registerArchiveRoutes(router: AppRouter): void {
     }
 
     const mtime = commit.committer?.when ?? commit.author?.when ?? Math.floor(Date.now() / 1000);
+    const mtimeDate = new Date(mtime * 1000);
     const env = c.env;
     const cacheCtx = c.var.cacheCtx;
     let bytesOut = 0;
 
-    // Lazily emit headers + blob bodies so the worker holds at most one
-    // payload at a time. Errors mid-stream truncate the response — a partial
-    // tar fails closed on the consumer's integrity checks either way.
-    const pump = (async function* (): AsyncGenerator<Uint8Array> {
+    // Lazily emit entries so the worker holds at most one blob payload at a
+    // time. Errors mid-stream cancel the readable — a partial tar fails
+    // closed on the consumer's integrity checks either way.
+    const { readable, controller: tar } = createTarPacker();
+    const pump = (async () => {
       for (const f of entries) {
-        const nameBytes = te.encode(f.path);
-        const linkBytes = te.encode(f.linkname ?? "");
-        if (linkBytes.length > 100) {
-          // GNU longlink entry then a header whose linkname is truncated.
-          yield tarHeader("././@LongLink", 0, linkBytes.length, mtime, "K", "");
-          yield linkBytes;
-          yield new Uint8Array(pad512(linkBytes.length));
-        }
-        if (nameBytes.length > 100) {
-          yield tarHeader("././@LongLink", 0, nameBytes.length, mtime, "L", "");
-          yield nameBytes;
-          yield new Uint8Array(pad512(nameBytes.length));
-        }
         if (f.type === "file" && f.oid) {
           const blob = await readObject(env, route.doName, f.oid, cacheCtx);
           if (!blob || blob.type !== "blob") continue;
@@ -279,37 +229,46 @@ export function registerArchiveRoutes(router: AppRouter): void {
             log.warn("archive:byte-cap-exceeded", { repoId: route.doName, ref, cap: MAX_BYTES });
             throw new Error("archive byte cap exceeded");
           }
-          yield tarHeader(f.path, f.mode, size, mtime, "0", "");
-          yield blob.payload;
-          yield new Uint8Array(pad512(size));
+          const body = tar.add({
+            name: f.path,
+            size,
+            mtime: mtimeDate,
+            mode: f.mode,
+            type: "file",
+            uid: 0,
+            gid: 0,
+            uname: "git",
+            gname: "git",
+          });
+          const writer = body.getWriter();
+          await writer.write(blob.payload);
+          await writer.close();
         } else {
-          yield tarHeader(
-            f.path,
-            f.mode,
-            f.type === "symlink" ? 0 : 0,
-            mtime,
-            f.type === "dir" ? "5" : "2",
-            (f.linkname ?? "").slice(0, 100)
-          );
+          const body = tar.add({
+            name: f.path,
+            size: 0,
+            mtime: mtimeDate,
+            mode: f.mode,
+            type: f.type === "dir" ? "directory" : "symlink",
+            uid: 0,
+            gid: 0,
+            uname: "git",
+            gname: "git",
+            linkname: f.type === "symlink" ? f.linkname : undefined,
+          });
+          await body.getWriter().close();
         }
       }
+      tar.finalize();
+      log.info("archive:stream-complete", { repoId: route.doName, ref, commitOid, bytesOut });
     })();
-
-    const stream = new ReadableStream<Uint8Array>({
-      async pull(controller) {
-        const next = await pump.next();
-        if (next.done) {
-          controller.enqueue(new Uint8Array(1024)); // tar end-of-archive marker
-          controller.close();
-          log.info("archive:stream-complete", { repoId: route.doName, ref, commitOid, bytesOut });
-          return;
-        }
-        controller.enqueue(next.value);
-      },
-      cancel() {
-        // Consumer disconnected — let the generator finish early.
-        void pump.return(undefined);
-      },
+    pump.catch((err: unknown) => {
+      log.warn("archive:pump-failed", {
+        repoId: route.doName,
+        ref,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      void readable.cancel(err);
     });
 
     log.debug("archive:stream-start", {
@@ -318,7 +277,7 @@ export function registerArchiveRoutes(router: AppRouter): void {
       commitOid,
       files: entries.length,
     });
-    return new Response(stream, {
+    return new Response(readable, {
       headers: {
         "Content-Type": "application/x-tar",
         "Content-Disposition": `attachment; filename="${route.routeRepoSlug}-${ref.replaceAll("/", "-")}.tar"`,
