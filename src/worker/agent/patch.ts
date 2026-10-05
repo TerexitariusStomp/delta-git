@@ -1,7 +1,7 @@
 import type { CacheContext } from "@/worker/cache";
 import type { NewObject } from "@/worker/merge/packWriter";
 
-import { parsePatch, type StructuredPatch } from "diff";
+import { applyPatch, parsePatch, type StructuredPatch } from "diff";
 import { computeOid, parseCommitText } from "@/worker/git/core";
 import { readObject } from "@/worker/git/object-store/store";
 import { isTreeMode, parseTree, serializeTree, type Tree } from "@/worker/merge/tree";
@@ -35,33 +35,11 @@ export async function readPayload(
 
 /** Apply one file's hunks to its current text; returns new text or null. */
 function applyHunks(oldText: string | undefined, diff: StructuredPatch): string | null {
-  const oldLines = oldText === undefined ? [] : oldText.split("\n");
-  // Git text files conventionally end with a trailing newline; drop the
-  // phantom final element so hunk offsets line up with real lines.
-  const trailingEmpty = oldLines.length > 0 && oldLines[oldLines.length - 1] === "";
-  const lines = trailingEmpty ? oldLines.slice(0, -1) : oldLines;
-
-  const out: string[] = [];
-  let cursor = 0;
-  for (const hunk of diff.hunks) {
-    const start = hunk.oldStart - 1;
-    if (start < cursor) return null;
-    out.push(...lines.slice(cursor, start));
-    for (const line of hunk.lines) {
-      const marker = line[0];
-      const content = line.slice(1);
-      if (marker === " " || marker === "-") {
-        if (cursor >= lines.length || lines[cursor] !== content) return null;
-        cursor++;
-      }
-      if (marker === "+" || marker === " ") out.push(content);
-    }
-  }
-  out.push(...lines.slice(cursor));
-  const joined = out.join("\n");
-  // Preserve the trailing-newline convention when the old file had one or
-  // when the result should be a text file at all.
-  return oldText === undefined || trailingEmpty ? `${joined}\n` : joined;
+  // Delegated to jsdiff: strict context matching (fuzzFactor 0), and —
+  // unlike the hand-rolled version — correct handling of "\ No newline at
+  // end of file" marker lines.
+  const result = applyPatch(oldText ?? "", diff, { fuzzFactor: 0 });
+  return result === false ? null : result;
 }
 
 /** Set/replace the blob at a slash path inside a tree, producing new trees. */
