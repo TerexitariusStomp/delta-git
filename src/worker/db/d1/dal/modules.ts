@@ -546,3 +546,158 @@ export async function updateChaosExperiment(
 export async function deleteChaosExperiment(db: Db, id: string): Promise<void> {
   await db.delete(chaosExperiments).where(eq(chaosExperiments.id, id)).run();
 }
+
+// --- devx-plane registries (catalog, dev envs, databases, security tests,
+//     supply chain, dashboards) ----------------------------------------------
+
+import {
+  catalogEntities,
+  dashboards,
+  databaseRecords,
+  devEnvironments,
+  securityTests,
+  supplyChainDocs,
+  type CatalogEntityRow,
+  type DashboardRow,
+  type DatabaseRecordRow,
+  type DevEnvironmentRow,
+  type NewCatalogEntityRow,
+  type NewDashboardRow,
+  type NewDatabaseRecordRow,
+  type NewDevEnvironmentRow,
+  type NewSecurityTestRow,
+  type NewSupplyChainDocRow,
+  type SecurityTestRow,
+  type SupplyChainDocRow,
+} from "../schema";
+
+export async function listCatalogEntities(
+  db: Db,
+  namespaceId: string
+): Promise<CatalogEntityRow[]> {
+  return db
+    .select()
+    .from(catalogEntities)
+    .where(eq(catalogEntities.namespaceId, namespaceId))
+    .all();
+}
+export async function insertCatalogEntity(db: Db, row: NewCatalogEntityRow): Promise<void> {
+  await db.insert(catalogEntities).values(row).run();
+}
+export async function deleteCatalogEntity(db: Db, id: string): Promise<void> {
+  await db.delete(catalogEntities).where(eq(catalogEntities.id, id)).run();
+}
+
+export async function listDevEnvironments(
+  db: Db,
+  namespaceId: string
+): Promise<DevEnvironmentRow[]> {
+  return db
+    .select()
+    .from(devEnvironments)
+    .where(eq(devEnvironments.namespaceId, namespaceId))
+    .all();
+}
+export async function insertDevEnvironment(db: Db, row: NewDevEnvironmentRow): Promise<void> {
+  await db.insert(devEnvironments).values(row).run();
+}
+export async function updateDevEnvironment(
+  db: Db,
+  id: string,
+  patch: Partial<DevEnvironmentRow>
+): Promise<void> {
+  await db.update(devEnvironments).set(patch).where(eq(devEnvironments.id, id)).run();
+}
+export async function deleteDevEnvironment(db: Db, id: string): Promise<void> {
+  await db.delete(devEnvironments).where(eq(devEnvironments.id, id)).run();
+}
+
+export async function listDatabaseRecords(
+  db: Db,
+  namespaceId: string
+): Promise<DatabaseRecordRow[]> {
+  return db
+    .select()
+    .from(databaseRecords)
+    .where(eq(databaseRecords.namespaceId, namespaceId))
+    .all();
+}
+export async function insertDatabaseRecord(db: Db, row: NewDatabaseRecordRow): Promise<void> {
+  await db.insert(databaseRecords).values(row).run();
+}
+export async function updateDatabaseRecord(
+  db: Db,
+  id: string,
+  patch: Partial<DatabaseRecordRow>
+): Promise<void> {
+  await db.update(databaseRecords).set(patch).where(eq(databaseRecords.id, id)).run();
+}
+export async function deleteDatabaseRecord(db: Db, id: string): Promise<void> {
+  await db.delete(databaseRecords).where(eq(databaseRecords.id, id)).run();
+}
+export async function findDatabaseRecord(db: Db, namespaceId: string, identifier: string) {
+  return db
+    .select()
+    .from(databaseRecords)
+    .where(
+      and(eq(databaseRecords.namespaceId, namespaceId), eq(databaseRecords.identifier, identifier))
+    )
+    .get();
+}
+
+export async function listSecurityTests(db: Db, namespaceId: string): Promise<SecurityTestRow[]> {
+  return db
+    .select()
+    .from(securityTests)
+    .where(eq(securityTests.namespaceId, namespaceId))
+    .orderBy(desc(securityTests.createdAt))
+    .all();
+}
+export async function insertSecurityTest(db: Db, row: NewSecurityTestRow): Promise<void> {
+  await db.insert(securityTests).values(row).run();
+}
+export async function findSecurityTest(db: Db, id: string) {
+  return db.select().from(securityTests).where(eq(securityTests.id, id)).get();
+}
+export async function updateSecurityTest(
+  db: Db,
+  id: string,
+  patch: Partial<SecurityTestRow>
+): Promise<void> {
+  await db.update(securityTests).set(patch).where(eq(securityTests.id, id)).run();
+}
+
+export async function listSupplyChainDocs(
+  db: Db,
+  namespaceId: string
+): Promise<SupplyChainDocRow[]> {
+  return db
+    .select()
+    .from(supplyChainDocs)
+    .where(eq(supplyChainDocs.namespaceId, namespaceId))
+    .orderBy(desc(supplyChainDocs.createdAt))
+    .all();
+}
+export async function insertSupplyChainDoc(db: Db, row: NewSupplyChainDocRow): Promise<void> {
+  await db.insert(supplyChainDocs).values(row).run();
+}
+export async function findSupplyChainDoc(db: Db, id: string) {
+  return db.select().from(supplyChainDocs).where(eq(supplyChainDocs.id, id)).get();
+}
+
+export async function listDashboards(db: Db, namespaceId: string): Promise<DashboardRow[]> {
+  return db.select().from(dashboards).where(eq(dashboards.namespaceId, namespaceId)).all();
+}
+export async function insertDashboard(db: Db, row: NewDashboardRow): Promise<void> {
+  await db.insert(dashboards).values(row).run();
+}
+export async function updateDashboard(
+  db: Db,
+  id: string,
+  patch: Partial<DashboardRow>
+): Promise<void> {
+  await db.update(dashboards).set(patch).where(eq(dashboards.id, id)).run();
+}
+export async function deleteDashboard(db: Db, id: string): Promise<void> {
+  await db.delete(dashboards).where(eq(dashboards.id, id)).run();
+}

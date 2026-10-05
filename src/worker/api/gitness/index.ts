@@ -39,6 +39,7 @@ import { registerGitnessRbac } from "./rbac";
 import { registerGitnessModules } from "./modules";
 import { registerGitnessDelivery } from "./delivery";
 import { registerGitnessReliability } from "./reliability";
+import { registerGitnessDevx } from "./devx";
 
 const GITIGNORE_PRESETS = ["Node", "Python", "Go", "Rust", "Java", "C++"];
 const LICENSE_PRESETS = ["MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause", "ISC"];
@@ -69,6 +70,9 @@ export function registerGitnessApi(router: AppRouter) {
   // Reliability plane claims `/spaces/{ref}/{monitors,slos,downtimes,
   // incidents,certificates,costs,chaos,reliability}` tails.
   registerGitnessReliability(router);
+  // Devx plane claims `/spaces/{ref}/{catalog,dev-environments,databases,
+  // security-tests,supply-chain,dashboards,insights}` tails.
+  registerGitnessDevx(router);
   registerGitnessSpaces(router);
   // Search claims `/api/v1/search` and `/repos/{ref}/+/...` tails — register
   // before the greedy suffix routes below.

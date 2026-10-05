@@ -50,6 +50,15 @@ import {
   ServiceReliabilityPage,
   SloDowntimePage,
 } from "./pages-v2/delta/reliability-pages";
+import {
+  DashboardsPage,
+  DatabasesPage,
+  DevEnvironmentsPage,
+  DevInsightsPage,
+  DevPortalPage,
+  SecurityTestsPage,
+  SupplyChainPage,
+} from "./pages-v2/delta/devx-pages";
 import { SecretsVaultPage } from "./pages-v2/delta/secrets-vault-page";
 import {
   RepoDeltaAgentsPage,
@@ -1101,6 +1110,51 @@ export const routes: CustomRouteObject[] = [
           routeName: RouteConstants.toServiceReliability,
           pageTitle: "Service reliability",
         },
+      },
+      {
+        path: "dev-portal",
+        element: <DevPortalPage />,
+        handle: { routeName: RouteConstants.toDevPortal, pageTitle: "Developer portal" },
+      },
+      {
+        path: "discovery",
+        element: <DevPortalPage />,
+        handle: { routeName: RouteConstants.toDiscovery, pageTitle: "Discovery" },
+      },
+      {
+        path: "dev-environments",
+        element: <DevEnvironmentsPage />,
+        handle: { routeName: RouteConstants.toDevEnvironments, pageTitle: "Dev environments" },
+      },
+      {
+        path: "dev-insights",
+        element: <DevInsightsPage />,
+        handle: { routeName: RouteConstants.toDevInsights, pageTitle: "Developer insights" },
+      },
+      {
+        path: "databases",
+        element: <DatabasesPage />,
+        handle: { routeName: RouteConstants.toDatabases, pageTitle: "Databases" },
+      },
+      {
+        path: "security-tests",
+        element: <SecurityTestsPage />,
+        handle: { routeName: RouteConstants.toSecurityTests, pageTitle: "Security tests" },
+      },
+      {
+        path: "supply-chain",
+        element: <SupplyChainPage />,
+        handle: { routeName: RouteConstants.toSupplyChain, pageTitle: "Supply chain" },
+      },
+      {
+        path: "dashboards",
+        element: <DashboardsPage />,
+        handle: { routeName: RouteConstants.toDashboards, pageTitle: "Dashboards" },
+      },
+      {
+        path: "overrides",
+        element: <SloDowntimePage />,
+        handle: { routeName: RouteConstants.toOverrides, pageTitle: "Overrides" },
       },
       {
         path: "arena",

@@ -14,3 +14,4 @@ export * from "./scanRuns";
 export * from "./notifications";
 export * from "./delivery";
 export * from "./reliability";
+export * from "./devx";
