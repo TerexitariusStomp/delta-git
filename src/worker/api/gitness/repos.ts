@@ -67,7 +67,7 @@ import {
   requireWriter,
   resolveGitnessRepo,
 } from "./shared";
-import type { GitnessContext, RepoAccessOk } from "./shared";
+import { normalizeIdentifier, type GitnessContext, type RepoAccessOk } from "./shared";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { readTree } from "@/worker/git/operations/read";
 
@@ -109,7 +109,7 @@ async function renameRepo(
   gate: RepoAccessOk & { actor: string },
   newSlug: string
 ): Promise<Response> {
-  const validation = validateSlugForRoute(newSlug);
+  const validation = validateSlugForRoute(normalizeIdentifier(newSlug));
   if (!validation.ok) return gErr(c, 400, "invalid identifier");
   const row = await findRepositoryByDoName(c.var.db, gate.route.doName);
   if (!row) return gNotFound(c, "repository");
@@ -261,8 +261,8 @@ export function registerGitnessRepos(router: AppRouter) {
     slug: string,
     opts: { description?: string; isPublic?: boolean }
   ): Promise<{ row: RepositoryRow } | { error: Response }> {
-    const nsValidation = validateSlugForRoute(nsSlug);
-    const slugValidation = validateSlugForRoute(slug);
+    const nsValidation = validateSlugForRoute(normalizeIdentifier(nsSlug));
+    const slugValidation = validateSlugForRoute(normalizeIdentifier(slug));
     if (!nsValidation.ok || !slugValidation.ok) {
       return { error: gErr(c, 400, "invalid space or repository identifier") };
     }
@@ -573,7 +573,7 @@ export function registerGitnessRepos(router: AppRouter) {
     const gate = await requireWriter(c);
     if (gate instanceof Response) return gate;
     const body = (await c.req.json().catch(() => null)) as { space_ref?: string } | null;
-    const nsValidation = validateSlugForRoute(body?.space_ref ?? "");
+    const nsValidation = validateSlugForRoute(normalizeIdentifier(body?.space_ref ?? ""));
     if (!nsValidation.ok) return gErr(c, 400, "space_ref required");
     const target = await findNamespaceBySlug(c.var.db, nsValidation.slug);
     if (!target) return gNotFound(c, "space");

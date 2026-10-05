@@ -25,7 +25,7 @@ import type { GitnessContext } from "./shared";
 import { validateSlugForRoute } from "@/shared/slugs";
 import { generatePatPlaintext, hashPatPlaintext } from "@/worker/auth/pat";
 import { newPrefixedId } from "@/worker/common";
-import { numericId, gErr, gNotFound } from "./shared";
+import { numericId, gErr, gNotFound, normalizeIdentifier } from "./shared";
 import { registerGitnessSpaces } from "./spaces";
 import { registerGitnessGitdata } from "./gitdata";
 import { registerGitnessPullreqs } from "./pullreqs";
@@ -226,7 +226,7 @@ export function registerGitnessApi(router: AppRouter) {
     const viewer = await loadViewer(c);
     if (!viewer) return gErr(c, 401, "unauthorized");
     const body = (await c.req.json().catch(() => null)) as { uid?: string } | null;
-    const validation = validateSlugForRoute(body?.uid ?? "");
+    const validation = validateSlugForRoute(normalizeIdentifier(body?.uid ?? ""));
     if (!validation.ok) return gErr(c, 400, "invalid uid");
     if (await findNamespaceBySlug(c.var.db, validation.slug)) {
       return gErr(c, 409, "uid already taken");

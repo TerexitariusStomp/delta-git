@@ -43,17 +43,28 @@ export function gNotFound(c: GitnessContext, what = "resource"): Response {
 /**
  * `repo_ref` arrives as `{owner}/{repo}/+` (gitness marks the ref end with a
  * literal `+` segment). Our owners/repos are flat, so the owner is the first
- * segment and the repo slug is everything between it and the `+`.
+ * segment and the repo slug is everything between it and the `+`. Slugs are
+ * lowercase-canonical, so the URL folds to lowercase for case-insensitive
+ * resolution (same as GitHub).
  */
 export function parseRepoRef(ref: string): { owner: string; repo: string } | null {
   const trimmed = ref.replace(/\/+$/, "");
   const body = trimmed.endsWith("/+") ? trimmed.slice(0, -2) : trimmed.replace(/\+$/, "");
   const parts = body.split("/").filter(Boolean);
   if (parts.length < 2) return null;
-  const owner = parts[0];
-  const repo = parts.slice(1).join("/");
+  const owner = parts[0].toLowerCase();
+  const repo = parts.slice(1).join("/").toLowerCase();
   if (!isValidOwnerRepo(owner) || !isValidOwnerRepo(repo)) return null;
   return { owner, repo };
+}
+
+/**
+ * User-supplied repo/space identifiers are lowercase-canonical slugs. Fold
+ * GitHub-style mixed-case input (`MyFirstRepo` → `myfirstrepo`) at write
+ * entry points so creation accepts it instead of rejecting on the validator.
+ */
+export function normalizeIdentifier(input: string): string {
+  return input.trim().toLowerCase();
 }
 
 export type GitnessRepoAccess =

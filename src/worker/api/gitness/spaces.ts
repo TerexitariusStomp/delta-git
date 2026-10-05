@@ -42,6 +42,7 @@ import { getRepoStub } from "@/worker/common";
 import {
   gErr,
   gNotFound,
+  normalizeIdentifier,
   numericId,
   pageParams,
   paginate,
@@ -142,7 +143,9 @@ export function registerGitnessSpaces(router: AppRouter) {
       email?: string;
       display_name?: string;
     } | null;
-    const slugValidation = validateSlugForRoute(body?.uid ?? body?.email ?? "");
+    const slugValidation = validateSlugForRoute(
+      normalizeIdentifier(body?.uid ?? body?.email ?? "")
+    );
     if (!slugValidation.ok) return gErr(c, 400, "invalid uid");
     if (await findNamespaceBySlug(c.var.db, slugValidation.slug)) {
       return gErr(c, 409, "uid already taken");
@@ -337,7 +340,7 @@ export function registerGitnessSpaces(router: AppRouter) {
     const viewer = await loadViewer(c);
     if (!viewer) return gErr(c, 401, "unauthorized");
     const body = (await c.req.json().catch(() => null)) as { identifier?: string } | null;
-    const validation = validateSlugForRoute(body?.identifier ?? "");
+    const validation = validateSlugForRoute(normalizeIdentifier(body?.identifier ?? ""));
     if (!validation.ok) return gErr(c, 400, "invalid identifier");
     const ns = await claimNamespace(c.var.db, {
       id: generateNamespaceId(),
@@ -396,7 +399,7 @@ export function registerGitnessSpaces(router: AppRouter) {
     const viewer = await loadViewer(c);
     if (!viewer) return gErr(c, 401, "unauthorized");
     const body = (await c.req.json().catch(() => null)) as { identifier?: string } | null;
-    const validation = validateSlugForRoute(body?.identifier ?? "");
+    const validation = validateSlugForRoute(normalizeIdentifier(body?.identifier ?? ""));
     if (!validation.ok) return gErr(c, 400, "invalid identifier");
     const ns = await claimNamespace(c.var.db, {
       id: generateNamespaceId(),

@@ -195,6 +195,25 @@ describe("gitness /api/v1 write paths", () => {
     expect(repo.path).toBe(`${w.namespaceSlug}/${repo.identifier}`);
   });
 
+  it("POST /repos folds GitHub-style mixed-case identifiers to the canonical slug", async () => {
+    const mixed = uniq("MixedCaseRepo");
+    const res = await post(
+      "/api/v1/repos",
+      { identifier: mixed, is_public: true, parent_ref: w.namespaceSlug },
+      w.cookieHeader
+    );
+    expect(res.status).toBe(200);
+    const repo = res.body as { identifier: string; path: string };
+    expect(repo.identifier).toBe(mixed.toLowerCase());
+    expect(repo.path).toBe(`${w.namespaceSlug}/${mixed.toLowerCase()}`);
+    // Reads resolve case-insensitively through repo_ref.
+    const get = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${w.namespaceSlug}/${mixed}/+`,
+      { headers: { Cookie: w.cookieHeader } }
+    );
+    expect(get.status).toBe(200);
+  });
+
   it("branch create → commit-files → PR create → close round-trips", async () => {
     // Branch create.
     const br = await post(
