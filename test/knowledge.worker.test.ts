@@ -146,10 +146,28 @@ describe("GET /api/v1/repos/{ref}/+/knowledge", () => {
     expect(full.text).toContain("greet");
   });
 
+  it("serves the repo-root llms.txt convention paths", async () => {
+    const { status, text } = await get(
+      `/${seeded.namespaceSlug}/${seeded.repoSlug}/llms.txt`,
+      seeded.cookieHeader
+    );
+    expect(status).toBe(200);
+    expect(text).toContain("# ");
+    expect(text).toContain("## Structure");
+    const full = await get(
+      `/${seeded.namespaceSlug}/${seeded.repoSlug}/llms-full.txt`,
+      seeded.cookieHeader
+    );
+    expect(full.status).toBe(200);
+    expect(full.text).toContain("greet");
+  });
+
   it("refuses anonymous access to private-repo KB paths", async () => {
     // The seeded repo is private — anonymous gets the privacy-preserving 404
     // before any KB work happens.
     const { status } = await get(`/api/v1/repos/${ref}/+/knowledge`);
     expect(status).toBe(404);
+    const root = await get(`/${seeded.namespaceSlug}/${seeded.repoSlug}/llms.txt`);
+    expect(root.status).toBe(404);
   });
 });

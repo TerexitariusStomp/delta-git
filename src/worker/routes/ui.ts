@@ -1,4 +1,5 @@
 import { handleIdeasSiteBuild } from "./ui/agents";
+import { handleLlmsTxt, handleLlmsFullTxt } from "./ui/llms";
 import { handleRaw, handleRawPath } from "./ui/raw";
 import { handleRefsApi } from "./ui/refsApi";
 import type { AppRouter } from "./hono";
@@ -18,6 +19,10 @@ export function registerUiRoutes(router: AppRouter) {
   // Refs listing JSON — also used by external tooling that wants the old
   // compact refs endpoint.
   router.get(`/:owner/:repo/api/refs`, handleRefsApi);
+
+  // llms.txt convention — agent-facing repo manifests at the repo root.
+  router.get(`/:owner/:repo/llms.txt`, handleLlmsTxt);
+  router.get(`/:owner/:repo/llms-full.txt`, handleLlmsFullTxt);
 
   // Site-smith build trigger from an idea card.
   router.post(`/:owner/:repo/ideas/site`, handleIdeasSiteBuild);
