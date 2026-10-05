@@ -13,7 +13,10 @@ import {
 import { doPrefix, r2PackKey } from "@/worker/keys";
 import { createDb } from "@/worker/db/d1/client";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
+import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
+import { insertNotification } from "@/worker/db/d1/dal/modules";
 import { findScanRunForHead, scanStatusSatisfiesPolicy } from "@/worker/db/d1/dal/scanRuns";
+import { newPrefixedId } from "@/worker/common";
 import { readSecuritySettings } from "@/worker/api/gitness/stores";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
 import { enqueuePipelineTrigger } from "@/worker/tasks/pipeline";
@@ -547,6 +550,44 @@ export async function executeReceivePipeline(
           args.log.warn("receive:webhook-enqueue-failed", {
             repoId: args.repoId,
             ref: command.ref,
+            error: String(error),
+          });
+        })
+      );
+    }
+
+    // Notifications inbox: every successful heads-ref advance writes a `push`
+    // notification to each namespace member except the pusher.
+    const advancedRefs = args.commands
+      .map((command, i) => ({ command, status: finalize.statuses[i] }))
+      .filter(
+        ({ command, status }) =>
+          status?.ok && command.ref.startsWith("refs/heads/") && !/^0{40}$/i.test(command.newOid)
+      );
+    if (advancedRefs.length > 0 && args.namespaceId) {
+      const db = createDb(args.env.DB);
+      args.ctx.waitUntil(
+        (async () => {
+          const members = await listMembershipsForNamespace(db, args.namespaceId!);
+          const refList = advancedRefs
+            .map(({ command }) => command.ref.replace(/^refs\/heads\//, ""))
+            .join(", ");
+          for (const member of members) {
+            if (member.userId === args.actor) continue;
+            await insertNotification(db, {
+              id: newPrefixedId("ntf"),
+              userId: member.userId,
+              kind: "push",
+              title: `${args.repoSlug ?? args.repoId}: push to ${refList}`,
+              body: `${args.actor ?? "someone"} pushed ${advancedRefs.length} ref update(s)`,
+              link: args.repoSlug ? `/${args.repoSlug}` : null,
+              createdAt: Date.now(),
+              readAt: null,
+            });
+          }
+        })().catch((error) => {
+          args.log.warn("receive:notify-failed", {
+            repoId: args.repoId,
             error: String(error),
           });
         })

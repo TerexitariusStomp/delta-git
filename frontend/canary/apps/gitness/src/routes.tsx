@@ -1,244 +1,245 @@
-import { Navigate, redirect } from 'react-router-dom'
+import { Navigate, redirect } from "react-router-dom";
 
-import { Breadcrumb, Layout, Sidebar } from '@harnessio/ui/components'
-import { ComponentProvider } from '@harnessio/ui/context'
-import { getTrimmedSha } from '@harnessio/ui/utils'
-import { ProfileSettingsLayout, RepoSettingsLayout, WebhookSettingsLayout } from '@harnessio/views'
+import { Breadcrumb, Layout, Sidebar } from "@harnessio/ui/components";
+import { ComponentProvider } from "@harnessio/ui/context";
+import { getTrimmedSha } from "@harnessio/ui/utils";
+import { ProfileSettingsLayout, RepoSettingsLayout, WebhookSettingsLayout } from "@harnessio/views";
 
-import { FeatureGuard } from './components-v2/feature-guard'
-import { AppShellMFE } from './components-v2/mfe/app-shell'
-import { ProjectDropdown } from './components-v2/project-dropdown'
-import { AppShell } from './components-v2/standalone/app-shell'
-import { AppProvider } from './framework/context/AppContext'
-import { AppRouterProvider } from './framework/context/AppRouterProvider'
-import { ExplorerPathsProvider } from './framework/context/ExplorerPathsContext'
-import { FeatureFlag } from './framework/context/MFEContext.tsx'
-import { PageTitleProvider } from './framework/context/PageTitleContext'
-import { RbacButton } from './framework/rbac/rbac-button'
-import { RbacMoreActionsTooltip } from './framework/rbac/rbac-more-actions-tooltip.tsx'
-import { RbacSplitButton } from './framework/rbac/rbac-split-button'
-import { CustomRouteObject, RouteConstants } from './framework/routing/types'
-import { MFERouteRenderer } from './MFERouteRenderer'
-import { CreateProject } from './pages-v2/create-project'
-import { DeltaArenaFeedPage, DeltaLeaderboardPage } from './pages-v2/delta/global-pages'
+import { FeatureGuard } from "./components-v2/feature-guard";
+import { AppShellMFE } from "./components-v2/mfe/app-shell";
+import { ProjectDropdown } from "./components-v2/project-dropdown";
+import { AppShell } from "./components-v2/standalone/app-shell";
+import { AppProvider } from "./framework/context/AppContext";
+import { AppRouterProvider } from "./framework/context/AppRouterProvider";
+import { ExplorerPathsProvider } from "./framework/context/ExplorerPathsContext";
+import { FeatureFlag } from "./framework/context/MFEContext.tsx";
+import { PageTitleProvider } from "./framework/context/PageTitleContext";
+import { RbacButton } from "./framework/rbac/rbac-button";
+import { RbacMoreActionsTooltip } from "./framework/rbac/rbac-more-actions-tooltip.tsx";
+import { RbacSplitButton } from "./framework/rbac/rbac-split-button";
+import { CustomRouteObject, RouteConstants } from "./framework/routing/types";
+import { MFERouteRenderer } from "./MFERouteRenderer";
+import { CreateProject } from "./pages-v2/create-project";
+import { DeltaArenaFeedPage, DeltaLeaderboardPage } from "./pages-v2/delta/global-pages";
 import {
   AdminResourceGroupsPage,
   AdminRolesPage,
   AdminServiceAccountsPage,
-  AdminUserGroupsPage
-} from './pages-v2/delta/admin-rbac-pages'
-import { RepoDeltaKnowledgePage } from './pages-v2/delta/knowledge-page'
-import { SecretsVaultPage } from './pages-v2/delta/secrets-vault-page'
+  AdminUserGroupsPage,
+} from "./pages-v2/delta/admin-rbac-pages";
+import { RepoDeltaKnowledgePage } from "./pages-v2/delta/knowledge-page";
+import { ArtifactsPage, EnvironmentsPage, NotificationsPage } from "./pages-v2/delta/module-pages";
+import { SecretsVaultPage } from "./pages-v2/delta/secrets-vault-page";
 import {
   RepoDeltaAgentsPage,
   RepoDeltaArenaMatchPage,
   RepoDeltaArenaPage,
   RepoDeltaIdeasPage,
-  RepoDeltaIntentsPage
-} from './pages-v2/delta/repo-pages'
-import { LandingPage } from './pages-v2/landing-page-container'
-import { Logout } from './pages-v2/logout'
-import { SettingsProfileGeneralPage } from './pages-v2/profile-settings/profile-settings-general-container'
-import { SettingsProfileKeysPage } from './pages-v2/profile-settings/profile-settings-keys-container'
-import { ProjectLabelFormContainer } from './pages-v2/project/labels/project-label-form-container'
-import { ProjectLabelsList } from './pages-v2/project/labels/project-labels-list-container'
-import { ProjectGeneralSettingsPageContainer } from './pages-v2/project/project-general-settings-container'
-import { ImportProjectContainer } from './pages-v2/project/project-import-container'
-import { ProjectMemberListPage } from './pages-v2/project/project-member-list'
-import { ProjectRulesListContainer } from './pages-v2/project/project-rules-list-container'
-import { ProjectSettingsLayout } from './pages-v2/project/project-settings-layout'
-import ProjectPullRequestListPage from './pages-v2/project/pull-request/pull-request-list'
-import { ProjectBranchRulesContainer } from './pages-v2/project/rules/project-branch-rules-container'
-import { ProjectPushRulesContainer } from './pages-v2/project/rules/project-push-rules-container.tsx'
-import { ProjectRulesContainer } from './pages-v2/project/rules/project-rules-container'
-import { ProjectTagRulesContainer } from './pages-v2/project/rules/project-tag-rules-container'
-import PullRequestChanges from './pages-v2/pull-request/pull-request-changes'
-import { PullRequestCommitPage } from './pages-v2/pull-request/pull-request-commits'
-import { CreatePullRequest } from './pages-v2/pull-request/pull-request-compare'
-import PullRequestConversationPage from './pages-v2/pull-request/pull-request-conversation'
-import PullRequestDataProvider from './pages-v2/pull-request/pull-request-data-provider'
-import PullRequestLayout from './pages-v2/pull-request/pull-request-layout'
-import RepoPullRequestListPage from './pages-v2/pull-request/pull-request-list'
-import { RepoLabelFormContainer } from './pages-v2/repo/labels/label-form-container'
-import { RepoLabelsList } from './pages-v2/repo/labels/labels-list-container'
-import { RepoBranchesListPage } from './pages-v2/repo/repo-branch-list'
-import { RepoCode } from './pages-v2/repo/repo-code'
-import RepoCommitDetailsPage from './pages-v2/repo/repo-commit-details'
-import { CommitDiffContainer } from './pages-v2/repo/repo-commit-details-diff'
-import RepoCommitsPage from './pages-v2/repo/repo-commits'
-import { CreateRepo } from './pages-v2/repo/repo-create-page'
-import RepoExecutionListPage from './pages-v2/repo/repo-execution-list'
-import RepoExecutionDetailsPage from './pages-v2/repo/repo-execution-details'
-import RepoPipelineEditPage from './pages-v2/repo/repo-pipeline-edit'
-import RepoPipelineListPage from './pages-v2/repo/repo-pipeline-list'
-import RepoForkPage from './pages-v2/repo/repo-fork.tsx'
-import { ImportMultipleRepos } from './pages-v2/repo/repo-import-multiple-container'
-import { ImportRepo } from './pages-v2/repo/repo-import-page'
-import RepoLayout from './pages-v2/repo/repo-layout'
-import { LinkRepo } from './pages-v2/repo/repo-link-page'
-import ReposListPage from './pages-v2/repo/repo-list'
-import { RepoSettingsGeneralPageContainer } from './pages-v2/repo/repo-settings-general-container'
-import { RepoSettingsRulesListContainer } from './pages-v2/repo/repo-settings-rules-list-container'
-import { RepoSidebar } from './pages-v2/repo/repo-sidebar'
-import RepoSummaryPage from './pages-v2/repo/repo-summary'
-import { RepoTagsListContainer } from './pages-v2/repo/repo-tags-list-container'
-import { RepoBranchRulesContainer } from './pages-v2/repo/rules/repo-branch-rules-container'
-import { RepoPushRulesContainer } from './pages-v2/repo/rules/repo-push-rules-container.tsx'
-import { RepoRulesContainer } from './pages-v2/repo/rules/repo-rules-container'
-import { RepoTagRulesContainer } from './pages-v2/repo/rules/repo-tag-rules-container'
-import SearchPage from './pages-v2/search-page'
-import { OAuthCallback } from './delta/oauth-callback'
-import { SignIn } from './pages-v2/signin'
-import { SignUp } from './pages-v2/signup'
-import { UserManagementPageContainer } from './pages-v2/user-management/user-management-container'
-import { CreateWebhookContainer } from './pages-v2/webhooks/create-webhook-container'
-import { WebhookExecutionDetailsContainer } from './pages-v2/webhooks/webhook-execution-details-container'
-import { WebhookExecutionsContainer } from './pages-v2/webhooks/webhook-executions'
-import WebhookListPage from './pages-v2/webhooks/webhook-list'
+  RepoDeltaIntentsPage,
+} from "./pages-v2/delta/repo-pages";
+import { LandingPage } from "./pages-v2/landing-page-container";
+import { Logout } from "./pages-v2/logout";
+import { SettingsProfileGeneralPage } from "./pages-v2/profile-settings/profile-settings-general-container";
+import { SettingsProfileKeysPage } from "./pages-v2/profile-settings/profile-settings-keys-container";
+import { ProjectLabelFormContainer } from "./pages-v2/project/labels/project-label-form-container";
+import { ProjectLabelsList } from "./pages-v2/project/labels/project-labels-list-container";
+import { ProjectGeneralSettingsPageContainer } from "./pages-v2/project/project-general-settings-container";
+import { ImportProjectContainer } from "./pages-v2/project/project-import-container";
+import { ProjectMemberListPage } from "./pages-v2/project/project-member-list";
+import { ProjectRulesListContainer } from "./pages-v2/project/project-rules-list-container";
+import { ProjectSettingsLayout } from "./pages-v2/project/project-settings-layout";
+import ProjectPullRequestListPage from "./pages-v2/project/pull-request/pull-request-list";
+import { ProjectBranchRulesContainer } from "./pages-v2/project/rules/project-branch-rules-container";
+import { ProjectPushRulesContainer } from "./pages-v2/project/rules/project-push-rules-container.tsx";
+import { ProjectRulesContainer } from "./pages-v2/project/rules/project-rules-container";
+import { ProjectTagRulesContainer } from "./pages-v2/project/rules/project-tag-rules-container";
+import PullRequestChanges from "./pages-v2/pull-request/pull-request-changes";
+import { PullRequestCommitPage } from "./pages-v2/pull-request/pull-request-commits";
+import { CreatePullRequest } from "./pages-v2/pull-request/pull-request-compare";
+import PullRequestConversationPage from "./pages-v2/pull-request/pull-request-conversation";
+import PullRequestDataProvider from "./pages-v2/pull-request/pull-request-data-provider";
+import PullRequestLayout from "./pages-v2/pull-request/pull-request-layout";
+import RepoPullRequestListPage from "./pages-v2/pull-request/pull-request-list";
+import { RepoLabelFormContainer } from "./pages-v2/repo/labels/label-form-container";
+import { RepoLabelsList } from "./pages-v2/repo/labels/labels-list-container";
+import { RepoBranchesListPage } from "./pages-v2/repo/repo-branch-list";
+import { RepoCode } from "./pages-v2/repo/repo-code";
+import RepoCommitDetailsPage from "./pages-v2/repo/repo-commit-details";
+import { CommitDiffContainer } from "./pages-v2/repo/repo-commit-details-diff";
+import RepoCommitsPage from "./pages-v2/repo/repo-commits";
+import { CreateRepo } from "./pages-v2/repo/repo-create-page";
+import RepoExecutionListPage from "./pages-v2/repo/repo-execution-list";
+import RepoExecutionDetailsPage from "./pages-v2/repo/repo-execution-details";
+import RepoPipelineEditPage from "./pages-v2/repo/repo-pipeline-edit";
+import RepoPipelineListPage from "./pages-v2/repo/repo-pipeline-list";
+import RepoForkPage from "./pages-v2/repo/repo-fork.tsx";
+import { ImportMultipleRepos } from "./pages-v2/repo/repo-import-multiple-container";
+import { ImportRepo } from "./pages-v2/repo/repo-import-page";
+import RepoLayout from "./pages-v2/repo/repo-layout";
+import { LinkRepo } from "./pages-v2/repo/repo-link-page";
+import ReposListPage from "./pages-v2/repo/repo-list";
+import { RepoSettingsGeneralPageContainer } from "./pages-v2/repo/repo-settings-general-container";
+import { RepoSettingsRulesListContainer } from "./pages-v2/repo/repo-settings-rules-list-container";
+import { RepoSidebar } from "./pages-v2/repo/repo-sidebar";
+import RepoSummaryPage from "./pages-v2/repo/repo-summary";
+import { RepoTagsListContainer } from "./pages-v2/repo/repo-tags-list-container";
+import { RepoBranchRulesContainer } from "./pages-v2/repo/rules/repo-branch-rules-container";
+import { RepoPushRulesContainer } from "./pages-v2/repo/rules/repo-push-rules-container.tsx";
+import { RepoRulesContainer } from "./pages-v2/repo/rules/repo-rules-container";
+import { RepoTagRulesContainer } from "./pages-v2/repo/rules/repo-tag-rules-container";
+import SearchPage from "./pages-v2/search-page";
+import { OAuthCallback } from "./delta/oauth-callback";
+import { SignIn } from "./pages-v2/signin";
+import { SignUp } from "./pages-v2/signup";
+import { UserManagementPageContainer } from "./pages-v2/user-management/user-management-container";
+import { CreateWebhookContainer } from "./pages-v2/webhooks/create-webhook-container";
+import { WebhookExecutionDetailsContainer } from "./pages-v2/webhooks/webhook-execution-details-container";
+import { WebhookExecutionsContainer } from "./pages-v2/webhooks/webhook-executions";
+import WebhookListPage from "./pages-v2/webhooks/webhook-list";
 
 enum Page {
-  Repositories = 'Repositories',
-  Summary = 'Summary',
-  Fork = 'Fork',
-  Commits = 'Commits',
-  Pull_Requests = 'Pull requests',
-  Branches = 'Branches',
-  Files = 'Files',
-  Conversation = 'Conversation',
-  Changes = 'Changes',
-  Checks = 'Checks',
-  Pipelines = 'Pipelines',
-  Executions = 'Executions',
-  Settings = 'Settings',
-  Branch_Rules = 'Branch rules',
-  Labels = 'Labels',
-  Members = 'Members',
-  General = 'General',
-  Keys = 'Keys',
-  Home = 'Home',
-  Theme = 'Theme',
-  Search = 'Search',
-  Tags = 'Tags'
+  Repositories = "Repositories",
+  Summary = "Summary",
+  Fork = "Fork",
+  Commits = "Commits",
+  Pull_Requests = "Pull requests",
+  Branches = "Branches",
+  Files = "Files",
+  Conversation = "Conversation",
+  Changes = "Changes",
+  Checks = "Checks",
+  Pipelines = "Pipelines",
+  Executions = "Executions",
+  Settings = "Settings",
+  Branch_Rules = "Branch rules",
+  Labels = "Labels",
+  Members = "Members",
+  General = "General",
+  Keys = "Keys",
+  Home = "Home",
+  Theme = "Theme",
+  Search = "Search",
+  Tags = "Tags",
 }
 
 const labelsRoute = {
-  path: 'labels',
+  path: "labels",
   handle: {
     breadcrumb: () => <span>{Page.Labels}</span>,
     pageTitle: Page.Labels,
-    routeName: RouteConstants.toProjectLabels
+    routeName: RouteConstants.toProjectLabels,
   },
   children: [
     {
       index: true,
-      element: <ProjectLabelsList />
+      element: <ProjectLabelsList />,
     },
     {
-      path: 'create',
+      path: "create",
       element: <ProjectLabelFormContainer />,
       handle: {
-        breadcrumb: () => <span>Create a label</span>
-      }
+        breadcrumb: () => <span>Create a label</span>,
+      },
     },
     {
-      path: ':labelId',
+      path: ":labelId",
       element: <ProjectLabelFormContainer />,
       handle: {
-        breadcrumb: ({ labelId }: { labelId: string }) => <span>{labelId}</span>
-      }
-    }
-  ]
-}
+        breadcrumb: ({ labelId }: { labelId: string }) => <span>{labelId}</span>,
+      },
+    },
+  ],
+};
 
 const rulesRoute = {
-  path: 'rules',
+  path: "rules",
   handle: {
     breadcrumb: () => <span>{Page.Branch_Rules}</span>,
     pageTitle: Page.Branch_Rules,
-    routeName: RouteConstants.toProjectRules
+    routeName: RouteConstants.toProjectRules,
   },
 
   children: [
     {
       index: true,
-      element: <ProjectRulesListContainer />
+      element: <ProjectRulesListContainer />,
     },
     {
-      path: 'create/branch',
+      path: "create/branch",
       element: <ProjectBranchRulesContainer />,
       handle: {
         breadcrumb: () => <span>Create a branch rule</span>,
-        routeName: RouteConstants.toProjectBranchRuleCreate
-      }
+        routeName: RouteConstants.toProjectBranchRuleCreate,
+      },
     },
     {
-      path: 'create/tag',
+      path: "create/tag",
       element: <ProjectTagRulesContainer />,
       handle: {
         breadcrumb: () => <span>Create a tag rule</span>,
-        routeName: RouteConstants.toProjectTagRuleCreate
-      }
+        routeName: RouteConstants.toProjectTagRuleCreate,
+      },
     },
     {
-      path: 'create/push',
+      path: "create/push",
       element: <ProjectPushRulesContainer />,
       handle: {
         breadcrumb: () => <span>Create a push rule</span>,
-        routeName: RouteConstants.toProjectPushRuleCreate
-      }
+        routeName: RouteConstants.toProjectPushRuleCreate,
+      },
     },
     {
-      path: ':ruleId/edit',
+      path: ":ruleId/edit",
       element: <ProjectRulesContainer />,
       handle: {
         breadcrumb: ({ ruleId }: { ruleId: string }) => <span>{ruleId}</span>,
-        routeName: RouteConstants.toProjectRuleDetails
-      }
-    }
-  ]
-}
+        routeName: RouteConstants.toProjectRuleDetails,
+      },
+    },
+  ],
+};
 
 export const repoRoutes: CustomRouteObject[] = [
   {
-    path: 'repos',
+    path: "repos",
     handle: {
       breadcrumb: () => <span>{Page.Repositories}</span>,
-      routeName: RouteConstants.toRepositories
+      routeName: RouteConstants.toRepositories,
     },
     children: [
       {
         index: true,
         element: <ReposListPage />,
         handle: {
-          pageTitle: Page.Repositories
-        }
+          pageTitle: Page.Repositories,
+        },
       },
       {
-        path: 'create',
+        path: "create",
         element: <CreateRepo />,
         handle: {
           routeName: RouteConstants.toCreateRepo,
-          pageTitle: 'Create a Repository'
-        }
+          pageTitle: "Create a Repository",
+        },
       },
       {
-        path: 'import',
+        path: "import",
         element: <ImportRepo />,
         handle: {
           routeName: RouteConstants.toImportRepo,
-          pageTitle: 'Import a Repository'
-        }
+          pageTitle: "Import a Repository",
+        },
       },
       {
-        path: 'import-multiple',
+        path: "import-multiple",
         element: <ImportMultipleRepos />,
         handle: {
           routeName: RouteConstants.toImportMultipleRepos,
-          pageTitle: 'Import Repositories'
-        }
+          pageTitle: "Import Repositories",
+        },
       },
       {
-        path: 'link',
+        path: "link",
         element: (
           <FeatureGuard featureFlag={FeatureFlag.CODE_LINK_REPOS_ENABLED}>
             <LinkRepo />
@@ -246,23 +247,23 @@ export const repoRoutes: CustomRouteObject[] = [
         ),
         handle: {
           routeName: RouteConstants.toLinkRepo,
-          pageTitle: 'Link Repository'
-        }
+          pageTitle: "Link Repository",
+        },
       },
       {
-        path: ':repoId',
+        path: ":repoId",
         element: <RepoLayout />,
         handle: {
           breadcrumb: ({ repoId }: { repoId: string }) => <span>{repoId}</span>,
-          pageTitle: ({ repoId }: { repoId: string }) => repoId
+          pageTitle: ({ repoId }: { repoId: string }) => repoId,
         },
         children: [
           {
             index: true,
-            element: <Navigate to="summary" replace />
+            element: <Navigate to="summary" replace />,
           },
           {
-            path: 'fork',
+            path: "fork",
             element: (
               <FeatureGuard featureFlag={FeatureFlag.CODE_FORK_ENABLED}>
                 <RepoForkPage />
@@ -272,44 +273,44 @@ export const repoRoutes: CustomRouteObject[] = [
               breadcrumb: () => <span>{Page.Fork}</span>,
               routeName: RouteConstants.toRepoFork,
               pageTitle: Page.Fork,
-              hideLayout: true
-            }
+              hideLayout: true,
+            },
           },
           {
-            path: 'summary',
+            path: "summary",
             loader: ({ params }) => {
-              const wildcard = params['*'] || ''
-              if (wildcard.startsWith('edit/')) {
-                const cleanPath = wildcard.substring(5)
-                return redirect(`./${cleanPath}`)
-              } else if (wildcard.startsWith('new/')) {
-                const cleanPath = wildcard.substring(4)
-                return redirect(`./${cleanPath}`)
+              const wildcard = params["*"] || "";
+              if (wildcard.startsWith("edit/")) {
+                const cleanPath = wildcard.substring(5);
+                return redirect(`./${cleanPath}`);
+              } else if (wildcard.startsWith("new/")) {
+                const cleanPath = wildcard.substring(4);
+                return redirect(`./${cleanPath}`);
               }
-              return null
+              return null;
             },
             element: <RepoSummaryPage />,
             handle: {
               breadcrumb: () => <span>{Page.Summary}</span>,
               routeName: RouteConstants.toRepoSummary,
               pageTitle: Page.Summary,
-              publicAccess: true
+              publicAccess: true,
             },
             children: [
               {
-                path: '*',
+                path: "*",
                 element: <RepoSummaryPage />,
                 handle: {
-                  publicAccess: true
-                }
-              }
-            ]
+                  publicAccess: true,
+                },
+              },
+            ],
           },
           {
-            path: 'commits',
+            path: "commits",
             handle: {
               breadcrumb: () => <span>{Page.Commits}</span>,
-              routeName: RouteConstants.toRepoCommits
+              routeName: RouteConstants.toRepoCommits,
             },
             children: [
               {
@@ -317,27 +318,29 @@ export const repoRoutes: CustomRouteObject[] = [
                 element: <RepoCommitsPage />,
                 handle: {
                   pageTitle: Page.Commits,
-                  publicAccess: true
-                }
+                  publicAccess: true,
+                },
               },
               {
-                path: '*',
+                path: "*",
                 element: <RepoCommitsPage />,
                 handle: {
                   pageTitle: Page.Commits,
                   routeName: RouteConstants.toRepoBranchCommits,
-                  publicAccess: true
-                }
-              }
-            ]
+                  publicAccess: true,
+                },
+              },
+            ],
           },
           {
-            path: 'commit/:commitSHA',
+            path: "commit/:commitSHA",
             element: <RepoCommitDetailsPage />,
             handle: {
-              breadcrumb: ({ commitSHA }: { commitSHA: string }) => <span>{getTrimmedSha(commitSHA)}</span>,
+              breadcrumb: ({ commitSHA }: { commitSHA: string }) => (
+                <span>{getTrimmedSha(commitSHA)}</span>
+              ),
               routeName: RouteConstants.toRepoCommitDetails,
-              publicAccess: true
+              publicAccess: true,
             },
             children: [
               {
@@ -346,25 +349,25 @@ export const repoRoutes: CustomRouteObject[] = [
                   <ExplorerPathsProvider>
                     <CommitDiffContainer showSidebar={false} />
                   </ExplorerPathsProvider>
-                )
-              }
-            ]
+                ),
+              },
+            ],
           },
           {
-            path: 'branches',
+            path: "branches",
             element: <RepoBranchesListPage />,
             handle: {
               breadcrumb: () => <span>{Page.Branches}</span>,
               routeName: RouteConstants.toRepoBranches,
               pageTitle: Page.Branches,
-              publicAccess: true
-            }
+              publicAccess: true,
+            },
           },
           {
-            path: 'edit/*',
+            path: "edit/*",
             loader: ({ params }) => {
-              const wildcard = params['*'] || ''
-              return redirect(`../files/edit/${wildcard}`)
+              const wildcard = params["*"] || "";
+              return redirect(`../files/edit/${wildcard}`);
             },
             element: (
               <ExplorerPathsProvider>
@@ -373,11 +376,11 @@ export const repoRoutes: CustomRouteObject[] = [
             ),
             handle: {
               breadcrumb: () => <span>{Page.Files}</span>,
-              routeName: RouteConstants.toRepoFiles
-            }
+              routeName: RouteConstants.toRepoFiles,
+            },
           },
           {
-            path: 'files',
+            path: "files",
             element: (
               <ExplorerPathsProvider>
                 <RepoSidebar />
@@ -385,7 +388,7 @@ export const repoRoutes: CustomRouteObject[] = [
             ),
             handle: {
               breadcrumb: () => <span>{Page.Files}</span>,
-              routeName: RouteConstants.toRepoFiles
+              routeName: RouteConstants.toRepoFiles,
             },
             children: [
               {
@@ -393,43 +396,43 @@ export const repoRoutes: CustomRouteObject[] = [
                 element: <RepoCode />,
                 handle: {
                   pageTitle: Page.Files,
-                  publicAccess: true
-                }
+                  publicAccess: true,
+                },
               },
               {
-                path: '*',
+                path: "*",
                 element: <RepoCode />,
                 handle: {
                   routeName: RouteConstants.toRepoFileDetails,
-                  publicAccess: true
-                }
-              }
-            ]
+                  publicAccess: true,
+                },
+              },
+            ],
           },
           {
-            path: 'tags',
+            path: "tags",
             element: <RepoTagsListContainer />,
             handle: {
               breadcrumb: () => <span>{Page.Tags}</span>,
               routeName: RouteConstants.toRepoTags,
-              publicAccess: true
-            }
+              publicAccess: true,
+            },
           },
           {
-            path: 'search',
+            path: "search",
             element: <SearchPage />,
             handle: {
               breadcrumb: () => <span>{Page.Search}</span>,
               routeName: RouteConstants.toRepoSearch,
               pageTitle: Page.Search,
-              publicAccess: true
-            }
+              publicAccess: true,
+            },
           },
           {
-            path: 'pulls',
+            path: "pulls",
             handle: {
               breadcrumb: () => <span>{Page.Pull_Requests}</span>,
-              routeName: RouteConstants.toRepoPullRequests
+              routeName: RouteConstants.toRepoPullRequests,
             },
             children: [
               {
@@ -437,40 +440,43 @@ export const repoRoutes: CustomRouteObject[] = [
                 element: <RepoPullRequestListPage />,
                 handle: {
                   pageTitle: Page.Pull_Requests,
-                  publicAccess: true
-                }
+                  publicAccess: true,
+                },
               },
               {
-                path: 'compare',
+                path: "compare",
                 handle: {
                   breadcrumb: () => <span>Compare</span>,
-                  asLink: false
+                  asLink: false,
                 },
                 children: [
                   { index: true, element: <CreatePullRequest /> },
                   {
-                    path: ':diffRefs',
+                    path: ":diffRefs",
                     element: <CreatePullRequest />,
-                    handle: { routeName: RouteConstants.toPullRequestCompare }
+                    handle: { routeName: RouteConstants.toPullRequestCompare },
                   },
-                  { path: '*', element: <CreatePullRequest /> }
-                ]
+                  { path: "*", element: <CreatePullRequest /> },
+                ],
               },
               {
-                path: ':pullRequestId',
+                path: ":pullRequestId",
                 element: <PullRequestLayout />,
                 handle: {
-                  breadcrumb: ({ pullRequestId }: { pullRequestId: string }) => <span>{pullRequestId}</span>,
+                  breadcrumb: ({ pullRequestId }: { pullRequestId: string }) => (
+                    <span>{pullRequestId}</span>
+                  ),
                   routeName: RouteConstants.toPullRequest,
-                  pageTitle: ({ pullRequestId }: { pullRequestId: string }) => `PR #${pullRequestId}`
+                  pageTitle: ({ pullRequestId }: { pullRequestId: string }) =>
+                    `PR #${pullRequestId}`,
                 },
                 children: [
                   {
                     index: true,
-                    element: <Navigate to="conversation" replace />
+                    element: <Navigate to="conversation" replace />,
                   },
                   {
-                    path: 'conversation',
+                    path: "conversation",
                     element: (
                       <PullRequestDataProvider>
                         <PullRequestConversationPage />
@@ -479,21 +485,21 @@ export const repoRoutes: CustomRouteObject[] = [
                     handle: {
                       routeName: RouteConstants.toPullRequestConversation,
                       pageTitle: Page.Conversation,
-                      publicAccess: true
-                    }
+                      publicAccess: true,
+                    },
                   },
                   {
-                    path: 'commits',
+                    path: "commits",
                     element: <PullRequestCommitPage />,
                     handle: {
                       breadcrumb: () => <span>{Page.Commits}</span>,
                       routeName: RouteConstants.toPullRequestCommits,
                       pageTitle: Page.Commits,
-                      publicAccess: true
-                    }
+                      publicAccess: true,
+                    },
                   },
                   {
-                    path: 'changes',
+                    path: "changes",
                     element: (
                       <PullRequestDataProvider>
                         <PullRequestChanges />
@@ -503,11 +509,11 @@ export const repoRoutes: CustomRouteObject[] = [
                       breadcrumb: () => <span>{Page.Changes}</span>,
                       routeName: RouteConstants.toPullRequestChanges,
                       pageTitle: Page.Changes,
-                      publicAccess: true
-                    }
+                      publicAccess: true,
+                    },
                   },
                   {
-                    path: 'changes/:commitSHA',
+                    path: "changes/:commitSHA",
                     element: (
                       <PullRequestDataProvider>
                         <PullRequestChanges />
@@ -517,31 +523,31 @@ export const repoRoutes: CustomRouteObject[] = [
                       breadcrumb: () => <span>{Page.Changes}</span>,
                       routeName: RouteConstants.toPullRequestChange,
                       pageTitle: Page.Changes,
-                      publicAccess: true
-                    }
-                  }
-                ]
-              }
-            ]
+                      publicAccess: true,
+                    },
+                  },
+                ],
+              },
+            ],
           },
           {
-            path: 'pipelines',
+            path: "pipelines",
             handle: {
               breadcrumb: () => <span>{Page.Pipelines}</span>,
-              routeName: RouteConstants.toRepoPipelines
+              routeName: RouteConstants.toRepoPipelines,
             },
             children: [
               {
                 index: true,
                 element: <RepoPipelineListPage />,
                 handle: {
-                  pageTitle: Page.Pipelines
-                }
+                  pageTitle: Page.Pipelines,
+                },
               },
               {
-                path: ':pipelineId',
+                path: ":pipelineId",
                 handle: {
-                  breadcrumb: ({ pipelineId }: { pipelineId: string }) => <span>{pipelineId}</span>
+                  breadcrumb: ({ pipelineId }: { pipelineId: string }) => <span>{pipelineId}</span>,
                 },
                 children: [
                   {
@@ -549,235 +555,243 @@ export const repoRoutes: CustomRouteObject[] = [
                     element: <RepoExecutionListPage />,
                     handle: {
                       breadcrumb: () => <span>{Page.Executions}</span>,
-                      pageTitle: Page.Executions
-                    }
+                      pageTitle: Page.Executions,
+                    },
                   },
                   {
-                    path: 'edit',
+                    path: "edit",
                     element: <RepoPipelineEditPage />,
                     handle: {
                       breadcrumb: () => <span>Edit</span>,
-                      routeName: RouteConstants.toPipelineEdit
-                    }
+                      routeName: RouteConstants.toPipelineEdit,
+                    },
                   },
                   {
-                    path: 'executions',
+                    path: "executions",
                     handle: {
-                      routeName: RouteConstants.toExecutions
+                      routeName: RouteConstants.toExecutions,
                     },
                     children: [
-                      { index: true, element: <RepoExecutionListPage />, handle: { pageTitle: Page.Executions } },
                       {
-                        path: ':executionId',
+                        index: true,
+                        element: <RepoExecutionListPage />,
+                        handle: { pageTitle: Page.Executions },
+                      },
+                      {
+                        path: ":executionId",
                         element: <RepoExecutionDetailsPage />,
                         handle: {
-                          breadcrumb: ({ executionId }: { executionId: string }) => <span>{executionId}</span>,
-                          routeName: RouteConstants.toExecution
-                        }
-                      }
-                    ]
-                  }
-                ]
-              }
-            ]
+                          breadcrumb: ({ executionId }: { executionId: string }) => (
+                            <span>{executionId}</span>
+                          ),
+                          routeName: RouteConstants.toExecution,
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           },
           {
-            path: 'webhooks',
-            element: <Navigate to="../settings/webhooks" replace />
+            path: "webhooks",
+            element: <Navigate to="../settings/webhooks" replace />,
           },
           {
-            path: 'intents',
+            path: "intents",
             element: <RepoDeltaIntentsPage />,
             handle: {
               breadcrumb: () => <span>Merge intents</span>,
               routeName: RouteConstants.toRepoIntents,
-              pageTitle: 'Merge intents'
-            }
+              pageTitle: "Merge intents",
+            },
           },
           {
-            path: 'ideas',
+            path: "ideas",
             element: <RepoDeltaIdeasPage />,
             handle: {
               breadcrumb: () => <span>Ideas</span>,
               routeName: RouteConstants.toRepoIdeas,
-              pageTitle: 'Ideas'
-            }
+              pageTitle: "Ideas",
+            },
           },
           {
-            path: 'arena',
+            path: "arena",
             handle: {
               breadcrumb: () => <span>Arena</span>,
               routeName: RouteConstants.toRepoArena,
-              pageTitle: 'Arena'
+              pageTitle: "Arena",
             },
             children: [
               {
                 index: true,
-                element: <RepoDeltaArenaPage />
+                element: <RepoDeltaArenaPage />,
               },
               {
-                path: ':matchId',
+                path: ":matchId",
                 element: <RepoDeltaArenaMatchPage />,
                 handle: {
                   breadcrumb: ({ matchId }: { matchId: string }) => <span>{matchId}</span>,
-                  routeName: RouteConstants.toRepoArenaMatch
-                }
-              }
-            ]
+                  routeName: RouteConstants.toRepoArenaMatch,
+                },
+              },
+            ],
           },
           {
-            path: 'agents',
+            path: "agents",
             element: <RepoDeltaAgentsPage />,
             handle: {
               breadcrumb: () => <span>Agents</span>,
               routeName: RouteConstants.toRepoAgents,
-              pageTitle: 'Agents'
-            }
+              pageTitle: "Agents",
+            },
           },
           {
-            path: 'knowledge',
+            path: "knowledge",
             element: <RepoDeltaKnowledgePage />,
             handle: {
               breadcrumb: () => <span>Knowledge</span>,
               routeName: RouteConstants.toRepoKnowledge,
-              pageTitle: 'Knowledge'
-            }
+              pageTitle: "Knowledge",
+            },
           },
           {
-            path: 'settings',
+            path: "settings",
             element: <RepoSettingsLayout />,
             handle: {
               breadcrumb: () => <span>{Page.Settings}</span>,
-              pageTitle: Page.Settings
+              pageTitle: Page.Settings,
             },
             children: [
               {
                 index: true,
-                element: <Navigate to="general" replace />
+                element: <Navigate to="general" replace />,
               },
               {
-                path: 'general',
+                path: "general",
                 element: <RepoSettingsGeneralPageContainer />,
                 handle: {
                   breadcrumb: () => <span>{Page.General}</span>,
                   routeName: RouteConstants.toRepoGeneralSettings,
-                  pageTitle: Page.General
-                }
+                  pageTitle: Page.General,
+                },
               },
               {
-                path: 'rules',
+                path: "rules",
                 handle: {
                   breadcrumb: () => <span>{Page.Branch_Rules}</span>,
-                  routeName: RouteConstants.toRepoBranchRules
+                  routeName: RouteConstants.toRepoBranchRules,
                 },
                 children: [
                   {
                     index: true,
                     element: <RepoSettingsRulesListContainer />,
                     handle: {
-                      pageTitle: Page.Branch_Rules
-                    }
+                      pageTitle: Page.Branch_Rules,
+                    },
                   },
                   {
-                    path: 'create/branch',
+                    path: "create/branch",
                     element: <RepoBranchRulesContainer />,
                     handle: {
                       breadcrumb: () => <span>Create a branch rule</span>,
-                      routeName: RouteConstants.toRepoBranchRuleCreate
-                    }
+                      routeName: RouteConstants.toRepoBranchRuleCreate,
+                    },
                   },
                   {
-                    path: 'create/tag',
+                    path: "create/tag",
                     element: <RepoTagRulesContainer />,
                     handle: {
                       breadcrumb: () => <span>Create a tag rule</span>,
-                      routeName: RouteConstants.toRepoTagRuleCreate
-                    }
+                      routeName: RouteConstants.toRepoTagRuleCreate,
+                    },
                   },
                   {
-                    path: 'create/push',
+                    path: "create/push",
                     element: <RepoPushRulesContainer />,
                     handle: {
                       breadcrumb: () => <span>Create a push rule</span>,
-                      routeName: RouteConstants.toRepoPushRuleCreate
-                    }
+                      routeName: RouteConstants.toRepoPushRuleCreate,
+                    },
                   },
                   {
-                    path: ':identifier/edit',
+                    path: ":identifier/edit",
                     element: <RepoRulesContainer />,
                     handle: {
-                      breadcrumb: ({ identifier }: { identifier: string }) => <span>{identifier}</span>,
-                      routeName: RouteConstants.toRepoBranchRule
-                    }
-                  }
-                ]
+                      breadcrumb: ({ identifier }: { identifier: string }) => (
+                        <span>{identifier}</span>
+                      ),
+                      routeName: RouteConstants.toRepoBranchRule,
+                    },
+                  },
+                ],
               },
               {
-                path: 'webhooks',
+                path: "webhooks",
                 handle: {
                   breadcrumb: () => <span>Webhooks</span>,
-                  routeName: RouteConstants.toRepoWebhooks
+                  routeName: RouteConstants.toRepoWebhooks,
                 },
                 children: [
                   {
                     index: true,
                     element: <WebhookListPage />,
                     handle: {
-                      pageTitle: 'Webhooks'
-                    }
+                      pageTitle: "Webhooks",
+                    },
                   },
                   {
-                    path: 'create',
+                    path: "create",
                     element: <CreateWebhookContainer />,
                     handle: {
                       breadcrumb: () => <span>Create a webhook</span>,
-                      routeName: RouteConstants.toRepoWebhookCreate
-                    }
-                  }
-                ]
+                      routeName: RouteConstants.toRepoWebhookCreate,
+                    },
+                  },
+                ],
               },
               {
-                path: 'labels',
+                path: "labels",
                 handle: {
                   breadcrumb: () => <span>{Page.Labels}</span>,
                   pageTitle: Page.Labels,
-                  routeName: RouteConstants.toRepoLabels
+                  routeName: RouteConstants.toRepoLabels,
                 },
                 children: [
                   {
                     index: true,
-                    element: <RepoLabelsList />
+                    element: <RepoLabelsList />,
                   },
                   {
-                    path: 'create',
+                    path: "create",
                     element: <RepoLabelFormContainer />,
                     handle: {
-                      breadcrumb: () => <span>Create a label</span>
-                    }
+                      breadcrumb: () => <span>Create a label</span>,
+                    },
                   },
                   {
-                    path: ':labelId',
+                    path: ":labelId",
                     element: <RepoLabelFormContainer />,
                     handle: {
                       breadcrumb: ({ labelId }: { labelId: string }) => <span>{labelId}</span>,
-                      routeName: RouteConstants.toRepoLabelDetails
-                    }
-                  }
-                ]
-              }
-            ]
+                      routeName: RouteConstants.toRepoLabelDetails,
+                    },
+                  },
+                ],
+              },
+            ],
           },
 
           {
-            path: 'settings/webhooks/:webhookId',
+            path: "settings/webhooks/:webhookId",
             element: <WebhookSettingsLayout />,
             children: [
               {
                 index: true,
-                element: <Navigate to="details" replace />
+                element: <Navigate to="details" replace />,
               },
               {
-                path: 'details',
+                path: "details",
                 element: <CreateWebhookContainer />,
                 handle: {
                   breadcrumb: ({ webhookId }: { webhookId: string }) => (
@@ -786,11 +800,11 @@ export const repoRoutes: CustomRouteObject[] = [
                       <span className="ml-cn-2xs">Details</span>
                     </Breadcrumb.Item>
                   ),
-                  routeName: RouteConstants.toRepoWebhookDetails
-                }
+                  routeName: RouteConstants.toRepoWebhookDetails,
+                },
               },
               {
-                path: 'executions',
+                path: "executions",
                 element: <WebhookExecutionsContainer />,
                 handle: {
                   breadcrumb: ({ webhookId }: { webhookId: string }) => (
@@ -799,14 +813,20 @@ export const repoRoutes: CustomRouteObject[] = [
                       <span className="ml-cn-2xs">Executions</span>
                     </Breadcrumb.Item>
                   ),
-                  routeName: RouteConstants.toRepoWebhookExecutions
-                }
+                  routeName: RouteConstants.toRepoWebhookExecutions,
+                },
               },
               {
-                path: 'executions/:executionId',
+                path: "executions/:executionId",
                 element: <WebhookExecutionDetailsContainer />,
                 handle: {
-                  breadcrumb: ({ webhookId, executionId }: { webhookId: string; executionId: string }) => (
+                  breadcrumb: ({
+                    webhookId,
+                    executionId,
+                  }: {
+                    webhookId: string;
+                    executionId: string;
+                  }) => (
                     <Breadcrumb.Item>
                       <span>{webhookId}</span> <Breadcrumb.Separator />
                       <span className="ml-cn-2xs">Executions</span>
@@ -814,101 +834,103 @@ export const repoRoutes: CustomRouteObject[] = [
                       <span>{executionId}</span>
                     </Breadcrumb.Item>
                   ),
-                  routeName: RouteConstants.toRepoWebhookExecutionDetails
-                }
-              }
-            ]
-          }
-        ]
-      }
-    ]
+                  routeName: RouteConstants.toRepoWebhookExecutionDetails,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
   },
   {
-    path: 'settings',
+    path: "settings",
     element: <ProjectSettingsLayout />,
     handle: {
       breadcrumb: () => <span>{Page.Settings}</span>,
-      pageTitle: Page.Settings
+      pageTitle: Page.Settings,
     },
     children: [
       {
         index: true,
-        element: <Navigate to="general" replace />
+        element: <Navigate to="general" replace />,
       },
       {
-        path: 'general',
+        path: "general",
         element: <ProjectGeneralSettingsPageContainer />,
         handle: {
           breadcrumb: () => <span>{Page.General}</span>,
           routeName: RouteConstants.toProjectGeneral,
-          pageTitle: Page.General
-        }
+          pageTitle: Page.General,
+        },
       },
       {
-        path: 'members',
+        path: "members",
         element: <ProjectMemberListPage />,
         handle: {
           breadcrumb: () => <span>{Page.Members}</span>,
           routeName: RouteConstants.toProjectMembers,
-          pageTitle: Page.Members
-        }
+          pageTitle: Page.Members,
+        },
       },
       labelsRoute,
-      rulesRoute
-    ]
+      rulesRoute,
+    ],
   },
   {
-    path: 'search',
+    path: "search",
     element: <SearchPage />,
     handle: {
       breadcrumb: () => <span>{Page.Search}</span>,
       pageTitle: Page.Search,
-      publicAccess: true
-    }
+      publicAccess: true,
+    },
   },
   {
-    path: 'manage-repositories',
+    path: "manage-repositories",
     element: <ProjectSettingsLayout />,
     handle: {
       breadcrumb: () => <span>{Page.Settings}</span>,
-      pageTitle: Page.Settings
+      pageTitle: Page.Settings,
     },
     children: [
       {
         index: true,
-        element: <Navigate to="labels" replace />
+        element: <Navigate to="labels" replace />,
       },
       labelsRoute,
-      rulesRoute
-    ]
+      rulesRoute,
+    ],
   },
   {
-    path: 'pulls',
+    path: "pulls",
     handle: {
       breadcrumb: () => <span>{Page.Pull_Requests}</span>,
-      routeName: RouteConstants.toProjectPullRequests
+      routeName: RouteConstants.toProjectPullRequests,
     },
     children: [
       {
         index: true,
         element: <ProjectPullRequestListPage />,
         handle: {
-          pageTitle: Page.Pull_Requests
-        }
-      }
-    ]
-  }
-]
+          pageTitle: Page.Pull_Requests,
+        },
+      },
+    ],
+  },
+];
 
 export const routes: CustomRouteObject[] = [
   {
-    path: '/',
+    path: "/",
     element: (
       <AppRouterProvider>
         <PageTitleProvider>
           <AppProvider>
             <Sidebar.Provider className="min-h-svh">
-              <ComponentProvider components={{ RbacButton, RbacSplitButton, RbacMoreActionsTooltip }}>
+              <ComponentProvider
+                components={{ RbacButton, RbacSplitButton, RbacMoreActionsTooltip }}
+              >
                 <AppShell />
               </ComponentProvider>
             </Sidebar.Provider>
@@ -916,114 +938,141 @@ export const routes: CustomRouteObject[] = [
         </PageTitleProvider>
       </AppRouterProvider>
     ),
-    handle: { routeName: 'toHome' },
+    handle: { routeName: "toHome" },
     children: [
       {
         index: true,
         element: <LandingPage />,
         handle: {
-          pageTitle: Page.Home
-        }
+          pageTitle: Page.Home,
+        },
       },
       {
-        path: 'import',
+        path: "import",
         element: <ImportProjectContainer />,
         handle: {
           breadcrumb: () => <span>Import project</span>,
-          routeName: RouteConstants.toImportProject
-        }
+          routeName: RouteConstants.toImportProject,
+        },
       },
       {
-        path: 'secrets',
+        path: "secrets",
         element: <SecretsVaultPage />,
         handle: {
           routeName: RouteConstants.toSecrets,
-          pageTitle: 'Secrets'
-        }
+          pageTitle: "Secrets",
+        },
       },
       {
-        path: 'arena',
+        path: "notifications",
+        element: <NotificationsPage />,
+        handle: {
+          breadcrumb: () => <span>Notifications</span>,
+          routeName: RouteConstants.toNotifications,
+          pageTitle: "Notifications",
+        },
+      },
+      {
+        path: "environments",
+        element: <EnvironmentsPage />,
+        handle: {
+          breadcrumb: () => <span>Environments</span>,
+          routeName: RouteConstants.toEnvironments,
+          pageTitle: "Environments",
+        },
+      },
+      {
+        path: "artifacts",
+        element: <ArtifactsPage />,
+        handle: {
+          breadcrumb: () => <span>Artifacts</span>,
+          routeName: RouteConstants.toArtifacts,
+          pageTitle: "Artifacts",
+        },
+      },
+      {
+        path: "arena",
         element: <DeltaArenaFeedPage />,
         handle: {
           breadcrumb: () => <span>Arena</span>,
           routeName: RouteConstants.toArena,
-          pageTitle: 'Arena'
-        }
+          pageTitle: "Arena",
+        },
       },
       {
-        path: 'agents',
+        path: "agents",
         element: <DeltaLeaderboardPage />,
         handle: {
           breadcrumb: () => <span>Reputation</span>,
           routeName: RouteConstants.toReputation,
-          pageTitle: 'Reputation'
-        }
+          pageTitle: "Reputation",
+        },
       },
       {
-        path: ':spaceId',
+        path: ":spaceId",
         handle: {
           breadcrumb: () => <ProjectDropdown />,
-          asLink: false
+          asLink: false,
         },
-        children: repoRoutes
+        children: repoRoutes,
       },
       {
-        path: 'admin',
+        path: "admin",
         handle: {
-          breadcrumb: () => <span>Account</span>
+          breadcrumb: () => <span>Account</span>,
         },
         children: [
           {
             index: true,
-            element: <Navigate to="default-settings" replace />
+            element: <Navigate to="default-settings" replace />,
           },
           {
             index: true,
-            path: 'default-settings',
+            path: "default-settings",
             element: <UserManagementPageContainer />,
             handle: {
               breadcrumb: () => <span>Users</span>,
               routeName: RouteConstants.toAdminUsers,
-              pageTitle: 'Users'
-            }
+              pageTitle: "Users",
+            },
           },
           {
-            path: 'user-groups',
+            path: "user-groups",
             element: <AdminUserGroupsPage />,
             handle: {
               breadcrumb: () => <span>User Groups</span>,
               routeName: RouteConstants.toUserGroups,
-              pageTitle: 'User Groups'
-            }
+              pageTitle: "User Groups",
+            },
           },
           {
-            path: 'service-accounts',
+            path: "service-accounts",
             element: <AdminServiceAccountsPage />,
             handle: {
               breadcrumb: () => <span>Service Accounts</span>,
-              routeName: RouteConstants.toServiceAccounts
-            }
+              routeName: RouteConstants.toServiceAccounts,
+            },
           },
           {
-            path: 'resource-groups',
+            path: "resource-groups",
             element: <AdminResourceGroupsPage />,
             handle: {
               breadcrumb: () => <span>Resource Groups</span>,
-              routeName: RouteConstants.toResourceGroups
-            }
+              routeName: RouteConstants.toResourceGroups,
+            },
           },
           {
-            path: 'roles',
+            path: "roles",
             element: <AdminRolesPage />,
             handle: {
               breadcrumb: () => <span>Roles</span>,
-              routeName: RouteConstants.toRoles
-            }
-          }
-        ]
+              routeName: RouteConstants.toRoles,
+            },
+          },
+        ],
       },
       {
-        path: 'profile-settings',
+        path: "profile-settings",
         element: <ProfileSettingsLayout />,
         handle: {
           breadcrumb: () => (
@@ -1033,72 +1082,72 @@ export const routes: CustomRouteObject[] = [
               <span>{Page.Settings}</span>
             </Layout.Flex>
           ),
-          pageTitle: Page.Settings
+          pageTitle: Page.Settings,
         },
         children: [
           {
             index: true,
             element: <Navigate to="general" replace />,
             handle: {
-              breadcrumb: () => <span>{Page.General}</span>
-            }
+              breadcrumb: () => <span>{Page.General}</span>,
+            },
           },
           {
-            path: 'general',
+            path: "general",
             element: <SettingsProfileGeneralPage />,
             handle: {
               breadcrumb: () => <span>{Page.General}</span>,
               routeName: RouteConstants.toProfileGeneral,
-              pageTitle: Page.General
-            }
+              pageTitle: Page.General,
+            },
           },
           {
-            path: 'keys',
+            path: "keys",
             element: <SettingsProfileKeysPage />,
             handle: {
               breadcrumb: () => <span>{Page.Keys}</span>,
               routeName: RouteConstants.toProfileKeys,
-              pageTitle: Page.Keys
-            }
-          }
-        ]
-      }
-    ]
+              pageTitle: Page.Keys,
+            },
+          },
+        ],
+      },
+    ],
   },
   {
-    path: 'create',
+    path: "create",
     element: (
       <AppProvider>
         <CreateProject />
       </AppProvider>
     ),
-    handle: { routeName: RouteConstants.toProjectCreate }
+    handle: { routeName: RouteConstants.toProjectCreate },
   },
   {
-    path: 'signin',
+    path: "signin",
     element: <SignIn />,
-    handle: { routeName: RouteConstants.toSignIn }
+    handle: { routeName: RouteConstants.toSignIn },
   },
   {
     // Client-side atproto OAuth redirect target — the popup writes its params
     // to localStorage for the opener to consume (see delta/bsky-oauth.ts).
-    path: 'oauth/callback',
-    element: <OAuthCallback />
+    path: "oauth/callback",
+    element: <OAuthCallback />,
   },
   {
-    path: 'signup',
-    element: <SignUp />
+    path: "signup",
+    element: <SignUp />,
   },
   {
-    path: 'logout',
+    path: "logout",
     element: <Logout />,
-    handle: { routeName: RouteConstants.toLogout }
-  }
-]
+    handle: { routeName: RouteConstants.toLogout },
+  },
+];
 
 export const getMFERoutes = (mfeProjectId?: string): CustomRouteObject[] => [
   {
-    path: '/',
+    path: "/",
     element: (
       <AppRouterProvider>
         <PageTitleProvider>
@@ -1114,16 +1163,16 @@ export const getMFERoutes = (mfeProjectId?: string): CustomRouteObject[] => [
     handle: { routeName: RouteConstants.toHome },
     children: [
       {
-        path: '',
+        path: "",
         handle: {
           ...(mfeProjectId && {
-            breadcrumb: () => <span>{mfeProjectId}</span>
-          })
+            breadcrumb: () => <span>{mfeProjectId}</span>,
+          }),
         },
-        children: repoRoutes
+        children: repoRoutes,
       },
       {
-        path: 'profile-settings',
+        path: "profile-settings",
         element: <ProfileSettingsLayout />,
         handle: {
           breadcrumb: () => (
@@ -1133,36 +1182,36 @@ export const getMFERoutes = (mfeProjectId?: string): CustomRouteObject[] => [
               <span>{Page.Settings}</span>
             </>
           ),
-          pageTitle: Page.Settings
+          pageTitle: Page.Settings,
         },
         children: [
           {
             index: true,
             element: <Navigate to="general" replace />,
             handle: {
-              breadcrumb: () => <span>{Page.General}</span>
-            }
+              breadcrumb: () => <span>{Page.General}</span>,
+            },
           },
           {
-            path: 'general',
+            path: "general",
             element: <SettingsProfileGeneralPage />,
             handle: {
               breadcrumb: () => <span>{Page.General}</span>,
               routeName: RouteConstants.toProfileGeneral,
-              pageTitle: Page.General
-            }
+              pageTitle: Page.General,
+            },
           },
           {
-            path: 'keys',
+            path: "keys",
             element: <SettingsProfileKeysPage />,
             handle: {
               breadcrumb: () => <span>{Page.Keys}</span>,
               routeName: RouteConstants.toProfileKeys,
-              pageTitle: Page.Keys
-            }
-          }
-        ]
-      }
-    ]
-  }
-]
+              pageTitle: Page.Keys,
+            },
+          },
+        ],
+      },
+    ],
+  },
+];

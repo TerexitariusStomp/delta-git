@@ -43,6 +43,7 @@ import {
   updateRepoExecution,
 } from "@/worker/api/gitness/stores";
 import { listScanRunsForRepo, upsertScanRun } from "@/worker/db/d1/dal/scanRuns";
+import { findArtifact, listArtifactsForRepo, upsertArtifact } from "@/worker/db/d1/dal/modules";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { ensureArtifactsPushSubscription } from "@/worker/tasks/artifactsSubscriptions";
@@ -191,6 +192,36 @@ async function authenticate(
     return { actor: auth.verified.userId };
   }
 
+  const verified = await verifyAgentRequest({
+    db: c.var.db,
+    method: c.req.method,
+    path: new URL(c.req.url).pathname,
+    body,
+    did: c.req.header("x-dg-did") ?? null,
+    ts: c.req.header("x-dg-ts") ?? null,
+    nonce: c.req.header("x-dg-nonce") ?? null,
+    sig: c.req.header("x-dg-sig") ?? null,
+    model: c.req.header("x-dg-model") ?? null,
+  });
+  if (verified.kind !== "ok") return bad(c, `agent-auth:${verified.reason}`, 401);
+  return { actor: verified.agent.did, agent: verified.agent };
+}
+
+/** Write-gated authenticate — PATs must carry push-level grants (receive-pack
+ * class); signed agent envelopes are write-capable by design. Used for
+ * mutating dg endpoints (scan attestations, artifact uploads). */
+async function authenticateWrite(
+  c: AppContext,
+  body: Uint8Array,
+  route: RepositoryRoute
+): Promise<Principal | Response> {
+  const auth = await authenticateGitRequest(c.env, c.req.raw, route, {
+    db: c.var.db,
+  }).catch(() => null);
+  if (auth && auth.kind === "pat") {
+    if (auth.verified.level !== "push") return bad(c, "push-grant-required", 403);
+    return { actor: auth.verified.userId };
+  }
   const verified = await verifyAgentRequest({
     db: c.var.db,
     method: c.req.method,
@@ -1995,7 +2026,7 @@ export function registerAgentRoutes(router: AppRouter): void {
     const route = await resolveRepo(c);
     if (!route) return bad(c, "repo-not-found", 404);
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
-    const principal = await authenticate(c, body, route);
+    const principal = await authenticateWrite(c, body, route);
     if (principal instanceof Response) return principal;
     const parsed = parseJsonBody(body, scanAttestBody);
     if (!parsed) return bad(c, "invalid-body");
@@ -2060,6 +2091,125 @@ export function registerAgentRoutes(router: AppRouter): void {
         duration_ms: row.durationMs,
         ran_at: row.ranAt,
       })),
+    });
+  });
+
+  // --- artifacts ---------------------------------------------------------------
+  //
+  // Pipeline outputs and published packages: binary blobs in R2 under
+  // `artifacts/<doName>/<name>/<version>/<path>` with a D1 index for
+  // listing/pinning. Upload auth is the repo's push PAT — CI delegates
+  // publish with the same credential they push with.
+
+  function artifactKey(doName: string, name: string, version: string, path: string) {
+    const safe = (s: string) => s.replace(/[^a-zA-Z0-9._/-]/g, "_");
+    return `artifacts/${doName}/${safe(name)}/${safe(version)}/${safe(path)}`;
+  }
+
+  router.put("/api/:owner/:repo/dg/artifacts/:name/:version/:path{.+}", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "repo-not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticateWrite(c, body, route);
+    if (principal instanceof Response) return principal;
+    const repoRow = await findRepositoryByDoName(c.var.db, route.doName);
+    if (!repoRow) return bad(c, "repo-not-found", 404);
+
+    const name = c.req.param("name");
+    const version = c.req.param("version");
+    const path = c.req.param("path");
+    if (!name || !version || !path) return bad(c, "invalid-artifact-ref", 400);
+    if (body.byteLength > 50 * 1024 * 1024) return bad(c, "artifact-too-large", 413);
+
+    const r2Key = artifactKey(route.doName, name, version, path);
+    const digest = await crypto.subtle.digest("SHA-256", body.buffer as ArrayBuffer);
+    const sha256 = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const contentType = c.req.header("content-type") ?? "application/octet-stream";
+    await c.env.REPO_BUCKET.put(r2Key, body, {
+      httpMetadata: { contentType },
+      customMetadata: { sha256 },
+    });
+    const row = await upsertArtifact(c.var.db, {
+      id: newPrefixedId("art"),
+      repositoryId: repoRow.id,
+      name,
+      version,
+      path,
+      r2Key,
+      size: body.byteLength,
+      sha256,
+      contentType,
+      createdBy: principal.actor,
+      createdAt: Date.now(),
+    });
+    c.var.logFor({ service: "Artifacts" }).info("artifacts:published", {
+      repoId: route.doName,
+      name,
+      version,
+      path,
+      size: body.byteLength,
+    });
+    return json(c, {
+      name: row.name,
+      version: row.version,
+      path: row.path,
+      sha256: row.sha256,
+      size: row.size,
+    });
+  });
+
+  router.get("/api/:owner/:repo/dg/artifacts", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "repo-not-found", 404);
+    if (route.visibility === "private") {
+      const body = new Uint8Array(await c.req.raw.arrayBuffer());
+      const principal = await authenticate(c, body, route);
+      if (principal instanceof Response) return bad(c, "repo-not-found", 404);
+    }
+    const repoRow = await findRepositoryByDoName(c.var.db, route.doName);
+    if (!repoRow) return bad(c, "repo-not-found", 404);
+    const rows = await listArtifactsForRepo(c.var.db, repoRow.id);
+    return json(c, {
+      artifacts: rows.map((row) => ({
+        name: row.name,
+        version: row.version,
+        path: row.path,
+        size: row.size,
+        sha256: row.sha256,
+        content_type: row.contentType,
+        created_by: row.createdBy,
+        created: row.createdAt,
+      })),
+    });
+  });
+
+  router.get("/api/:owner/:repo/dg/artifacts/:name/:version/:path{.+}", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "repo-not-found", 404);
+    if (route.visibility === "private") {
+      const body = new Uint8Array(await c.req.raw.arrayBuffer());
+      const principal = await authenticate(c, body, route);
+      if (principal instanceof Response) return bad(c, "repo-not-found", 404);
+    }
+    const repoRow = await findRepositoryByDoName(c.var.db, route.doName);
+    if (!repoRow) return bad(c, "repo-not-found", 404);
+    const row = await findArtifact(
+      c.var.db,
+      repoRow.id,
+      c.req.param("name"),
+      c.req.param("version"),
+      c.req.param("path")
+    );
+    if (!row) return bad(c, "artifact-not-found", 404);
+    const obj = await c.env.REPO_BUCKET.get(row.r2Key);
+    if (!obj) return bad(c, "artifact-object-missing", 404);
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": row.contentType ?? "application/octet-stream",
+        "Content-Length": String(row.size),
+        "X-Artifact-Sha256": row.sha256,
+        "Cache-Control": "immutable",
+      },
     });
   });
 }
