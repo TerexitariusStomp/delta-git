@@ -130,6 +130,8 @@
     // (com.atproto.identity.resolveDid / resolveHandle).
     "ATP_PDS_URL": "https://bsky.social",
     // Hermes browser-agent deployment origin (embed.js source for /embed/hermes).
-    "HERMES_ORIGIN": "https://hermes.widespread.fyi"
+    "HERMES_ORIGIN": "https://hermes.widespread.fyi",
+    // Hosts allowed as OAuth return_to targets — wpcloud SSO handoff.
+    "ALLOWED_RETURN_HOSTS": "wpcloud.delta-git.workers.dev"
   }
 }

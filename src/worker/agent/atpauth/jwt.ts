@@ -46,6 +46,27 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
   );
 }
 
+/**
+ * Generic HS256 JWT signer — used for the wp-cloud SSO handoff token
+ * (dg_token): aud-bound, short-lived, verified by the receiving app with the
+ * shared DG_SESSION_SECRET rather than SESSION_SECRET so each side can
+ * rotate its own session key independently.
+ */
+export async function signHs256Jwt(
+  secret: string,
+  claims: Record<string, string | number | undefined>
+): Promise<string> {
+  const header = b64url(te.encode(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const payload = b64url(te.encode(JSON.stringify(claims)));
+  const key = await hmacKey(secret);
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    te.encode(`${header}.${payload}`) as BufferSource
+  );
+  return `${header}.${payload}.${b64url(new Uint8Array(sig))}`;
+}
+
 export async function signDidSession(secret: string, claims: DidSessionClaims): Promise<string> {
   const header = b64url(te.encode(JSON.stringify({ alg: "HS256", typ: "JWT" })));
   const payload = b64url(te.encode(JSON.stringify(claims)));

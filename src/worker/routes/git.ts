@@ -211,6 +211,7 @@ async function handleReceivePackPOST(
 ) {
   return await handleStreamingReceivePackPOST(env, route.doName, request, ctx, {
     namespaceId: route.namespaceId,
+    repoSlug: `${route.routeNamespaceSlug}/${route.routeRepoSlug}`,
     actor,
     onRepoStateChanged: async ({ changed }) => {
       if (!changed) return;

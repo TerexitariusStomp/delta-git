@@ -52,6 +52,12 @@ export interface OAuthState {
   dpopPublicJwk: JsonWebKey;
   issuer: string;
   tokenEndpoint: string;
+  /**
+   * Validated cross-app redirect target (e.g. wp-cloud SSO). When set, the
+   * callback issues a short-lived `dg_token` handoff JWT instead of only
+   * landing on /auth/account. Allowlist-checked in the start route.
+   */
+  returnTo?: string;
 }
 
 export type StartResult = { ok: true; redirectUrl: string } | { ok: false; error: string };
@@ -193,6 +199,7 @@ export async function startOAuth(opts: {
   kv: KVNamespace;
   origin: string;
   handle?: string;
+  returnTo?: string;
 }): Promise<StartResult> {
   const as = await resolveAuthServer(opts.env, opts.handle);
   if (!as) return { ok: false, error: "authorization-server-unresolved" };
@@ -249,6 +256,7 @@ export async function startOAuth(opts: {
     dpopPublicJwk: dpop.publicJwk,
     issuer: as.issuer,
     tokenEndpoint: as.tokenEndpoint,
+    ...(opts.returnTo ? { returnTo: opts.returnTo } : {}),
   };
   await opts.kv.put(`${STATE_PREFIX}${stateNonce}`, JSON.stringify(state), {
     expirationTtl: STATE_TTL_SEC,

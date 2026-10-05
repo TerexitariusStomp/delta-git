@@ -154,6 +154,8 @@ function createSidebandReceiveResponse(args: {
   leaseToken: string;
   activeCatalog: PackCatalogRow[];
   commands: ParsedReceiveRequest["commands"];
+  /** "owner/repo" slug carried into `push` webhook payloads. */
+  repoSlug?: string | undefined;
   capabilities: ReceiveNegotiatedCapabilities;
   packStream: ReadableStream<Uint8Array>;
   bytesConsumed: number;
@@ -179,6 +181,7 @@ function createSidebandReceiveResponse(args: {
           env: args.env,
           repoId: args.repoId,
           namespaceId: args.namespaceId,
+          repoSlug: args.repoSlug,
           request: args.request,
           ctx: args.ctx,
           packStream: args.packStream,
@@ -246,6 +249,8 @@ export async function handleStreamingReceivePackPOST(
     onRepoStateChanged?: RepoStateChangeHandler | undefined;
     actor?: string | undefined;
     namespaceId?: string | undefined;
+    /** "owner/repo" slug carried into `push` webhook payloads. */
+    repoSlug?: string | undefined;
   }
 ): Promise<Response> {
   const stub = getRepoStub(env, repoId);
@@ -326,6 +331,7 @@ export async function handleStreamingReceivePackPOST(
         env,
         repoId,
         namespaceId: options?.namespaceId,
+        repoSlug: options?.repoSlug,
         request,
         ctx,
         stub,
@@ -348,6 +354,7 @@ export async function handleStreamingReceivePackPOST(
       env,
       repoId,
       namespaceId: options?.namespaceId,
+      repoSlug: options?.repoSlug,
       request,
       ctx,
       packStream,

@@ -4,6 +4,7 @@ import { registerAdminRoutes } from "./routes/admin";
 import { registerAgentRoutes } from "./routes/agent";
 import { registerApiV3Routes } from "./routes/apiv3";
 import { registerPagesRoutes } from "./routes/pages";
+import { registerArchiveRoutes } from "./routes/archive";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
 import { registerUiRoutes } from "./routes/ui";
@@ -44,6 +45,8 @@ registerMcpRoutes(app);
 registerHermesRoutes(app);
 // Static site serving from repo refs
 registerPagesRoutes(app);
+// POSIX tar export of a repo tree — consumed by wp-cloud deploy-git, CI, mirrors
+registerArchiveRoutes(app);
 
 app.get("/", async (c) => {
   const viewer = await loadViewer(c);

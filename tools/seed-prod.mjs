@@ -4,8 +4,9 @@
 //   + the KV route record. Run AFTER `wrangler d1 migrations apply
 //   git-on-cloudflare --remote` (the tables must exist).
 //
-//   node tools/seed-prod.mjs            # dry run — print SQL, KV record, PAT
-//   node tools/seed-prod.mjs --apply    # wrangler d1 execute --remote + kv put
+//   node tools/seed-prod.mjs                      # dry run — print SQL, KV record, PAT
+//   node tools/seed-prod.mjs --apply              # wrangler d1 execute --remote + kv put
+//   node tools/seed-prod.mjs --repo wp-cloud      # seed a different repo slug
 //
 // The seed user's `tessera_sub` and the namespace's `owner_did` are set to the
 // handle owner's DID, so a later DID sign-in resolves to the same `users` row
@@ -20,8 +21,10 @@ const apply = process.argv.includes("--apply");
 const didFlagIndex = process.argv.indexOf("--did");
 const ownerDid =
   didFlagIndex >= 0 ? process.argv[didFlagIndex + 1] : "did:plc:umsyxt3vt2uysqeebatedd3i";
+const repoFlagIndex = process.argv.indexOf("--repo");
 const nsSlug = "rooted-finance";
-const repoSlug = "git-on-cloudflare";
+const repoSlug =
+  repoFlagIndex >= 0 ? process.argv[repoFlagIndex + 1] : "git-on-cloudflare";
 const doName = `${nsSlug}/${repoSlug}`;
 const dbName = "git-on-cloudflare";
 
@@ -43,14 +46,32 @@ function toBase32(buf) {
 }
 
 const hexId = (prefix) => `${prefix}_${randomBytes(16).toString("hex")}`;
-const userId = hexId("user");
-const nsId = hexId("ns");
-const repoId = hexId("repo");
 const patId = hexId("pat");
 const patPrefix = `goc_${randomBytes(4).toString("hex")}`;
 const patPlaintext = `${patPrefix}_${toBase32(randomBytes(20)).slice(0, 32)}`;
 const patHash = createHash("sha256").update(patPlaintext, "utf8").digest("hex");
 const now = Date.now();
+
+// Reuse existing rows on repeat runs: the users/namespaces INSERT OR IGNORE
+// would no-op, leaving FK references (created_by, namespace_id) pointing at
+// never-created ids. Look them up first on --apply.
+function d1(query) {
+  const out = execFileSync(
+    "wrangler",
+    ["d1", "execute", dbName, "--remote", "--command", query, "--json"],
+    { stdio: ["ignore", "pipe", "inherit"] }
+  ).toString();
+  return JSON.parse(out)[0]?.results ?? [];
+}
+
+let userId, nsId;
+if (apply) {
+  userId = d1(`SELECT id FROM users WHERE tessera_sub = '${ownerDid}'`)[0]?.id;
+  nsId = d1(`SELECT id FROM namespaces WHERE slug = '${nsSlug}'`)[0]?.id;
+}
+userId ??= hexId("user");
+nsId ??= hexId("ns");
+const repoId = hexId("repo");
 
 const sql = [
   `INSERT OR IGNORE INTO users (id, tessera_sub, created_at) VALUES ('${userId}', '${ownerDid}', ${now});`,

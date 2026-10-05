@@ -1,5 +1,4 @@
 import type { RepoDurableObject } from "@/worker/do";
-import type { RepositoryRoute } from "@/worker/repositories/route";
 
 // Outbound webhook delivery for repo events.
 //
@@ -63,7 +62,7 @@ export async function deliverWebhook(args: {
  */
 export async function deliverWebhookEvent(
   env: Env,
-  route: RepositoryRoute,
+  repoId: string | undefined,
   stub: DurableObjectStub<RepoDurableObject>,
   event: WebhookEvent
 ): Promise<void> {
@@ -73,7 +72,7 @@ export async function deliverWebhookEvent(
     await env.REPO_TASKS_QUEUE.send({
       kind: "webhook",
       doId: stub.id.toString(),
-      repoId: route.repositoryId,
+      repoId,
       url: sub.url,
       secret: sub.secret,
       event: { kind: event.kind, payload: event.payload },

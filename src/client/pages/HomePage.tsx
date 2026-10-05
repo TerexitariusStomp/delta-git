@@ -37,6 +37,41 @@ export function HomePage({ origin = "" }: HomePageProps) {
         </div>
       </section>
 
+      <section
+        className="animate-slide-up opacity-0"
+        style={{ animationDelay: "100ms" }}
+        aria-label="Apps built on delta-git"
+      >
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-widest text-zinc-500">
+          Apps built on delta-git
+        </h2>
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/50 p-4 transition-colors hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">wp-cloud</span>
+            <span className="flex items-center gap-3 text-sm">
+              <a
+                href="https://wpcloud.delta-git.workers.dev"
+                className="inline-flex items-center gap-1 text-accent-500 dark:text-accent-400 no-underline hover:underline"
+              >
+                Launch app
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </a>
+              <a
+                href="/rooted-finance/wp-cloud"
+                className="inline-flex items-center gap-1 text-accent-500 dark:text-accent-400 no-underline hover:underline"
+              >
+                Source
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </a>
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-zinc-500">
+            WordPress hosting on the edge — deploy a site straight from any repo on this forge.
+            Static and dynamic lanes, USDC credits, push-to-redeploy via signed webhooks.
+          </p>
+        </div>
+      </section>
+
       <section className="animate-slide-up opacity-0" style={{ animationDelay: "120ms" }}>
         <dl className="grid gap-x-12 gap-y-6 sm:grid-cols-2">
           <a

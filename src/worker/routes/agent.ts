@@ -518,7 +518,7 @@ export function registerAgentRoutes(router: AppRouter): void {
       cacheCtx: c.var.cacheCtx,
     });
 
-    await deliverWebhookEvent(c.env, route, stub, {
+    await deliverWebhookEvent(c.env, route.repositoryId, stub, {
       kind: "push.patch",
       payload: { intent_id: accepted.intent.id, commit_oid: applied.commitOid },
     });

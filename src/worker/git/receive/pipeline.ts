@@ -12,6 +12,7 @@ import {
 } from "@/worker/git/pack/indexer";
 import { doPrefix, r2PackKey } from "@/worker/keys";
 import { enqueueFederatePush } from "@/worker/tasks/federate";
+import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { chargeStorageQuota, metric } from "@/worker/agent/abuse";
 import { deleteStagedPack, stagePackToR2, type StagedPackUpload } from "./r2Upload";
 import { buildReceiveReportStatus, isReceiveAbort, throwIfReceiveAborted } from "./support";
@@ -159,6 +160,8 @@ type ExecuteReceivePipelineArgs = {
   repoId: string;
   /** Owning namespace id — used for per-owner storage quota charging. */
   namespaceId?: string;
+  /** "owner/repo" slug carried into `push` webhook payloads. */
+  repoSlug?: string;
   request: Request;
   ctx: ExecutionContext;
   packStream: ReadableStream<Uint8Array>;
@@ -452,6 +455,20 @@ export async function executeReceivePipeline(
           command.ref,
           command.newOid
         ).catch(() => {})
+      );
+      // Repo webhook subscribers (e.g. wp-cloud push→redeploy) get a `push`
+      // event per advanced heads ref — same fan-out path as agent pushes.
+      args.ctx.waitUntil(
+        deliverWebhookEvent(args.env, args.repoId, args.stub, {
+          kind: "push",
+          payload: { repo: args.repoSlug, ref: command.ref, oid: command.newOid },
+        }).catch((error) => {
+          args.log.warn("receive:webhook-enqueue-failed", {
+            repoId: args.repoId,
+            ref: command.ref,
+            error: String(error),
+          });
+        })
       );
     }
 
