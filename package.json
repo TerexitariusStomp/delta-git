@@ -43,6 +43,7 @@
     "wrangler": "4.140.0"
   },
   "dependencies": {
+    "@atcute/multibase": "^1.2.5",
     "@noble/curves": "^2.4.0",
     "@octokit/openapi-types": "^29.0.1",
     "@primer/octicons-react": "19.38.0",
