@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build && npm run build:spa",
-    "build:spa": "pnpm -C frontend/canary -r -F './packages/*' build:ci && pnpm -C frontend/canary -F ./apps/gitness build && node scripts/copy-spa.mjs",
+    "build:spa": "pnpm -C frontend/canary -r --filter @harnessio/core-design-system --filter @harnessio/filters --filter @harnessio/forms --filter @harnessio/pipeline-graph --filter @harnessio/ui --filter @harnessio/views --filter @harnessio/yaml-editor build:ci && pnpm -C frontend/canary -F gitness build && node scripts/copy-spa.mjs",
     "preview": "vite preview",
     "deploy": "npm run db:migrate && npm run build && wrangler deploy",
     "test": "vitest run --config vitest.unit.config.ts",

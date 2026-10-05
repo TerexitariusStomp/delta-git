@@ -8,6 +8,7 @@ import { registerPagesRoutes } from "./routes/pages";
 import { registerArchiveRoutes } from "./routes/archive";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
+import { registerGitnessApi } from "./api/gitness";
 import { registerUiRoutes } from "./routes/ui";
 import { registerSpaRoutes } from "./routes/spa";
 import { registerAuthRoutes } from "./routes/auth";
@@ -46,6 +47,8 @@ registerApiV3Routes(app);
 registerXrpcRoutes(app);
 registerMcpRoutes(app);
 registerHermesRoutes(app);
+// Gitness /api/v1 facade — before UI so /api/v1/* never reaches /:owner.
+registerGitnessApi(app);
 // Static site serving from repo refs
 registerPagesRoutes(app);
 // POSIX tar export of a repo tree — consumed by wp-cloud deploy-git, CI, mirrors

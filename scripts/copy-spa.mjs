@@ -14,4 +14,12 @@ if (!existsSync(src)) {
 }
 rmSync(dest, { recursive: true, force: true });
 cpSync(src, dest, { recursive: true });
+// The vite `/app/` base emits a second-tier `dist/app/` subtree (monaco
+// workers) whose URL path is `/app/...` — the same prefix as the flat
+// assets, so it must merge upward, not nest.
+const nested = resolve(dest, "app");
+if (existsSync(nested)) {
+  cpSync(nested, dest, { recursive: true });
+  rmSync(nested, { recursive: true, force: true });
+}
 console.log(`copy-spa: ${src} -> ${dest}`);

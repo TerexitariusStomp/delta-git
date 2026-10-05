@@ -71,12 +71,14 @@ export function mergeIntentToPullReq(args: {
   unresolved?: number;
 }): GitnessPullReq {
   const { intent, number, title, stats, unresolved } = args;
-  const branch = (ref: string) =>
-    ref.replace(/^refs\/heads\//, "").replace(/^refs\//, "");
-  const isTerminal = intent.status === "merged" || intent.status === "rejected" || intent.status === "expired";
+  const branch = (ref: string) => ref.replace(/^refs\/heads\//, "").replace(/^refs\//, "");
+  const isTerminal =
+    intent.status === "merged" || intent.status === "rejected" || intent.status === "expired";
   return {
     number,
-    title: title ?? `Merge intent ${intent.id} (${branch(intent.deltaRef)} → ${branch(intent.targetRef)})`,
+    title:
+      title ??
+      `Merge intent ${intent.id} (${branch(intent.deltaRef)} → ${branch(intent.targetRef)})`,
     // Intents carry no body text; provenance lives in the op-log, exposed
     // via the delta tab. Kept honest-empty rather than fabricated.
     description: "",
