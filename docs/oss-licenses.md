@@ -1,9 +1,19 @@
 # OSS License Inventory
 
 Combined audit of delta-git and wp-cloud (the first-party app deployed at
-`wpcloud.delta-git.workers.dev`). Verified against installed package
-`license` fields and wp-cloud's `licenses.yaml`; Trivy's license scanner
-runs in the deploy gate as the ongoing check.
+`wpcloud.delta-git.workers.dev`, merged into this repo as the `wpcloud/`
+subtree). Verified against installed package `license` fields and
+wp-cloud's `licenses.yaml`; Trivy's license scanner runs in the deploy
+gate as the ongoing check.
+
+## Provenance
+
+delta-git descends from
+[`zllovesuki/git-on-cloudflare`](https://github.com/zllovesuki/git-on-cloudflare)
+(MIT). The inherited worker/git-protocol scaffold is upstream MIT code;
+everything under `src/` that implements merge intents, adjudication,
+arena, reputation, agents, atproto identity, federation, and the site
+pipeline is original delta-git code.
 
 ## Terminology
 
@@ -30,6 +40,13 @@ the shipping bundle.
 | pako                                                    | MIT / Zlib                  | Git pack inflation              |
 | isomorphic-git                                          | MIT                         | Git operations                  |
 | zod                                                     | MIT                         | Request validation              |
+| jose                                                    | MIT                         | HS256 JWT (dg_token, sessions)  |
+| standardwebhooks                                        | MIT                         | Svix webhook signing scheme     |
+| @atcute/multibase                                       | 0BSD                        | did:key base58btc codec         |
+| @atcute/oauth-node-client                               | 0BSD                        | atproto OAuth (PAR/PKCE/DPoP)   |
+| @atcute/identity, identity-resolver, lexicons           | 0BSD                        | handle/DID/PDS resolution       |
+| @modelcontextprotocol/server                            | MIT → Apache-2.0 transition | MCP JSON-RPC/SSE transport      |
+| modern-tar                                              | MIT                         | Archive writer; wpcloud reader  |
 
 ## Build/dev tooling (not distributed)
 
@@ -47,6 +64,7 @@ the shipping bundle.
 | aws4fetch            | MIT                            | R2 S3 presigning                       |
 | itty-router          | MIT                            | API routing                            |
 | viem                 | MIT                            | SIWE wallet verification, USDC watcher |
+| modern-tar           | MIT                            | deploy-git tar reader                  |
 | typescript, wrangler | Apache-2.0 / MIT OR Apache-2.0 | Build                                  |
 
 ## wp-cloud container lane (tenant WordPress images)
