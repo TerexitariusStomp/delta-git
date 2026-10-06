@@ -85,6 +85,13 @@ import {
 } from "./shared";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { readTree } from "@/worker/git/operations/read";
+import {
+  parseSshSig,
+  splitCommitSignature,
+  sshFingerprint,
+  unarmorSshSig,
+  verifySshSig,
+} from "@/worker/git/core/sshsig";
 
 const OPEN_STATUSES = ["open", "merging", "adjudicating", "conflict"];
 const DONE_STATUSES = ["merged", "rejected", "expired"];
@@ -1386,9 +1393,9 @@ export function registerGitnessRepos(router: AppRouter) {
 
   // --- signature verification -----------------------------------------------------
 
-  // Commit objects carry gpgsig headers; we have no keyring to verify
-  // against, so `verified` is honest — presence is real, verification is
-  // reported as unverified rather than fabricated.
+  // SSH commit signatures (git gpg.format=ssh → SSHSIG blob in gpgsig) are
+  // verified against the user SSH-key keyring — Ed25519 via WebCrypto.
+  // OpenPGP signatures report presence honestly but stay unverified.
   router.get("/api/v1/repos/:repo_ref{.+}/signature-verification", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
@@ -1398,15 +1405,58 @@ export function registerGitnessRepos(router: AppRouter) {
       () => null
     );
     if (!raw || raw.type !== "commit") return gNotFound(c, "commit");
-    const text = new TextDecoder().decode(raw.payload);
-    const signed = /^gpgsig /m.test(text);
+    const { unsigned, sigText } = splitCommitSignature(raw.payload);
+    if (!sigText) {
+      return c.json({ commit_sha: sha, signed: false, verified: false });
+    }
+
+    const sshBlob = unarmorSshSig(sigText);
+    if (!sshBlob) {
+      return c.json({
+        commit_sha: sha,
+        signed: true,
+        verified: false,
+        reason: "openpgp signature detected — pgp verification unsupported",
+      });
+    }
+    const sig = parseSshSig(sshBlob);
+    if (!sig) {
+      return c.json({
+        commit_sha: sha,
+        signed: true,
+        verified: false,
+        reason: "malformed signature",
+      });
+    }
+    const fp = await sshFingerprint(sig.pubkeyBlob);
+    const result = await verifySshSig(sig, unsigned);
+    if (result === "unsupported") {
+      return c.json({
+        commit_sha: sha,
+        signed: true,
+        verified: false,
+        key_fingerprint: fp,
+        reason: `unsupported key or hash: ${sig.keyType}/${sig.hashAlgo}`,
+      });
+    }
+    if (result === "failed") {
+      return c.json({
+        commit_sha: sha,
+        signed: true,
+        verified: false,
+        key_fingerprint: fp,
+        reason: "signature does not match commit payload",
+      });
+    }
+    // Cryptographically valid — resolve the signer from the keyring index.
+    const signerUserId = await c.env.ROUTES.get(`gkeyfp:${fp}`).catch(() => null);
     return c.json({
       commit_sha: sha,
-      signed,
-      verified: false,
-      reason: signed
-        ? "no keyring configured — signature presence detected, not verified"
-        : undefined,
+      signed: true,
+      verified: signerUserId !== null,
+      key_fingerprint: fp,
+      signer: signerUserId ?? undefined,
+      reason: signerUserId ? undefined : "valid signature, unknown key",
     });
   });
 

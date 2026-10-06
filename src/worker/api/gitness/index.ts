@@ -27,6 +27,7 @@ import { validateSlugForRoute } from "@/shared/slugs";
 import { generatePatPlaintext, hashPatPlaintext } from "@/worker/auth/pat";
 import { newPrefixedId } from "@/worker/common";
 import { numericId, gErr, gNotFound, normalizeIdentifier } from "./shared";
+import { parseAuthorizedKey, sshFingerprint } from "@/worker/git/core/sshsig";
 import { readUserFavorites, writeUserFavorites } from "./stores";
 import { registerGitnessSpaceDetail, registerGitnessSpaces } from "./spaces";
 import { registerGitnessGitdata } from "./gitdata";
@@ -315,6 +316,13 @@ export function registerGitnessApi(router: AppRouter) {
       created: Date.now(),
     };
     await c.env.ROUTES.put(`gkeys:${viewer.userId}`, JSON.stringify([...keys, key]));
+    // Fingerprint reverse-index for commit-signature verification: the
+    // signer lookup goes fp → userId without scanning every user's keys.
+    const parsed = parseAuthorizedKey(body.content);
+    if (parsed) {
+      const fp = await sshFingerprint(parsed.blob);
+      await c.env.ROUTES.put(`gkeyfp:${fp}`, viewer.userId).catch(() => {});
+    }
     return c.json(key);
   });
 
@@ -325,11 +333,21 @@ export function registerGitnessApi(router: AppRouter) {
       ((await c.env.ROUTES.get(`gkeys:${viewer.userId}`, "json").catch(() => null)) as
         | { id: number; identifier: string; key: string; created: number }[]
         | null) ?? [];
+    const removed = keys.filter(
+      (k) => k.id === parseInt(c.req.param("id"), 10) || k.identifier === c.req.param("id")
+    );
     const next = keys.filter(
       (k) => k.id !== parseInt(c.req.param("id"), 10) && k.identifier !== c.req.param("id")
     );
     if (next.length === keys.length) return gNotFound(c, "key");
     await c.env.ROUTES.put(`gkeys:${viewer.userId}`, JSON.stringify(next));
+    for (const k of removed) {
+      const parsed = parseAuthorizedKey(k.key);
+      if (parsed) {
+        const fp = await sshFingerprint(parsed.blob);
+        await c.env.ROUTES.delete(`gkeyfp:${fp}`).catch(() => {});
+      }
+    }
     return c.json({});
   });
 
