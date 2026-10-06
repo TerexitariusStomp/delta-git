@@ -562,6 +562,54 @@ export function registerGitnessIssues(router: AppRouter) {
     return c.json({});
   });
 
+  // Comment-level reactions — GitHub's /issues/comments/{id}/reactions.
+  router.get("/api/v1/repos/:repo_ref{.+}/issues/comments/:comment_id/reactions", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.listIssueCommentReactions(c.req.param("comment_id"));
+    if (result.status !== "ok") return gNotFound(c, "comment");
+    return c.json(reactionSummary(result.reactions));
+  });
+
+  router.put(
+    "/api/v1/repos/:repo_ref{.+}/issues/comments/:comment_id/reactions/:reaction",
+    async (c) => {
+      const access = await requireWriter(c);
+      if (access instanceof Response) return access;
+      const reaction = c.req.param("reaction");
+      if (!ISSUE_REACTIONS.has(reaction)) return gErr(c, 422, "invalid reaction");
+      const stub = getRepoStub(c.env, access.route.doName);
+      const result = await stub.setIssueCommentReaction({
+        commentId: c.req.param("comment_id"),
+        reaction,
+        actor: access.actor,
+        add: true,
+      });
+      if (result.status === "not-found") return gNotFound(c, "comment");
+      return c.json({});
+    }
+  );
+
+  router.delete(
+    "/api/v1/repos/:repo_ref{.+}/issues/comments/:comment_id/reactions/:reaction",
+    async (c) => {
+      const access = await requireWriter(c);
+      if (access instanceof Response) return access;
+      const reaction = c.req.param("reaction");
+      if (!ISSUE_REACTIONS.has(reaction)) return gErr(c, 422, "invalid reaction");
+      const stub = getRepoStub(c.env, access.route.doName);
+      const result = await stub.setIssueCommentReaction({
+        commentId: c.req.param("comment_id"),
+        reaction,
+        actor: access.actor,
+        add: false,
+      });
+      if (result.status === "not-found") return gNotFound(c, "comment");
+      return c.json({});
+    }
+  );
+
   // --- milestones + labels --------------------------------------------------
 
   router.get("/api/v1/repos/:repo_ref{.+}/milestones", async (c) => {

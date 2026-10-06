@@ -265,6 +265,45 @@ describe("issues: /api/v1 session facade", () => {
     expect(after.heart ?? 0).toBe(0);
   });
 
+  it("tracks reactions on issue comments", async () => {
+    const created = await call("POST", `${base}/issues/1/comments`, {
+      cookie: seeded.cookieHeader,
+      body: { body: "comment to react to" },
+    });
+    const commentId = (created.body as { id: string }).id;
+
+    const put = await call("PUT", `${base}/issues/comments/${commentId}/reactions/rocket`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(put.status).toBe(200);
+
+    const bad = await call("PUT", `${base}/issues/comments/${commentId}/reactions/nonsense`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(bad.status).toBe(422);
+
+    const missing = await call("PUT", `${base}/issues/comments/isc_missing/reactions/heart`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(missing.status).toBe(404);
+
+    const got = await call("GET", `${base}/issues/comments/${commentId}/reactions`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect((got.body as Record<string, number>).rocket).toBe(1);
+
+    const del = await call("DELETE", `${base}/issues/comments/${commentId}/reactions/rocket`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(del.status).toBe(200);
+    const after = (
+      await call("GET", `${base}/issues/comments/${commentId}/reactions`, {
+        cookie: seeded.cookieHeader,
+      })
+    ).body as Record<string, number>;
+    expect(after.rocket ?? 0).toBe(0);
+  });
+
   it("supports labels and milestones, and links milestones to issues", async () => {
     const label = await call("POST", `${base}/labels`, {
       cookie: seeded.cookieHeader,

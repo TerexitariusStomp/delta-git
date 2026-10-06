@@ -348,6 +348,51 @@ export async function listIssueReactionsState(
   };
 }
 
+// Comment-level reactions — same table, `issue_comment` target type. The
+// comment's issueId isn't checked: comment ids are unforgeable prefixed
+// ids, and membership gates already ran at the route layer.
+export async function setIssueCommentReactionState(args: {
+  ctx: DurableObjectState;
+  commentId: string;
+  reaction: string;
+  actor: string;
+  add: boolean;
+}): Promise<{ status: "ok" } | { status: "not-found" }> {
+  const db = getDb(args.ctx.storage);
+  const comment = await getIssueComment(db, args.commentId);
+  if (!comment) return { status: "not-found" };
+  if (args.add) {
+    await insertReaction(db, {
+      targetType: "issue_comment",
+      targetId: comment.id,
+      reaction: args.reaction,
+      actor: args.actor,
+      createdAt: Date.now(),
+    });
+  } else {
+    await deleteReaction(db, {
+      targetType: "issue_comment",
+      targetId: comment.id,
+      reaction: args.reaction,
+      actor: args.actor,
+    });
+  }
+  return { status: "ok" };
+}
+
+export async function listIssueCommentReactionsState(
+  ctx: DurableObjectState,
+  commentId: string
+): Promise<{ status: "ok"; reactions: ReactionRow[] } | { status: "not-found" }> {
+  const db = getDb(ctx.storage);
+  const comment = await getIssueComment(db, commentId);
+  if (!comment) return { status: "not-found" };
+  return {
+    status: "ok",
+    reactions: await listReactions(db, { targetType: "issue_comment", targetId: comment.id }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Milestones + labels — the registry rows issues point at.
 // ---------------------------------------------------------------------------

@@ -67,10 +67,12 @@ import {
   editIssueCommentState,
   getIssueState,
   listIssueCommentsState,
+  listIssueCommentReactionsState,
   listIssueReactionsState,
   listIssuesState,
   listLabelsState,
   listMilestonesState,
+  setIssueCommentReactionState,
   setIssueReactionState,
   updateIssueState,
   updateMilestoneState,
@@ -773,6 +775,21 @@ export class RepoDurableObject extends DurableObject {
   public async listIssueReactions(number: number) {
     await this.ensureAccessAndAlarm();
     return await listIssueReactionsState(this.ctx, number);
+  }
+
+  public async setIssueCommentReaction(args: {
+    commentId: string;
+    reaction: string;
+    actor: string;
+    add: boolean;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await setIssueCommentReactionState({ ctx: this.ctx, ...args });
+  }
+
+  public async listIssueCommentReactions(commentId: string) {
+    await this.ensureAccessAndAlarm();
+    return await listIssueCommentReactionsState(this.ctx, commentId);
   }
 
   public async createMilestone(args: {
