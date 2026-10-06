@@ -59,6 +59,24 @@ import {
   type MatchSettlement,
 } from "./catalog/arena";
 import {
+  addIssueCommentState,
+  createIssueState,
+  createLabelState,
+  createMilestoneState,
+  deleteIssueCommentState,
+  editIssueCommentState,
+  getIssueState,
+  listIssueCommentsState,
+  listIssueReactionsState,
+  listIssuesState,
+  listLabelsState,
+  listMilestonesState,
+  setIssueReactionState,
+  updateIssueState,
+  updateMilestoneState,
+  type IssuePatch,
+} from "./catalog/issues";
+import {
   acceptPatchCommitState,
   addWebhookSubState,
   castWorkVoteState,
@@ -652,6 +670,114 @@ export class RepoDurableObject extends DurableObject {
   public async listWorkVotes(workIntentId: string) {
     await this.ensureAccessAndAlarm();
     return await listWorkVotesState(this.ctx, workIntentId);
+  }
+
+  // --- issues (GitHub-shaped tracker over materialized work intents) ------
+
+  public async createIssue(args: {
+    title: string;
+    body: string | null;
+    actor: string;
+    assignees?: string[];
+    labelIds?: string[];
+    milestoneId?: string | null;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await createIssueState({ ctx: this.ctx, ...args });
+  }
+
+  public async listIssues(args: { state?: "open" | "closed"; limit?: number }) {
+    await this.ensureAccessAndAlarm();
+    return await listIssuesState(this.ctx, args);
+  }
+
+  public async getIssue(number: number) {
+    await this.ensureAccessAndAlarm();
+    return await getIssueState(this.ctx, number);
+  }
+
+  public async updateIssue(args: { number: number; patch: IssuePatch; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await updateIssueState({ ctx: this.ctx, ...args });
+  }
+
+  public async addIssueComment(args: { number: number; body: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await addIssueCommentState({ ctx: this.ctx, ...args });
+  }
+
+  public async listIssueComments(number: number) {
+    await this.ensureAccessAndAlarm();
+    return await listIssueCommentsState(this.ctx, number);
+  }
+
+  public async editIssueComment(args: { commentId: string; body: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await editIssueCommentState({ ctx: this.ctx, ...args });
+  }
+
+  public async deleteIssueComment(args: { commentId: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteIssueCommentState({ ctx: this.ctx, ...args });
+  }
+
+  public async setIssueReaction(args: {
+    number: number;
+    reaction: string;
+    actor: string;
+    add: boolean;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await setIssueReactionState({ ctx: this.ctx, ...args });
+  }
+
+  public async listIssueReactions(number: number) {
+    await this.ensureAccessAndAlarm();
+    return await listIssueReactionsState(this.ctx, number);
+  }
+
+  public async createMilestone(args: {
+    title: string;
+    description: string | null;
+    dueOn: number | null;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await createMilestoneState({ ctx: this.ctx, ...args });
+  }
+
+  public async listMilestones(args: { state?: "open" | "closed" }) {
+    await this.ensureAccessAndAlarm();
+    return await listMilestonesState(this.ctx, args);
+  }
+
+  public async updateMilestone(args: {
+    number: number;
+    patch: {
+      title?: string;
+      description?: string | null;
+      state?: "open" | "closed";
+      dueOn?: number | null;
+    };
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await updateMilestoneState({ ctx: this.ctx, ...args });
+  }
+
+  public async createLabel(args: {
+    name: string;
+    color: string;
+    description: string | null;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await createLabelState({ ctx: this.ctx, ...args });
+  }
+
+  public async listLabels() {
+    await this.ensureAccessAndAlarm();
+    return await listLabelsState(this.ctx);
   }
 
   public async importPack(args: {

@@ -30,6 +30,7 @@ import { readUserFavorites, writeUserFavorites } from "./stores";
 import { registerGitnessSpaceDetail, registerGitnessSpaces } from "./spaces";
 import { registerGitnessGitdata } from "./gitdata";
 import { registerGitnessPullreqs } from "./pullreqs";
+import { registerGitnessIssues } from "./issues";
 import { registerGitnessRepos } from "./repos";
 import { registerGitnessSearch } from "./search";
 import { registerGitnessExecutions } from "./executions";
@@ -87,6 +88,8 @@ export function registerGitnessApi(router: AppRouter) {
   // Pullreqs before gitdata: gitdata's greedy `:repo_ref{.+}` suffix routes
   // (e.g. `/activities`) would otherwise swallow `/pullreq/:n/...` paths.
   registerGitnessPullreqs(router);
+  // Issues/milestones/labels — same greedy-tail ordering as pullreqs.
+  registerGitnessIssues(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);

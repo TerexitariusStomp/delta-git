@@ -1,0 +1,389 @@
+import type { AppRouter } from "@/worker/routes/hono";
+import type { IssueView } from "@/worker/do/repo/catalog/issues";
+import type {
+  IssueCommentRow,
+  LabelRow,
+  MilestoneRow,
+  ReactionRow,
+} from "@/worker/do/repo/db/schema";
+
+import { getRepoStub } from "@/worker/common";
+import { gErr, gNotFound, pageParams, paginate, requireWriter, resolveGitnessRepo } from "./shared";
+
+// GitHub-shaped issues surface for the SPA — session-authed like every
+// /api/v1 route. The same model is re-exposed as REST v3 for gh/agent
+// clients in routes/apiv3Issues.ts; both share the DO's IssueView shape.
+
+const ISSUE_REACTIONS = new Set([
+  "+1",
+  "-1",
+  "laugh",
+  "hooray",
+  "confused",
+  "heart",
+  "rocket",
+  "eyes",
+]);
+
+function labelView(row: LabelRow) {
+  return { name: row.name, color: row.color, description: row.description ?? null };
+}
+
+function milestoneView(row: MilestoneRow) {
+  return {
+    number: row.number,
+    title: row.title,
+    description: row.description ?? null,
+    state: row.state,
+    due_on: row.dueOn ? new Date(row.dueOn).toISOString() : null,
+    created_at: new Date(row.createdAt).toISOString(),
+    closed_at: row.closedAt ? new Date(row.closedAt).toISOString() : null,
+  };
+}
+
+function issueView(issue: IssueView) {
+  return {
+    number: issue.number,
+    title: issue.title,
+    body: issue.body ?? null,
+    state: issue.state,
+    state_reason: issue.stateReason ?? null,
+    user: { login: issue.author },
+    labels: issue.labels.map(labelView),
+    assignees: issue.assignees.map((login) => ({ login })),
+    milestone: issue.milestone ? milestoneView(issue.milestone) : null,
+    comments: issue.comments,
+    work_intent_id: issue.workIntentId,
+    created_at: new Date(issue.createdAt).toISOString(),
+    updated_at: new Date(issue.updatedAt).toISOString(),
+    closed_at: issue.closedAt ? new Date(issue.closedAt).toISOString() : null,
+  };
+}
+
+function commentView(row: IssueCommentRow) {
+  return {
+    id: row.id,
+    body: row.body,
+    user: { login: row.author },
+    created_at: new Date(row.createdAt).toISOString(),
+    updated_at: new Date(row.updatedAt).toISOString(),
+  };
+}
+
+function reactionSummary(rows: ReactionRow[]) {
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.reaction] = (out[r.reaction] ?? 0) + 1;
+  return out;
+}
+
+export function registerGitnessIssues(router: AppRouter) {
+  router.get("/api/v1/repos/:repo_ref{.+}/issues", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const state = c.req.query("state");
+    const issues = await stub.listIssues({
+      state: state === "open" || state === "closed" ? state : undefined,
+    });
+    const page = pageParams(c);
+    return c.json(
+      paginate(
+        issues.map((i) => issueView(i)),
+        page
+      )
+    );
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/issues", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as {
+      title?: string;
+      body?: string;
+      labels?: string[];
+      assignees?: string[];
+      milestone?: number;
+    } | null;
+    if (!body?.title?.trim()) return gErr(c, 422, "title required");
+
+    const stub = getRepoStub(c.env, access.route.doName);
+    // Label names → ids, auto-creating labels so issue creation with
+    // arbitrary names works like GitHub's API.
+    const labelIds: string[] = [];
+    for (const name of body.labels ?? []) {
+      const created = await stub.createLabel({
+        name,
+        color: "ededed",
+        description: null,
+        actor: access.actor,
+      });
+      if (created.status !== "invalid") labelIds.push(created.label.id);
+    }
+
+    const result = await stub.createIssue({
+      title: body.title,
+      body: body.body ?? null,
+      actor: access.actor,
+      assignees: body.assignees,
+      labelIds,
+    });
+    if (result.status !== "created") return gErr(c, 422, result.reason);
+    return c.json(issueView(result.issue), 201);
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/issues/:number", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.getIssue(number);
+    if (result.status !== "ok") return gNotFound(c, "issue");
+    return c.json(issueView(result.issue));
+  });
+
+  router.patch("/api/v1/repos/:repo_ref{.+}/issues/:number", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const body = (await c.req.json().catch(() => null)) as {
+      title?: string;
+      body?: string | null;
+      state?: string;
+      state_reason?: string | null;
+      labels?: string[];
+      assignees?: string[];
+      milestone?: number | null;
+    } | null;
+
+    const stub = getRepoStub(c.env, access.route.doName);
+    const patch: Parameters<typeof stub.updateIssue>[0]["patch"] = {};
+    if (body?.title !== undefined) patch.title = body.title;
+    if (body?.body !== undefined) patch.body = body.body;
+    if (body?.state === "open" || body?.state === "closed") patch.state = body.state;
+    if (body?.state_reason === "completed" || body?.state_reason === "not_planned") {
+      patch.stateReason = body.state_reason;
+    }
+    if (body?.assignees) patch.assignees = body.assignees;
+    if (body?.labels) {
+      const labelIds: string[] = [];
+      for (const name of body.labels) {
+        const created = await stub.createLabel({
+          name,
+          color: "ededed",
+          description: null,
+          actor: access.actor,
+        });
+        if (created.status !== "invalid") labelIds.push(created.label.id);
+      }
+      patch.labelIds = labelIds;
+    }
+    if (body?.milestone !== undefined) {
+      if (body.milestone === null) {
+        patch.milestoneId = null;
+      } else {
+        const ms = await stub
+          .listMilestones({})
+          .then((all) => all.find((m) => m.number === body.milestone));
+        if (!ms) return gErr(c, 422, "milestone not found");
+        patch.milestoneId = ms.id;
+      }
+    }
+
+    const result = await stub.updateIssue({ number, patch, actor: access.actor });
+    if (result.status === "not-found") return gNotFound(c, "issue");
+    if (result.status === "invalid") return gErr(c, 422, result.reason);
+    return c.json(issueView(result.issue));
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/issues/:number/comments", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.listIssueComments(number);
+    if (result.status !== "ok") return gNotFound(c, "issue");
+    return c.json(result.comments.map(commentView));
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/issues/:number/comments", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const body = (await c.req.json().catch(() => null)) as { body?: string } | null;
+    if (!body?.body?.trim()) return gErr(c, 422, "body required");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.addIssueComment({ number, body: body.body, actor: access.actor });
+    if (result.status === "not-found") return gNotFound(c, "issue");
+    if (result.status === "invalid") return gErr(c, 422, "body required");
+    return c.json(commentView(result.comment), 201);
+  });
+
+  router.patch("/api/v1/repos/:repo_ref{.+}/issues/comments/:comment_id", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as { body?: string } | null;
+    if (!body?.body?.trim()) return gErr(c, 422, "body required");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.editIssueComment({
+      commentId: c.req.param("comment_id"),
+      body: body.body,
+      actor: access.actor,
+    });
+    if (result.status === "not-found") return gNotFound(c, "comment");
+    if (result.status === "forbidden") return gErr(c, 403, "not the comment author");
+    if (result.status === "invalid") return gErr(c, 422, "body required");
+    return c.json({});
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/issues/comments/:comment_id", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.deleteIssueComment({
+      commentId: c.req.param("comment_id"),
+      actor: access.actor,
+    });
+    if (result.status === "not-found") return gNotFound(c, "comment");
+    if (result.status === "forbidden") return gErr(c, 403, "not the comment author");
+    return c.json({});
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/issues/:number/reactions", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.listIssueReactions(number);
+    if (result.status !== "ok") return gNotFound(c, "issue");
+    return c.json(reactionSummary(result.reactions));
+  });
+
+  router.put("/api/v1/repos/:repo_ref{.+}/issues/:number/reactions/:reaction", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    const reaction = c.req.param("reaction");
+    if (Number.isNaN(number) || !ISSUE_REACTIONS.has(reaction)) {
+      return gErr(c, 422, "invalid reaction");
+    }
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.setIssueReaction({
+      number,
+      reaction,
+      actor: access.actor,
+      add: true,
+    });
+    if (result.status === "not-found") return gNotFound(c, "issue");
+    return c.json({});
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/issues/:number/reactions/:reaction", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    const reaction = c.req.param("reaction");
+    if (Number.isNaN(number) || !ISSUE_REACTIONS.has(reaction)) {
+      return gErr(c, 422, "invalid reaction");
+    }
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.setIssueReaction({
+      number,
+      reaction,
+      actor: access.actor,
+      add: false,
+    });
+    if (result.status === "not-found") return gNotFound(c, "issue");
+    return c.json({});
+  });
+
+  // --- milestones + labels --------------------------------------------------
+
+  router.get("/api/v1/repos/:repo_ref{.+}/milestones", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const state = c.req.query("state");
+    const rows = await stub.listMilestones({
+      state: state === "open" || state === "closed" ? state : undefined,
+    });
+    return c.json(rows.map(milestoneView));
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/milestones", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as {
+      title?: string;
+      description?: string;
+      due_on?: string;
+    } | null;
+    if (!body?.title?.trim()) return gErr(c, 422, "title required");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.createMilestone({
+      title: body.title,
+      description: body.description ?? null,
+      dueOn: body.due_on ? Date.parse(body.due_on) : null,
+      actor: access.actor,
+    });
+    if (result.status !== "created") return gErr(c, 422, "title required");
+    return c.json(milestoneView(result.milestone), 201);
+  });
+
+  router.patch("/api/v1/repos/:repo_ref{.+}/milestones/:number", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "milestone");
+    const body = (await c.req.json().catch(() => null)) as {
+      title?: string;
+      description?: string | null;
+      state?: string;
+      due_on?: string | null;
+    } | null;
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.updateMilestone({
+      number,
+      actor: access.actor,
+      patch: {
+        title: body?.title,
+        description: body?.description,
+        state: body?.state === "open" || body?.state === "closed" ? body.state : undefined,
+        dueOn: body?.due_on === null ? null : body?.due_on ? Date.parse(body.due_on) : undefined,
+      },
+    });
+    if (result.status !== "updated") return gNotFound(c, "milestone");
+    return c.json(milestoneView(result.milestone));
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/labels", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const stub = getRepoStub(c.env, access.route.doName);
+    return c.json((await stub.listLabels()).map(labelView));
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/labels", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as {
+      name?: string;
+      color?: string;
+      description?: string;
+    } | null;
+    if (!body?.name?.trim() || !body?.color) return gErr(c, 422, "name + color required");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await stub.createLabel({
+      name: body.name,
+      color: body.color,
+      description: body.description ?? null,
+      actor: access.actor,
+    });
+    if (result.status === "invalid") return gErr(c, 422, "invalid name or color");
+    return c.json(labelView(result.label), result.status === "exists" ? 200 : 201);
+  });
+}

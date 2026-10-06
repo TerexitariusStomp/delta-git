@@ -297,3 +297,112 @@ export const useAskRepo = (spaceId: string, repoId: string) =>
       body: JSON.stringify({ query })
     })
   )
+
+// --- issues (GitHub-shaped, DO-backed, session-authed via /api/v1) ----------
+
+export interface RepoIssue {
+  number: number
+  title: string
+  body: string | null
+  state: 'open' | 'closed'
+  state_reason: 'completed' | 'not_planned' | 'reopened' | null
+  user: { login: string }
+  labels: { name: string; color: string; description: string | null }[]
+  assignees: { login: string }[]
+  milestone: { number: number; title: string; state: string } | null
+  comments: number
+  work_intent_id: string | null
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+}
+
+export interface RepoIssueComment {
+  id: string
+  body: string
+  user: { login: string }
+  created_at: string
+  updated_at: string
+}
+
+export interface RepoMilestone {
+  number: number
+  title: string
+  description: string | null
+  state: string
+  due_on: string | null
+  created_at: string
+  closed_at: string | null
+}
+
+const v1Path = (spaceId: string, repoId: string) => `/api/v1/repos/${repoRef(spaceId, repoId)}`
+
+export const useIssues = (spaceId: string, repoId: string, state?: 'open' | 'closed') =>
+  useQuery(
+    ['delta', 'issues', spaceId, repoId, state ?? 'all'],
+    () => dgFetch<RepoIssue[]>(`${v1Path(spaceId, repoId)}/issues${state ? `?state=${state}` : ''}`),
+    { select: data => data ?? [] }
+  )
+
+export const useIssue = (spaceId: string, repoId: string, number: number) =>
+  useQuery(['delta', 'issue', spaceId, repoId, number], () =>
+    dgFetch<RepoIssue>(`${v1Path(spaceId, repoId)}/issues/${number}`)
+  )
+
+export const useIssueComments = (spaceId: string, repoId: string, number: number) =>
+  useQuery(
+    ['delta', 'issue-comments', spaceId, repoId, number],
+    () => dgFetch<RepoIssueComment[]>(`${v1Path(spaceId, repoId)}/issues/${number}/comments`),
+    { select: data => data ?? [] }
+  )
+
+export const useIssueReactions = (spaceId: string, repoId: string, number: number) =>
+  useQuery(['delta', 'issue-reactions', spaceId, repoId, number], () =>
+    dgFetch<Record<string, number>>(`${v1Path(spaceId, repoId)}/issues/${number}/reactions`)
+  )
+
+export const useCreateIssue = (spaceId: string, repoId: string) =>
+  useMutation((body: { title: string; body?: string; labels?: string[]; assignees?: string[] }) =>
+    dgFetch<RepoIssue>(`${v1Path(spaceId, repoId)}/issues`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  )
+
+export const useUpdateIssue = (spaceId: string, repoId: string, number: number) =>
+  useMutation(
+    (patch: {
+      title?: string
+      body?: string | null
+      state?: 'open' | 'closed'
+      state_reason?: 'completed' | 'not_planned'
+      labels?: string[]
+      assignees?: string[]
+    }) =>
+      dgFetch<RepoIssue>(`${v1Path(spaceId, repoId)}/issues/${number}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch)
+      })
+  )
+
+export const useCreateIssueComment = (spaceId: string, repoId: string, number: number) =>
+  useMutation((body: { body: string }) =>
+    dgFetch<RepoIssueComment>(`${v1Path(spaceId, repoId)}/issues/${number}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  )
+
+export const useIssueReaction = (spaceId: string, repoId: string, number: number) =>
+  useMutation((vars: { reaction: string; add: boolean }) =>
+    dgFetch(`${v1Path(spaceId, repoId)}/issues/${number}/reactions/${vars.reaction}`, {
+      method: vars.add ? 'PUT' : 'DELETE'
+    })
+  )
+
+export const useMilestones = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'milestones', spaceId, repoId],
+    () => dgFetch<RepoMilestone[]>(`${v1Path(spaceId, repoId)}/milestones`),
+    { select: data => data ?? [] }
+  )

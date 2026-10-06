@@ -69,6 +69,11 @@ import {
   RepoDeltaIntentsPage,
 } from "./pages-v2/delta/repo-pages";
 import RepoStubPage from "./pages-v2/repo/repo-stub-page";
+import {
+  RepoIssueDetailPage,
+  RepoIssueNewPage,
+  RepoIssuesPage,
+} from "./pages-v2/repo/repo-issues-page";
 import { LandingPage } from "./pages-v2/landing-page-container";
 import { Logout } from "./pages-v2/logout";
 import { SettingsProfileGeneralPage } from "./pages-v2/profile-settings/profile-settings-general-container";
@@ -692,10 +697,27 @@ export const repoRoutes: CustomRouteObject[] = [
           // real implementations land phase by phase.
           {
             path: "issues",
-            element: <RepoStubPage surface="issues" />,
+            element: <RepoIssuesPage />,
             handle: {
               breadcrumb: () => <span>Issues</span>,
               pageTitle: "Issues",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "issues/new",
+            element: <RepoIssueNewPage />,
+            handle: {
+              breadcrumb: () => <span>New issue</span>,
+              pageTitle: "New issue",
+            },
+          },
+          {
+            path: "issues/:issueNumber",
+            element: <RepoIssueDetailPage />,
+            handle: {
+              breadcrumb: () => <span>Issue</span>,
+              pageTitle: "Issue",
               publicAccess: true,
             },
           },

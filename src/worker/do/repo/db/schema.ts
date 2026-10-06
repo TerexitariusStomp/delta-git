@@ -364,3 +364,181 @@ export const processedEvents = sqliteTable(
 );
 
 export type ProcessedEventRow = typeof processedEvents.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Issues — GitHub-shaped tracker backed by this repo's DO
+// ---------------------------------------------------------------------------
+// Every issue materializes a `work_intents` row (kind='issue') so the
+// GitHub-familiar UX and the agent-native claim lane stay one source of
+// truth. `number` is a per-repo sequence (this SQLite db is scoped to one
+// repo, so a plain unique constraint is a global unique issue number).
+
+export const issues = sqliteTable(
+  "issues",
+  {
+    id: text("id").notNull(),
+    // Per-repo monotonic issue number — the GitHub `#42` people reference.
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    // open | closed — state_reason refines a close (completed|not_planned)
+    // and records "reopened" when a closed issue is reopened.
+    state: text("state").notNull().default("open"),
+    stateReason: text("state_reason"),
+    author: text("author").notNull(),
+    // Materialized work_intents.id — agents claim/close through this row.
+    workIntentId: text("work_intent_id"),
+    milestoneId: text("milestone_id"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    closedAt: integer("closed_at"),
+    closedBy: text("closed_by"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "issues_pk" }),
+    uniqueIndex("uq_issues_number").on(t.number),
+    index("idx_issues_state_number").on(t.state, desc(t.number)),
+    index("idx_issues_milestone").on(t.milestoneId),
+    index("idx_issues_work_intent").on(t.workIntentId),
+    check("chk_issues_state", sql`"state" IN ('open','closed')`),
+    check(
+      "chk_issues_state_reason",
+      sql`"state_reason" IS NULL OR "state_reason" IN ('completed','not_planned','reopened')`
+    ),
+    check("chk_issues_number", sql`"number" > 0`),
+  ]
+);
+
+export type IssueRow = typeof issues.$inferSelect;
+
+export const issueComments = sqliteTable(
+  "issue_comments",
+  {
+    id: text("id").notNull(),
+    issueId: text("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    author: text("author").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "issue_comments_pk" }),
+    index("idx_issue_comments_issue").on(t.issueId, t.createdAt),
+  ]
+);
+
+export type IssueCommentRow = typeof issueComments.$inferSelect;
+
+export const issueAssignees = sqliteTable(
+  "issue_assignees",
+  {
+    issueId: text("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    assignee: text("assignee").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.issueId, t.assignee], name: "issue_assignees_pk" }),
+    index("idx_issue_assignees_user").on(t.assignee),
+  ]
+);
+
+export type IssueAssigneeRow = typeof issueAssignees.$inferSelect;
+
+// Repo-scoped label registry. `name` is unique per repo (this db IS the
+// repo); color is a bare hex string like GitHub's label model.
+export const labels = sqliteTable(
+  "labels",
+  {
+    id: text("id").notNull(),
+    name: text("name").notNull(),
+    color: text("color").notNull(),
+    description: text("description"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "labels_pk" }),
+    uniqueIndex("uq_labels_name").on(t.name),
+  ]
+);
+
+export type LabelRow = typeof labels.$inferSelect;
+
+export const issueLabels = sqliteTable(
+  "issue_labels",
+  {
+    issueId: text("issue_id")
+      .notNull()
+      .references(() => issues.id, { onDelete: "cascade" }),
+    labelId: text("label_id")
+      .notNull()
+      .references(() => labels.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.issueId, t.labelId], name: "issue_labels_pk" }),
+    index("idx_issue_labels_label").on(t.labelId),
+  ]
+);
+
+export type IssueLabelRow = typeof issueLabels.$inferSelect;
+
+// Milestones are numbered like issues so URLs read `/milestones/2`.
+export const milestones = sqliteTable(
+  "milestones",
+  {
+    id: text("id").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    state: text("state").notNull().default("open"),
+    dueOn: integer("due_on"),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at").notNull(),
+    closedAt: integer("closed_at"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "milestones_pk" }),
+    uniqueIndex("uq_milestones_number").on(t.number),
+    index("idx_milestones_state").on(t.state),
+    check("chk_milestones_state", sql`"state" IN ('open','closed')`),
+    check("chk_milestones_number", sql`"number" > 0`),
+  ]
+);
+
+export type MilestoneRow = typeof milestones.$inferSelect;
+
+// Emoji reactions keyed by (target, reaction, actor) so a toggle is a plain
+// insert/delete and aggregation is a group-by. target_type is extensible —
+// issue comments today; discussions/PRs reuse the same table later.
+export const reactions = sqliteTable(
+  "reactions",
+  {
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    // GitHub's eight: +1 -1 laugh hooray confused heart rocket eyes
+    reaction: text("reaction").notNull(),
+    actor: text("actor").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({
+      columns: [t.targetType, t.targetId, t.reaction, t.actor],
+      name: "reactions_pk",
+    }),
+    index("idx_reactions_target").on(t.targetType, t.targetId),
+    check(
+      "chk_reactions_type",
+      sql`"target_type" IN ('issue','issue_comment','merge_intent','work_intent')`
+    ),
+    check(
+      "chk_reactions_kind",
+      sql`"reaction" IN ('+1','-1','laugh','hooray','confused','heart','rocket','eyes')`
+    ),
+  ]
+);
+
+export type ReactionRow = typeof reactions.$inferSelect;

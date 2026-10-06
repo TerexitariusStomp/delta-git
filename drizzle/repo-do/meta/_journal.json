@@ -57,6 +57,13 @@
       "when": 1791177525406,
       "tag": "0007_careful_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791311240838,
+      "tag": "0008_unknown_spencer_smythe",
+      "breakpoints": true
     }
   ]
 }
