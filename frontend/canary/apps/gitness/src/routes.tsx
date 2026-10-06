@@ -82,6 +82,7 @@ import {
 } from "./pages-v2/repo/repo-discussions-page";
 import { RepoWikiEditPage, RepoWikiPage } from "./pages-v2/repo/repo-wiki-page";
 import { RepoInsightsPage } from "./pages-v2/repo/repo-insights-page";
+import { RepoProjectBoardPage, RepoProjectsPage } from "./pages-v2/repo/repo-projects-page";
 import {
   RepoReleaseDetailPage,
   RepoReleaseNewPage,
@@ -762,10 +763,19 @@ export const repoRoutes: CustomRouteObject[] = [
           },
           {
             path: "projects",
-            element: <RepoStubPage surface="projects" />,
+            element: <RepoProjectsPage />,
             handle: {
               breadcrumb: () => <span>Projects</span>,
               pageTitle: "Projects",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "projects/:projectId",
+            element: <RepoProjectBoardPage />,
+            handle: {
+              breadcrumb: () => <span>Project</span>,
+              pageTitle: "Project",
               publicAccess: true,
             },
           },

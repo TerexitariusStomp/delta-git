@@ -3,5 +3,6 @@ export * from "./arena";
 export * from "./discussions";
 export * from "./issues";
 export * from "./packCatalog";
+export * from "./projects";
 export * from "./releases";
 export * from "./shared";

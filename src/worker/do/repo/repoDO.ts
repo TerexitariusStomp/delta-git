@@ -77,6 +77,17 @@ import {
   type IssuePatch,
 } from "./catalog/issues";
 import {
+  addProjectCardState,
+  addProjectColumnState,
+  createProjectState,
+  deleteProjectCardState,
+  deleteProjectColumnState,
+  getProjectState,
+  listProjectsState,
+  moveProjectCardState,
+  updateProjectState,
+} from "./catalog/projects";
+import {
   addReleaseAssetState,
   createReleaseState,
   deleteReleaseAssetState,
@@ -927,6 +938,70 @@ export class RepoDurableObject extends DurableObject {
   public async deleteReleaseAsset(args: { releaseId: string; assetId: string; actor: string }) {
     await this.ensureAccessAndAlarm();
     return await deleteReleaseAssetState({ ctx: this.ctx, ...args });
+  }
+
+  // --- projects ---------------------------------------------------------------
+
+  public async createProject(args: { title: string; description: string | null; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await createProjectState({ ctx: this.ctx, ...args });
+  }
+
+  public async listProjects(args: { state?: "open" | "closed"; limit?: number }) {
+    await this.ensureAccessAndAlarm();
+    return await listProjectsState(this.ctx, args);
+  }
+
+  public async getProject(number: number) {
+    await this.ensureAccessAndAlarm();
+    return await getProjectState(this.ctx, number);
+  }
+
+  public async updateProject(args: {
+    number: number;
+    patch: { title?: string; description?: string | null; state?: "open" | "closed" };
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await updateProjectState({ ctx: this.ctx, ...args });
+  }
+
+  public async addProjectColumn(args: { number: number; name: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await addProjectColumnState({ ctx: this.ctx, ...args });
+  }
+
+  public async deleteProjectColumn(args: { number: number; columnId: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteProjectColumnState({ ctx: this.ctx, ...args });
+  }
+
+  public async addProjectCard(args: {
+    number: number;
+    columnId: string;
+    kind: "issue" | "note";
+    issueNumber?: number;
+    note?: string;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await addProjectCardState({ ctx: this.ctx, ...args });
+  }
+
+  public async moveProjectCard(args: {
+    number: number;
+    cardId: string;
+    columnId: string;
+    position?: number;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await moveProjectCardState({ ctx: this.ctx, ...args });
+  }
+
+  public async deleteProjectCard(args: { number: number; cardId: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteProjectCardState({ ctx: this.ctx, ...args });
   }
 
   public async updateMilestone(args: {

@@ -34,6 +34,7 @@ import { registerGitnessDiscussions } from "./discussions";
 import { registerGitnessIssues } from "./issues";
 import { registerGitnessSocial } from "./social";
 import { registerGitnessInsights } from "./insights";
+import { registerGitnessProjects } from "./projects";
 import { registerGitnessReleases } from "./releases";
 import { registerGitnessWiki } from "./wiki";
 import { registerGitnessRepos } from "./repos";
@@ -106,6 +107,8 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessReleases(router);
   // Insights — pulse/activity/contributors from the commit walk.
   registerGitnessInsights(router);
+  // Projects — boards/columns/cards, literal tails before gitdata.
+  registerGitnessProjects(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);

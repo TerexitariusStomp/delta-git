@@ -78,6 +78,13 @@
       "when": 1791313772132,
       "tag": "0010_hard_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791314766308,
+      "tag": "0011_vengeful_quentin_quire",
+      "breakpoints": true
     }
   ]
 }

@@ -657,3 +657,76 @@ export const releaseAssets = sqliteTable(
 );
 
 export type ReleaseAssetRow = typeof releaseAssets.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// projects + project_columns + project_cards
+// GitHub Projects (classic shape): boards of columns; cards are either an
+// issue reference or a free-text note. Repo-local, numbered like issues.
+// ---------------------------------------------------------------------------
+
+export const projects = sqliteTable(
+  "projects",
+  {
+    id: text("id").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    state: text("state").notNull().default("open"),
+    author: text("author").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "projects_pk" }),
+    uniqueIndex("uq_projects_number").on(t.number),
+    index("idx_projects_state").on(t.state, desc(t.number)),
+    check("chk_projects_state", sql`"state" IN ('open','closed')`),
+    check("chk_projects_number", sql`"number" > 0`),
+  ]
+);
+
+export type ProjectRow = typeof projects.$inferSelect;
+
+export const projectColumns = sqliteTable(
+  "project_columns",
+  {
+    id: text("id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    position: integer("position").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "project_columns_pk" }),
+    index("idx_project_columns_project").on(t.projectId, t.position),
+  ]
+);
+
+export type ProjectColumnRow = typeof projectColumns.$inferSelect;
+
+export const projectCards = sqliteTable(
+  "project_cards",
+  {
+    id: text("id").notNull(),
+    columnId: text("column_id")
+      .notNull()
+      .references(() => projectColumns.id, { onDelete: "cascade" }),
+    // 'issue' → contentId is the issue number; 'note' → contentId is null
+    // and `note` carries the free text.
+    kind: text("kind").notNull(),
+    issueNumber: integer("issue_number"),
+    note: text("note"),
+    position: integer("position").notNull(),
+    author: text("author").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "project_cards_pk" }),
+    index("idx_project_cards_column").on(t.columnId, t.position),
+    check("chk_project_cards_kind", sql`"kind" IN ('issue','note')`),
+  ]
+);
+
+export type ProjectCardRow = typeof projectCards.$inferSelect;

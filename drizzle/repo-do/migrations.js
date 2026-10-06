@@ -10,6 +10,7 @@ import m0007 from './0007_careful_shaman.sql';
 import m0008 from './0008_unknown_spencer_smythe.sql';
 import m0009 from './0009_icy_red_ghost.sql';
 import m0010 from './0010_hard_gauntlet.sql';
+import m0011 from './0011_vengeful_quentin_quire.sql';
 
   export default {
     journal,
@@ -24,7 +25,8 @@ m0006,
 m0007,
 m0008,
 m0009,
-m0010
+m0010,
+m0011
     }
   }
   

@@ -692,3 +692,65 @@ export const useContributors = (spaceId: string, repoId: string) =>
     () => dgFetch<RepoContributor[]>(`${v1Path(spaceId, repoId)}/insights/contributors`),
     { select: data => data ?? [] }
   )
+
+// --- projects (boards of columns; cards are issues or notes) ------------------
+
+export interface RepoProjectCard {
+  id: string
+  kind: 'issue' | 'note'
+  issue_number: number | null
+  note: string | null
+  position: number
+}
+
+export interface RepoProjectColumn {
+  id: string
+  name: string
+  position: number
+  cards: RepoProjectCard[]
+}
+
+export interface RepoProject {
+  number: number
+  name: string
+  body: string | null
+  state: 'open' | 'closed'
+  columns?: RepoProjectColumn[]
+  created_at: string
+}
+
+export const useProjects = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'projects', spaceId, repoId],
+    () => dgFetch<RepoProject[]>(`${v1Path(spaceId, repoId)}/projects`),
+    { select: data => data ?? [] }
+  )
+
+export const useProject = (spaceId: string, repoId: string, number: number) =>
+  useQuery(['delta', 'project', spaceId, repoId, number], () =>
+    dgFetch<RepoProject>(`${v1Path(spaceId, repoId)}/projects/${number}`)
+  )
+
+export const useCreateProject = (spaceId: string, repoId: string) =>
+  useMutation((body: { name: string; body?: string }) =>
+    dgFetch<RepoProject>(`${v1Path(spaceId, repoId)}/projects`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  )
+
+export const useAddProjectCard = (spaceId: string, repoId: string, number: number) =>
+  useMutation((vars: { column_id: string; issue?: number; note?: string }) =>
+    dgFetch<RepoProjectCard>(`${v1Path(spaceId, repoId)}/projects/${number}/cards`, {
+      method: 'POST',
+      body: JSON.stringify(vars)
+    })
+  )
+
+export const useMoveProjectCard = (spaceId: string, repoId: string, number: number) =>
+  useMutation((vars: { card_id: string; column_id: string }) =>
+    dgFetch(`${v1Path(spaceId, repoId)}/projects/${number}/cards/${vars.card_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ column_id: vars.column_id })
+    })
+  )
