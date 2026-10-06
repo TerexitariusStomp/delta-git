@@ -69,7 +69,6 @@ import {
   RepoDeltaIdeasPage,
   RepoDeltaIntentsPage,
 } from "./pages-v2/delta/repo-pages";
-import RepoStubPage from "./pages-v2/repo/repo-stub-page";
 import {
   RepoIssueDetailPage,
   RepoIssueNewPage,
@@ -83,6 +82,7 @@ import {
 import { RepoWikiEditPage, RepoWikiPage } from "./pages-v2/repo/repo-wiki-page";
 import { RepoInsightsPage } from "./pages-v2/repo/repo-insights-page";
 import { RepoProjectBoardPage, RepoProjectsPage } from "./pages-v2/repo/repo-projects-page";
+import { RepoSecurityPage } from "./pages-v2/repo/repo-security-page";
 import {
   RepoReleaseDetailPage,
   RepoReleaseNewPage,
@@ -841,7 +841,7 @@ export const repoRoutes: CustomRouteObject[] = [
           },
           {
             path: "security",
-            element: <RepoStubPage surface="security" />,
+            element: <RepoSecurityPage />,
             handle: {
               breadcrumb: () => <span>Security</span>,
               pageTitle: "Security",

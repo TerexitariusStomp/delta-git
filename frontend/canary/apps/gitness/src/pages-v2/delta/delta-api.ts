@@ -754,3 +754,33 @@ export const useMoveProjectCard = (spaceId: string, repoId: string, number: numb
       body: JSON.stringify({ column_id: vars.column_id })
     })
   )
+
+// --- security (HEAD secret scan + scan policy state) ---------------------------
+
+export interface SecurityFinding {
+  path: string
+  kind: string
+  line: number
+}
+
+export interface SecurityScanResult {
+  findings: SecurityFinding[]
+  scanned_files: number
+}
+
+export interface SecuritySettings {
+  secret_scanning_enabled: boolean
+  principal_committer_match: boolean
+  vulnerability_scanning_mode: 'block' | 'detect' | 'disabled'
+  force_push?: { blocked: boolean }
+}
+
+export const useSecurityScan = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'security-scan', spaceId, repoId], () =>
+    dgFetch<SecurityScanResult>(`${v1Path(spaceId, repoId)}/security-scan`)
+  )
+
+export const useSecuritySettings = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'security-settings', spaceId, repoId], () =>
+    dgFetch<SecuritySettings>(`${v1Path(spaceId, repoId)}/settings/security`)
+  )
