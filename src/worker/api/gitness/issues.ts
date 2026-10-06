@@ -22,10 +22,14 @@ import {
 } from "./shared";
 import {
   MAX_PINNED_ISSUES,
+  MAX_SAVED_VIEWS,
   readIssueLocks,
   readPinnedIssues,
+  readSavedViews,
   writeIssueLocks,
   writePinnedIssues,
+  writeSavedViews,
+  type SavedView,
 } from "./stores";
 
 // GitHub-shaped issues surface for the SPA — session-authed like every
@@ -179,6 +183,47 @@ export function registerGitnessIssues(router: AppRouter) {
       link: `/${access.route.routeNamespaceSlug}/repos/${access.route.routeRepoSlug}/issues/${result.issue.number}`,
     });
     return c.json(issueView(result.issue), 201);
+  });
+
+  // Saved views — repo-shared named filter presets over the `q` qualifier
+  // grammar. Registered before /issues/:number so "views" isn't parsed as
+  // a numeric issue id.
+  router.get("/api/v1/repos/:repo_ref{.+}/issues/views", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    return c.json(await readSavedViews(c.env, access.route.doName));
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/issues/views", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as {
+      name?: string;
+      query?: string;
+    } | null;
+    if (!body?.name?.trim()) return gErr(c, 422, "name required");
+    const views = await readSavedViews(c.env, access.route.doName);
+    if (views.length >= MAX_SAVED_VIEWS) {
+      return gErr(c, 409, `at most ${MAX_SAVED_VIEWS} saved views`);
+    }
+    const view: SavedView = {
+      id: (views.at(-1)?.id ?? 0) + 1,
+      name: body.name.trim(),
+      query: body.query?.trim() ?? "",
+      created: Date.now(),
+    };
+    await writeSavedViews(c.env, access.route.doName, [...views, view]);
+    return c.json(view, 201);
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/issues/views/:view_id", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const views = await readSavedViews(c.env, access.route.doName);
+    const next = views.filter((v) => v.id !== parseInt(c.req.param("view_id"), 10));
+    if (next.length === views.length) return gNotFound(c, "saved view");
+    await writeSavedViews(c.env, access.route.doName, next);
+    return c.json({});
   });
 
   router.get("/api/v1/repos/:repo_ref{.+}/issues/:number", async (c) => {

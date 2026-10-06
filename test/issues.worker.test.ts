@@ -421,6 +421,27 @@ describe("issues: qualifier search (q=)", () => {
     }
     expect(found).toBe(true);
   });
+
+  it("saved views CRUD — repo-shared named filters", async () => {
+    const created = await call("POST", `${base}/issues/views`, {
+      cookie: seeded.cookieHeader,
+      body: { name: "My open bugs", query: "is:open label:bug" },
+    });
+    expect(created.status).toBe(201);
+    const view = created.body as { id: number; name: string; query: string };
+    expect(view.name).toBe("My open bugs");
+
+    const list = await call("GET", `${base}/issues/views`, { cookie: seeded.cookieHeader });
+    const views = list.body as { id: number; name: string; query: string }[];
+    expect(views.some((v) => v.id === view.id && v.query === "is:open label:bug")).toBe(true);
+
+    const del = await call("DELETE", `${base}/issues/views/${view.id}`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(del.status).toBe(200);
+    const after = await call("GET", `${base}/issues/views`, { cookie: seeded.cookieHeader });
+    expect((after.body as { id: number }[]).some((v) => v.id === view.id)).toBe(false);
+  });
 });
 
 describe("issues: .github issue templates", () => {

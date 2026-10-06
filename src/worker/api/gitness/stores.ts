@@ -333,6 +333,30 @@ export async function writePinnedIssues(env: Env, doName: string, pins: number[]
 }
 
 // ---------------------------------------------------------------------------
+// Saved issue views — repo-shared named filter presets (the `q` qualifier
+// string). Writers create them for the whole space to use.
+// ---------------------------------------------------------------------------
+
+export interface SavedView {
+  id: number;
+  name: string;
+  /** Raw qualifier string passed to `parseIssueQuery` (`is:open label:bug`). */
+  query: string;
+  created: number;
+}
+
+export const MAX_SAVED_VIEWS = 50;
+
+export async function readSavedViews(env: Env, doName: string): Promise<SavedView[]> {
+  const raw = await env.ROUTES.get(`gviews:${doName}`, "json").catch(() => null);
+  return (raw as SavedView[] | null) ?? [];
+}
+
+export async function writeSavedViews(env: Env, doName: string, views: SavedView[]) {
+  await env.ROUTES.put(`gviews:${doName}`, JSON.stringify(views));
+}
+
+// ---------------------------------------------------------------------------
 // Locked conversations — every commenter here is a namespace member (the
 // forge's collaborator equivalent), so GitHub's "collaborators exempt" lock
 // would never bite. Our lock is a full freeze: no new comments until a
