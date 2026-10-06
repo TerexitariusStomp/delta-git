@@ -442,3 +442,97 @@ export const useExplore = (topic?: string) =>
   useQuery(['delta', 'explore', topic ?? ''], () =>
     dgFetch<ExploreResult>(`/api/v1/explore${topic ? `?topic=${encodeURIComponent(topic)}` : ''}`)
   )
+
+// --- discussions (GitHub-shaped, DO-backed, session-authed via /api/v1) -----
+
+export type DiscussionCategory = 'general' | 'announcements' | 'ideas' | 'q-a' | 'show-and-tell' | 'polls'
+
+export interface RepoDiscussion {
+  number: number
+  title: string
+  body: string | null
+  category: DiscussionCategory
+  user: { login: string }
+  comments: number
+  answer_comment_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface RepoDiscussionComment {
+  id: string
+  body: string
+  user: { login: string }
+  created_at: string
+  updated_at: string
+}
+
+export const useDiscussions = (spaceId: string, repoId: string, category?: DiscussionCategory | 'all') =>
+  useQuery(
+    ['delta', 'discussions', spaceId, repoId, category ?? 'all'],
+    () =>
+      dgFetch<RepoDiscussion[]>(
+        `${v1Path(spaceId, repoId)}/discussions${category && category !== 'all' ? `?category=${category}` : ''}`
+      ),
+    { select: data => data ?? [] }
+  )
+
+export const useDiscussion = (spaceId: string, repoId: string, number: number) =>
+  useQuery(['delta', 'discussion', spaceId, repoId, number], () =>
+    dgFetch<RepoDiscussion>(`${v1Path(spaceId, repoId)}/discussions/${number}`)
+  )
+
+export const useDiscussionComments = (spaceId: string, repoId: string, number: number) =>
+  useQuery(
+    ['delta', 'discussion-comments', spaceId, repoId, number],
+    () => dgFetch<RepoDiscussionComment[]>(`${v1Path(spaceId, repoId)}/discussions/${number}/comments`),
+    { select: data => data ?? [] }
+  )
+
+export const useDiscussionReactions = (spaceId: string, repoId: string, number: number) =>
+  useQuery(['delta', 'discussion-reactions', spaceId, repoId, number], () =>
+    dgFetch<Record<string, number>>(`${v1Path(spaceId, repoId)}/discussions/${number}/reactions`)
+  )
+
+export const useCreateDiscussion = (spaceId: string, repoId: string) =>
+  useMutation((body: { title: string; body?: string; category?: DiscussionCategory }) =>
+    dgFetch<RepoDiscussion>(`${v1Path(spaceId, repoId)}/discussions`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  )
+
+export const useUpdateDiscussion = (spaceId: string, repoId: string, number: number) =>
+  useMutation((patch: { title?: string; body?: string | null; category?: DiscussionCategory }) =>
+    dgFetch<RepoDiscussion>(`${v1Path(spaceId, repoId)}/discussions/${number}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    })
+  )
+
+export const useCreateDiscussionComment = (spaceId: string, repoId: string, number: number) =>
+  useMutation((body: { body: string }) =>
+    dgFetch<RepoDiscussionComment>(`${v1Path(spaceId, repoId)}/discussions/${number}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  )
+
+export const useMarkDiscussionAnswer = (spaceId: string, repoId: string, number: number) =>
+  useMutation((vars: { commentId: string | null }) =>
+    vars.commentId
+      ? dgFetch<RepoDiscussion>(`${v1Path(spaceId, repoId)}/discussions/${number}/answer`, {
+          method: 'PUT',
+          body: JSON.stringify({ comment_id: vars.commentId })
+        })
+      : dgFetch<RepoDiscussion>(`${v1Path(spaceId, repoId)}/discussions/${number}/answer`, {
+          method: 'DELETE'
+        })
+  )
+
+export const useDiscussionReaction = (spaceId: string, repoId: string, number: number) =>
+  useMutation((vars: { reaction: string; add: boolean }) =>
+    dgFetch(`${v1Path(spaceId, repoId)}/discussions/${number}/reactions/${vars.reaction}`, {
+      method: vars.add ? 'PUT' : 'DELETE'
+    })
+  )

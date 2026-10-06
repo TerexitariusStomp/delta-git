@@ -532,7 +532,7 @@ export const reactions = sqliteTable(
     index("idx_reactions_target").on(t.targetType, t.targetId),
     check(
       "chk_reactions_type",
-      sql`"target_type" IN ('issue','issue_comment','merge_intent','work_intent')`
+      sql`"target_type" IN ('issue','issue_comment','merge_intent','work_intent','discussion','discussion_comment')`
     ),
     check(
       "chk_reactions_kind",
@@ -542,3 +542,58 @@ export const reactions = sqliteTable(
 );
 
 export type ReactionRow = typeof reactions.$inferSelect;
+
+// Discussions — GitHub's threaded community surface. Unlike issues they
+// carry no open/closed state (GitHub discussions aren't closed, they're
+// answered); `answer_comment_id` marks the accepted reply for Q&A topics.
+// Numbering is its own sequence (GitHub numbers discussions separately
+// from issues).
+export const discussions = sqliteTable(
+  "discussions",
+  {
+    id: text("id").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    // GitHub's default category set; repo-defined categories are a later
+    // extension (needs a categories table).
+    category: text("category").notNull().default("general"),
+    author: text("author").notNull(),
+    answerCommentId: text("answer_comment_id"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "discussions_pk" }),
+    uniqueIndex("uq_discussions_number").on(t.number),
+    index("idx_discussions_category").on(t.category, desc(t.number)),
+    index("idx_discussions_created").on(desc(t.createdAt)),
+    check(
+      "chk_discussions_category",
+      sql`"category" IN ('general','announcements','ideas','q-a','show-and-tell','polls')`
+    ),
+    check("chk_discussions_number", sql`"number" > 0`),
+  ]
+);
+
+export type DiscussionRow = typeof discussions.$inferSelect;
+
+export const discussionComments = sqliteTable(
+  "discussion_comments",
+  {
+    id: text("id").notNull(),
+    discussionId: text("discussion_id")
+      .notNull()
+      .references(() => discussions.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    author: text("author").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "discussion_comments_pk" }),
+    index("idx_discussion_comments_discussion").on(t.discussionId, t.createdAt),
+  ]
+);
+
+export type DiscussionCommentRow = typeof discussionComments.$inferSelect;

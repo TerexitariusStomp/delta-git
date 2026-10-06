@@ -30,6 +30,7 @@ import { readUserFavorites, writeUserFavorites } from "./stores";
 import { registerGitnessSpaceDetail, registerGitnessSpaces } from "./spaces";
 import { registerGitnessGitdata } from "./gitdata";
 import { registerGitnessPullreqs } from "./pullreqs";
+import { registerGitnessDiscussions } from "./discussions";
 import { registerGitnessIssues } from "./issues";
 import { registerGitnessSocial } from "./social";
 import { registerGitnessRepos } from "./repos";
@@ -91,6 +92,8 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessPullreqs(router);
   // Issues/milestones/labels — same greedy-tail ordering as pullreqs.
   registerGitnessIssues(router);
+  // Discussions — literal tails before the greedy gitdata/repos suffixes.
+  registerGitnessDiscussions(router);
   // Social (`/+/star`, `/+/topics`, `/spaces/:s/+/follow`, `/explore`,
   // `/starred`) — literal tails before the greedy gitdata/repos suffixes.
   registerGitnessSocial(router);

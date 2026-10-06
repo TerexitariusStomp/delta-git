@@ -75,6 +75,11 @@ import {
   RepoIssueNewPage,
   RepoIssuesPage,
 } from "./pages-v2/repo/repo-issues-page";
+import {
+  RepoDiscussionDetailPage,
+  RepoDiscussionNewPage,
+  RepoDiscussionsPage,
+} from "./pages-v2/repo/repo-discussions-page";
 import { LandingPage } from "./pages-v2/landing-page-container";
 import { Logout } from "./pages-v2/logout";
 import { SettingsProfileGeneralPage } from "./pages-v2/profile-settings/profile-settings-general-container";
@@ -724,10 +729,27 @@ export const repoRoutes: CustomRouteObject[] = [
           },
           {
             path: "discussions",
-            element: <RepoStubPage surface="discussions" />,
+            element: <RepoDiscussionsPage />,
             handle: {
               breadcrumb: () => <span>Discussions</span>,
               pageTitle: "Discussions",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "discussions/new",
+            element: <RepoDiscussionNewPage />,
+            handle: {
+              breadcrumb: () => <span>New discussion</span>,
+              pageTitle: "New discussion",
+            },
+          },
+          {
+            path: "discussions/:discussionNumber",
+            element: <RepoDiscussionDetailPage />,
+            handle: {
+              breadcrumb: () => <span>Discussion</span>,
+              pageTitle: "Discussion",
               publicAccess: true,
             },
           },

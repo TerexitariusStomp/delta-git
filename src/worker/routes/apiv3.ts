@@ -24,6 +24,7 @@ import {
 } from "@/worker/db/d1/dal";
 import { attemptMerge } from "@/worker/merge/engine";
 import { closeIssuesLinkedFromText, readPrMeta, writePrMeta } from "@/worker/api/gitness/prmeta";
+import type { DiscussionView } from "@/worker/do/repo/catalog/discussions";
 import type { IssueView } from "@/worker/do/repo/catalog/issues";
 
 // GitHub REST v3 compatibility shim — the high-traffic subset that lets
@@ -819,6 +820,134 @@ export function registerApiV3Routes(router: AppRouter): void {
         description: result.milestone.description,
         state: result.milestone.state,
         due_on: result.milestone.dueOn ? new Date(result.milestone.dueOn).toISOString() : null,
+      },
+      201
+    );
+  });
+
+  // --- discussions ----------------------------------------------------------
+  // Upstream GitHub REST has no discussions surface (GraphQL-only); these
+  // routes keep the same auth contract as issues so PAT-bearing agents can
+  // read and join threads without a browser session.
+
+  const discussionJson = (d: DiscussionView, origin: string, owner: string, repo: string) => ({
+    number: d.number,
+    title: d.title,
+    body: d.body ?? null,
+    category: d.category,
+    user: { login: d.author },
+    comments: d.comments,
+    answer_comment_id: d.answerCommentId ?? null,
+    html_url: `${origin}/${owner}/${repo}/discussions/${d.number}`,
+    created_at: new Date(d.createdAt).toISOString(),
+    updated_at: new Date(d.updatedAt).toISOString(),
+  });
+
+  // GET /api/v3/repos/:owner/:repo/discussions
+  router.get("/api/v3/repos/:owner/:repo/discussions", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const stub = getRepoStub(c.env, route.doName);
+    const category = c.req.query("category");
+    const discussions = await stub.listDiscussions({ category: category ?? undefined });
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      discussions.map((d) => discussionJson(d, origin, c.req.param("owner"), c.req.param("repo")))
+    );
+  });
+
+  // POST /api/v3/repos/:owner/:repo/discussions
+  router.post("/api/v3/repos/:owner/:repo/discussions", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const body = await c.req
+      .json<{ title?: string; body?: string; category?: string }>()
+      .catch(() => null);
+    if (!body?.title?.trim()) return c.json({ message: "title required" }, 422);
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.createDiscussion({
+      title: body.title,
+      body: body.body ?? null,
+      category: body.category,
+      actor: await actorSlug(c, auth),
+    });
+    if (result.status !== "created") return c.json({ message: result.reason }, 422);
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      discussionJson(result.discussion, origin, c.req.param("owner"), c.req.param("repo")),
+      201
+    );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/discussions/:number
+  router.get("/api/v3/repos/:owner/:repo/discussions/:number", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.getDiscussion(number);
+    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      discussionJson(result.discussion, origin, c.req.param("owner"), c.req.param("repo"))
+    );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/discussions/:number/comments
+  router.get("/api/v3/repos/:owner/:repo/discussions/:number/comments", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.listDiscussionComments(number);
+    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    return c.json(
+      result.comments.map((cm) => ({
+        id: cm.id,
+        body: cm.body,
+        user: { login: cm.author },
+        created_at: new Date(cm.createdAt).toISOString(),
+        updated_at: new Date(cm.updatedAt).toISOString(),
+      }))
+    );
+  });
+
+  // POST /api/v3/repos/:owner/:repo/discussions/:number/comments
+  router.post("/api/v3/repos/:owner/:repo/discussions/:number/comments", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const body = await c.req.json<{ body?: string }>().catch(() => null);
+    if (!body?.body?.trim()) return c.json({ message: "body required" }, 422);
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.addDiscussionComment({
+      number,
+      body: body.body,
+      actor: await actorSlug(c, auth),
+    });
+    if (result.status === "not-found") return c.json({ message: "Not Found" }, 404);
+    if (result.status === "invalid") return c.json({ message: "body required" }, 422);
+    return c.json(
+      {
+        id: result.comment.id,
+        body: result.comment.body,
+        user: { login: result.comment.author },
+        created_at: new Date(result.comment.createdAt).toISOString(),
       },
       201
     );

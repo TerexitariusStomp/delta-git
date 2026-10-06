@@ -77,6 +77,19 @@ import {
   type IssuePatch,
 } from "./catalog/issues";
 import {
+  addDiscussionCommentState,
+  createDiscussionState,
+  deleteDiscussionCommentState,
+  editDiscussionCommentState,
+  getDiscussionState,
+  listDiscussionCommentsState,
+  listDiscussionReactionsState,
+  listDiscussionsState,
+  markDiscussionAnswerState,
+  setDiscussionReactionState,
+  updateDiscussionState,
+} from "./catalog/discussions";
+import {
   acceptPatchCommitState,
   addWebhookSubState,
   castWorkVoteState,
@@ -749,6 +762,81 @@ export class RepoDurableObject extends DurableObject {
   public async listMilestones(args: { state?: "open" | "closed" }) {
     await this.ensureAccessAndAlarm();
     return await listMilestonesState(this.ctx, args);
+  }
+
+  // --- discussions ----------------------------------------------------------
+
+  public async createDiscussion(args: {
+    title: string;
+    body: string | null;
+    category?: string;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await createDiscussionState({ ctx: this.ctx, ...args });
+  }
+
+  public async listDiscussions(args: { category?: string; limit?: number }) {
+    await this.ensureAccessAndAlarm();
+    return await listDiscussionsState(this.ctx, args);
+  }
+
+  public async getDiscussion(number: number) {
+    await this.ensureAccessAndAlarm();
+    return await getDiscussionState(this.ctx, number);
+  }
+
+  public async updateDiscussion(args: {
+    number: number;
+    patch: { title?: string; body?: string | null; category?: string };
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await updateDiscussionState({ ctx: this.ctx, ...args });
+  }
+
+  public async addDiscussionComment(args: { number: number; body: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await addDiscussionCommentState({ ctx: this.ctx, ...args });
+  }
+
+  public async listDiscussionComments(number: number) {
+    await this.ensureAccessAndAlarm();
+    return await listDiscussionCommentsState(this.ctx, number);
+  }
+
+  public async editDiscussionComment(args: { commentId: string; body: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await editDiscussionCommentState({ ctx: this.ctx, ...args });
+  }
+
+  public async deleteDiscussionComment(args: { commentId: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteDiscussionCommentState({ ctx: this.ctx, ...args });
+  }
+
+  public async markDiscussionAnswer(args: {
+    number: number;
+    commentId: string | null;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await markDiscussionAnswerState({ ctx: this.ctx, ...args });
+  }
+
+  public async setDiscussionReaction(args: {
+    number: number;
+    reaction: string;
+    actor: string;
+    add: boolean;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await setDiscussionReactionState({ ctx: this.ctx, ...args });
+  }
+
+  public async listDiscussionReactions(number: number) {
+    await this.ensureAccessAndAlarm();
+    return await listDiscussionReactionsState(this.ctx, number);
   }
 
   public async updateMilestone(args: {

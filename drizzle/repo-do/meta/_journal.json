@@ -64,6 +64,13 @@
       "when": 1791311240838,
       "tag": "0008_unknown_spencer_smythe",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791312804197,
+      "tag": "0009_icy_red_ghost",
+      "breakpoints": true
     }
   ]
 }
