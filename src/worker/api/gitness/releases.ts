@@ -5,6 +5,7 @@ import { createLogger } from "@/worker/common/logger";
 import { getRepoStub } from "@/worker/common";
 import { resolveRef } from "@/worker/git/operations/read";
 import {
+  emitRepoEvent,
   gErr,
   gNotFound,
   pageParams,
@@ -103,6 +104,12 @@ export function registerGitnessReleases(router: AppRouter) {
     });
     if (result.status === "exists") return c.json(releaseJson(result.release), 200);
     if (result.status === "invalid") return gErr(c, 422, result.reason);
+    emitRepoEvent(c, gate, "release", {
+      action: result.release.draft === 1 ? "created" : "published",
+      tag_name: body.tag_name,
+      name: result.release.name,
+      actor: gate.actor,
+    });
     return c.json(releaseJson(result.release), 201);
   });
 
@@ -164,6 +171,13 @@ export function registerGitnessReleases(router: AppRouter) {
     if (result.status === "not-found") return gNotFound(c, "release");
     if (result.status === "tag-taken") return gErr(c, 409, "tag already has a release");
     if (result.status === "invalid") return gErr(c, 422, result.reason);
+    // A draft→publish transition is GitHub's `released` action.
+    emitRepoEvent(c, gate, "release", {
+      action: body?.draft === false ? "released" : "edited",
+      tag_name: result.release.tagName,
+      name: result.release.name,
+      actor: gate.actor,
+    });
     return c.json(releaseJson(result.release));
   });
 

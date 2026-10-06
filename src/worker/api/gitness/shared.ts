@@ -22,6 +22,8 @@ import { resolveUiRepoAccess } from "@/worker/routes/ui/helpers";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { viewerIsNamespaceMember } from "@/worker/auth/pat";
 import { enforceInNamespace, principalForUser } from "@/worker/rbac";
+import { getRepoStub } from "@/worker/common";
+import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { readUserFavorites } from "./stores";
 
 export type GitnessContext = AppContext;
@@ -309,5 +311,27 @@ export async function viewerCanWrite(c: GitnessContext, access: RepoAccessOk): P
     principalForUser(access.viewer.userId),
     `repo:${row.doName}`,
     "write"
+  );
+}
+
+/**
+ * Best-effort repo-webhook fan-out — enqueues one queue message per matching
+ * subscriber; failures never block the mutation that emitted the event.
+ */
+export function emitRepoEvent(
+  c: GitnessContext,
+  access: RepoAccessOk,
+  kind: string,
+  payload: Record<string, unknown>
+): void {
+  const stub = getRepoStub(c.env, access.route.doName);
+  c.executionCtx.waitUntil(
+    deliverWebhookEvent(c.env, access.route.repositoryId, stub, {
+      kind,
+      payload: {
+        repo: `${access.route.routeNamespaceSlug}/${access.route.routeRepoSlug}`,
+        ...payload,
+      },
+    }).catch(() => {})
   );
 }

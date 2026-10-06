@@ -10,7 +10,15 @@ import type {
 import { getRepoStub } from "@/worker/common";
 import { parseIssueQuery } from "@/worker/do/repo/catalog/issueQuery";
 import { readPath } from "@/worker/git/operations/read/tree";
-import { gErr, gNotFound, pageParams, paginate, requireWriter, resolveGitnessRepo } from "./shared";
+import {
+  emitRepoEvent,
+  gErr,
+  gNotFound,
+  pageParams,
+  paginate,
+  requireWriter,
+  resolveGitnessRepo,
+} from "./shared";
 import {
   MAX_PINNED_ISSUES,
   readIssueLocks,
@@ -156,6 +164,12 @@ export function registerGitnessIssues(router: AppRouter) {
       labelIds,
     });
     if (result.status !== "created") return gErr(c, 422, result.reason);
+    emitRepoEvent(c, access, "issues", {
+      action: "opened",
+      number: result.issue.number,
+      title: result.issue.title,
+      actor: access.actor,
+    });
     return c.json(issueView(result.issue), 201);
   });
 
@@ -227,6 +241,12 @@ export function registerGitnessIssues(router: AppRouter) {
     const result = await stub.updateIssue({ number, patch, actor: access.actor });
     if (result.status === "not-found") return gNotFound(c, "issue");
     if (result.status === "invalid") return gErr(c, 422, result.reason);
+    emitRepoEvent(c, access, "issues", {
+      action: body?.state === "closed" ? "closed" : body?.state === "open" ? "reopened" : "edited",
+      number,
+      title: result.issue.title,
+      actor: access.actor,
+    });
     return c.json(issueView(result.issue));
   });
 
@@ -314,6 +334,12 @@ export function registerGitnessIssues(router: AppRouter) {
     const result = await stub.addIssueComment({ number, body: body.body, actor: access.actor });
     if (result.status === "not-found") return gNotFound(c, "issue");
     if (result.status === "invalid") return gErr(c, 422, "body required");
+    emitRepoEvent(c, access, "issue_comment", {
+      action: "created",
+      number,
+      comment_id: result.comment.id,
+      actor: access.actor,
+    });
     return c.json(commentView(result.comment), 201);
   });
 

@@ -40,6 +40,7 @@ import {
   type PrReview,
 } from "./prmeta";
 import {
+  emitRepoEvent,
   gErr,
   gNotFound,
   numericId,
@@ -336,6 +337,12 @@ export function registerGitnessPullreqs(router: AppRouter) {
           text: `${meta.title ?? ""}\n${meta.description ?? ""}`,
           actor: access.viewer.primaryNamespaceSlug ?? access.viewer.userId,
         });
+        emitRepoEvent(c, access, "pull_request", {
+          action: "closed",
+          number: n,
+          merged: true,
+          sha: result.mergeOid,
+        });
         return c.json({ mergeable: true, sha: result.mergeOid, closed_issues: closedIssues });
       }
       case "conflict":
@@ -457,6 +464,15 @@ export function registerGitnessPullreqs(router: AppRouter) {
     }
     const all = await allIntentsOrdered(gate, c.env);
     const number = all.findIndex((i) => i.id === intent.id) + 1;
+    emitRepoEvent(c, gate, "pull_request", {
+      action: "opened",
+      number: number > 0 ? number : all.length,
+      title: body.title,
+      draft: body.is_draft === true,
+      source_branch: body.source_branch,
+      target_branch: body.target_branch,
+      actor: gate.actor,
+    });
     return c.json({
       ...mergeIntentToPullReq({
         intent,
@@ -488,6 +504,12 @@ export function registerGitnessPullreqs(router: AppRouter) {
       return gErr(c, 409, `pull request is ${result.state}`);
     }
     const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
+    emitRepoEvent(c, gate, "pull_request", {
+      action: "closed",
+      number: n,
+      merged: false,
+      actor: gate.actor,
+    });
     return c.json({
       ...mergeIntentToPullReq({
         intent: result.intent,
@@ -514,10 +536,20 @@ export function registerGitnessPullreqs(router: AppRouter) {
       is_draft?: boolean;
     } | null;
     const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
+    const wasDraft = meta.draft === true;
     if (body?.title !== undefined) meta.title = body.title;
     if (body?.description !== undefined) meta.description = body.description;
     if (body?.is_draft !== undefined) meta.draft = body.is_draft;
     await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    if (wasDraft && meta.draft === false) {
+      emitRepoEvent(c, gate, "pull_request", {
+        action: "ready_for_review",
+        number: n,
+        actor: gate.actor,
+      });
+    } else if (body?.title !== undefined || body?.description !== undefined) {
+      emitRepoEvent(c, gate, "pull_request", { action: "edited", number: n, actor: gate.actor });
+    }
     return c.json({
       ...mergeIntentToPullReq({ intent, number: n, title: meta.title, draft: meta.draft }),
       description: meta.description ?? "",
