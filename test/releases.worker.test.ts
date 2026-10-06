@@ -102,7 +102,7 @@ async function pushChain(
         "Content-Type": "application/x-git-receive-pack-request",
         Authorization: repo.pushAuthHeader,
       },
-      body,
+      body: new Uint8Array(body),
     }
   );
   expect(res.status).toBe(200);

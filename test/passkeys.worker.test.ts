@@ -5,7 +5,7 @@ import { createDb } from "@/worker/db/d1/client";
 import { insertPasskey, listPasskeys } from "@/worker/db/d1/dal/passkeys";
 import { newPrefixedId } from "@/worker/common";
 import { ensureD1Migrations } from "./util/d1Setup";
-import { mintSessionCookie, setupRepoForTests } from "./util/repoSeed";
+import { setupRepoForTests } from "./util/repoSeed";
 
 // Passkey ceremony coverage: options issuance, challenge consumption, and a
 // real end-to-end login — we fabricate the authenticator (ES256 key, COSE
@@ -19,13 +19,6 @@ function b64url(bytes: Uint8Array | ArrayBuffer): string {
   let bin = "";
   for (const b of view) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function b64urlDecode(input: string): Uint8Array {
-  const bin = atob(input.replace(/-/g, "+").replace(/_/g, "/"));
-  const out = new Uint8Array(new ArrayBuffer(bin.length));
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
 }
 
 // Minimal fixed-shape COSE_Key for ES256: {1:2 (kty EC2), 3:-7 (alg ES256),

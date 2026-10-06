@@ -99,16 +99,12 @@
       "indexes": {
         "uq_agents_pubkey": {
           "name": "uq_agents_pubkey",
-          "columns": [
-            "pubkey"
-          ],
+          "columns": ["pubkey"],
           "isUnique": true
         },
         "idx_agents_rep": {
           "name": "idx_agents_rep",
-          "columns": [
-            "rep"
-          ],
+          "columns": ["rep"],
           "isUnique": false
         }
       },
@@ -222,17 +218,12 @@
       "indexes": {
         "idx_arena_matches_status": {
           "name": "idx_arena_matches_status",
-          "columns": [
-            "status",
-            "ends_at"
-          ],
+          "columns": ["status", "ends_at"],
           "isUnique": false
         },
         "idx_arena_matches_repo": {
           "name": "idx_arena_matches_repo",
-          "columns": [
-            "repository_id"
-          ],
+          "columns": ["repository_id"],
           "isUnique": false
         }
       },
@@ -241,12 +232,8 @@
           "name": "arena_matches_repository_id_repositories_id_fk",
           "tableFrom": "arena_matches",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -283,9 +270,7 @@
       "indexes": {
         "users_tessera_sub_unique": {
           "name": "users_tessera_sub_unique",
-          "columns": [
-            "tessera_sub"
-          ],
+          "columns": ["tessera_sub"],
           "isUnique": true
         }
       },
@@ -336,9 +321,7 @@
       "indexes": {
         "namespaces_slug_unique": {
           "name": "namespaces_slug_unique",
-          "columns": [
-            "slug"
-          ],
+          "columns": ["slug"],
           "isUnique": true
         }
       },
@@ -347,12 +330,8 @@
           "name": "namespaces_created_by_users_id_fk",
           "tableFrom": "namespaces",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -397,10 +376,7 @@
       "indexes": {
         "idx_namespace_memberships_user_ns": {
           "name": "idx_namespace_memberships_user_ns",
-          "columns": [
-            "user_id",
-            "namespace_id"
-          ],
+          "columns": ["user_id", "namespace_id"],
           "isUnique": false
         }
       },
@@ -409,12 +385,8 @@
           "name": "namespace_memberships_namespace_id_namespaces_id_fk",
           "tableFrom": "namespace_memberships",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -422,22 +394,15 @@
           "name": "namespace_memberships_user_id_users_id_fk",
           "tableFrom": "namespace_memberships",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "namespace_memberships_namespace_id_user_id_pk": {
-          "columns": [
-            "namespace_id",
-            "user_id"
-          ],
+          "columns": ["namespace_id", "user_id"],
           "name": "namespace_memberships_namespace_id_user_id_pk"
         }
       },
@@ -493,9 +458,7 @@
       "indexes": {
         "idx_did_sessions_did": {
           "name": "idx_did_sessions_did",
-          "columns": [
-            "did"
-          ],
+          "columns": ["did"],
           "isUnique": false
         }
       },
@@ -504,12 +467,8 @@
           "name": "did_sessions_did_identities_did_fk",
           "tableFrom": "did_sessions",
           "tableTo": "identities",
-          "columnsFrom": [
-            "did"
-          ],
-          "columnsTo": [
-            "did"
-          ],
+          "columnsFrom": ["did"],
+          "columnsTo": ["did"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -576,9 +535,7 @@
       "indexes": {
         "idx_identities_handle": {
           "name": "idx_identities_handle",
-          "columns": [
-            "handle"
-          ],
+          "columns": ["handle"],
           "isUnique": false
         }
       },
@@ -587,12 +544,8 @@
           "name": "identities_user_id_users_id_fk",
           "tableFrom": "identities",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -729,26 +682,17 @@
       "indexes": {
         "uq_repositories_namespace_slug": {
           "name": "uq_repositories_namespace_slug",
-          "columns": [
-            "namespace_id",
-            "slug"
-          ],
+          "columns": ["namespace_id", "slug"],
           "isUnique": true
         },
         "uq_repositories_do_name": {
           "name": "uq_repositories_do_name",
-          "columns": [
-            "do_name"
-          ],
+          "columns": ["do_name"],
           "isUnique": true
         },
         "idx_repositories_namespace_updated": {
           "name": "idx_repositories_namespace_updated",
-          "columns": [
-            "namespace_id",
-            "\"updated_at\" desc",
-            "slug"
-          ],
+          "columns": ["namespace_id", "\"updated_at\" desc", "slug"],
           "isUnique": false
         }
       },
@@ -757,12 +701,8 @@
           "name": "repositories_namespace_id_namespaces_id_fk",
           "tableFrom": "repositories",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -770,12 +710,8 @@
           "name": "repositories_created_by_users_id_fk",
           "tableFrom": "repositories",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -859,17 +795,12 @@
       "indexes": {
         "personal_access_tokens_prefix_unique": {
           "name": "personal_access_tokens_prefix_unique",
-          "columns": [
-            "prefix"
-          ],
+          "columns": ["prefix"],
           "isUnique": true
         },
         "idx_pats_user_created": {
           "name": "idx_pats_user_created",
-          "columns": [
-            "user_id",
-            "\"created_at\" desc"
-          ],
+          "columns": ["user_id", "\"created_at\" desc"],
           "isUnique": false
         }
       },
@@ -878,12 +809,8 @@
           "name": "personal_access_tokens_user_id_users_id_fk",
           "tableFrom": "personal_access_tokens",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -920,9 +847,7 @@
       "indexes": {
         "idx_pat_namespace_grants_namespace": {
           "name": "idx_pat_namespace_grants_namespace",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -931,12 +856,8 @@
           "name": "pat_namespace_grants_pat_id_personal_access_tokens_id_fk",
           "tableFrom": "pat_namespace_grants",
           "tableTo": "personal_access_tokens",
-          "columnsFrom": [
-            "pat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["pat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -944,22 +865,15 @@
           "name": "pat_namespace_grants_namespace_id_namespaces_id_fk",
           "tableFrom": "pat_namespace_grants",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "pat_namespace_grants_pat_id_namespace_id_pk": {
-          "columns": [
-            "pat_id",
-            "namespace_id"
-          ],
+          "columns": ["pat_id", "namespace_id"],
           "name": "pat_namespace_grants_pat_id_namespace_id_pk"
         }
       },
@@ -999,9 +913,7 @@
       "indexes": {
         "idx_pat_repo_grants_repo": {
           "name": "idx_pat_repo_grants_repo",
-          "columns": [
-            "repo_id"
-          ],
+          "columns": ["repo_id"],
           "isUnique": false
         }
       },
@@ -1010,12 +922,8 @@
           "name": "pat_repo_grants_pat_id_personal_access_tokens_id_fk",
           "tableFrom": "pat_repo_grants",
           "tableTo": "personal_access_tokens",
-          "columnsFrom": [
-            "pat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["pat_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1023,22 +931,15 @@
           "name": "pat_repo_grants_repo_id_repositories_id_fk",
           "tableFrom": "pat_repo_grants",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repo_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repo_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "pat_repo_grants_pat_id_repo_id_pk": {
-          "columns": [
-            "pat_id",
-            "repo_id"
-          ],
+          "columns": ["pat_id", "repo_id"],
           "name": "pat_repo_grants_pat_id_repo_id_pk"
         }
       },
@@ -1099,18 +1000,12 @@
       "indexes": {
         "idx_epoch_allocations_epoch": {
           "name": "idx_epoch_allocations_epoch",
-          "columns": [
-            "epoch_id"
-          ],
+          "columns": ["epoch_id"],
           "isUnique": false
         },
         "uq_epoch_alloc": {
           "name": "uq_epoch_alloc",
-          "columns": [
-            "epoch_id",
-            "from_did",
-            "to_did"
-          ],
+          "columns": ["epoch_id", "from_did", "to_did"],
           "isUnique": true
         }
       },
@@ -1119,12 +1014,8 @@
           "name": "epoch_allocations_epoch_id_epochs_id_fk",
           "tableFrom": "epoch_allocations",
           "tableTo": "epochs",
-          "columnsFrom": [
-            "epoch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["epoch_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1209,10 +1100,7 @@
       "indexes": {
         "idx_epochs_status": {
           "name": "idx_epochs_status",
-          "columns": [
-            "status",
-            "ends_at"
-          ],
+          "columns": ["status", "ends_at"],
           "isUnique": false
         }
       },
@@ -1289,18 +1177,12 @@
       "indexes": {
         "idx_vouches_to": {
           "name": "idx_vouches_to",
-          "columns": [
-            "to_did",
-            "created_at"
-          ],
+          "columns": ["to_did", "created_at"],
           "isUnique": false
         },
         "idx_vouches_from": {
           "name": "idx_vouches_from",
-          "columns": [
-            "from_did",
-            "created_at"
-          ],
+          "columns": ["from_did", "created_at"],
           "isUnique": false
         }
       },
@@ -1377,16 +1259,12 @@
       "indexes": {
         "idx_casbin_rules_ptype": {
           "name": "idx_casbin_rules_ptype",
-          "columns": [
-            "ptype"
-          ],
+          "columns": ["ptype"],
           "isUnique": false
         },
         "idx_casbin_rules_v1": {
           "name": "idx_casbin_rules_v1",
-          "columns": [
-            "v1"
-          ],
+          "columns": ["v1"],
           "isUnique": false
         }
       },
@@ -1426,23 +1304,15 @@
           "name": "resource_group_items_group_id_resource_groups_id_fk",
           "tableFrom": "resource_group_items",
           "tableTo": "resource_groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "resource_group_items_group_id_resource_type_resource_ref_pk": {
-          "columns": [
-            "group_id",
-            "resource_type",
-            "resource_ref"
-          ],
+          "columns": ["group_id", "resource_type", "resource_ref"],
           "name": "resource_group_items_group_id_resource_type_resource_ref_pk"
         }
       },
@@ -1492,10 +1362,7 @@
       "indexes": {
         "idx_resource_groups_ns": {
           "name": "idx_resource_groups_ns",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": false
         }
       },
@@ -1504,12 +1371,8 @@
           "name": "resource_groups_namespace_id_namespaces_id_fk",
           "tableFrom": "resource_groups",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1577,10 +1440,7 @@
       "indexes": {
         "idx_service_accounts_ns": {
           "name": "idx_service_accounts_ns",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": false
         }
       },
@@ -1589,12 +1449,8 @@
           "name": "service_accounts_namespace_id_namespaces_id_fk",
           "tableFrom": "service_accounts",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1631,9 +1487,7 @@
       "indexes": {
         "idx_user_group_members_user": {
           "name": "idx_user_group_members_user",
-          "columns": [
-            "user_id"
-          ],
+          "columns": ["user_id"],
           "isUnique": false
         }
       },
@@ -1642,12 +1496,8 @@
           "name": "user_group_members_group_id_user_groups_id_fk",
           "tableFrom": "user_group_members",
           "tableTo": "user_groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1655,22 +1505,15 @@
           "name": "user_group_members_user_id_users_id_fk",
           "tableFrom": "user_group_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "user_group_members_group_id_user_id_pk": {
-          "columns": [
-            "group_id",
-            "user_id"
-          ],
+          "columns": ["group_id", "user_id"],
           "name": "user_group_members_group_id_user_id_pk"
         }
       },
@@ -1728,10 +1571,7 @@
       "indexes": {
         "idx_user_groups_ns": {
           "name": "idx_user_groups_ns",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": false
         }
       },
@@ -1740,12 +1580,8 @@
           "name": "user_groups_namespace_id_namespaces_id_fk",
           "tableFrom": "user_groups",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1817,18 +1653,12 @@
       "indexes": {
         "uq_scan_runs_repo_head": {
           "name": "uq_scan_runs_repo_head",
-          "columns": [
-            "repository_id",
-            "head_oid"
-          ],
+          "columns": ["repository_id", "head_oid"],
           "isUnique": true
         },
         "idx_scan_runs_repo_ran": {
           "name": "idx_scan_runs_repo_ran",
-          "columns": [
-            "repository_id",
-            "ran_at"
-          ],
+          "columns": ["repository_id", "ran_at"],
           "isUnique": false
         }
       },
@@ -1837,12 +1667,8 @@
           "name": "scan_runs_repository_id_repositories_id_fk",
           "tableFrom": "scan_runs",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1935,20 +1761,12 @@
       "indexes": {
         "uq_artifacts_repo_nvp": {
           "name": "uq_artifacts_repo_nvp",
-          "columns": [
-            "repository_id",
-            "name",
-            "version",
-            "path"
-          ],
+          "columns": ["repository_id", "name", "version", "path"],
           "isUnique": true
         },
         "idx_artifacts_repo_name": {
           "name": "idx_artifacts_repo_name",
-          "columns": [
-            "repository_id",
-            "name"
-          ],
+          "columns": ["repository_id", "name"],
           "isUnique": false
         }
       },
@@ -1957,12 +1775,8 @@
           "name": "artifacts_repository_id_repositories_id_fk",
           "tableFrom": "artifacts",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2028,17 +1842,12 @@
       "indexes": {
         "uq_environments_ns_ident": {
           "name": "uq_environments_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_environments_ns": {
           "name": "idx_environments_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -2047,12 +1856,8 @@
           "name": "environments_namespace_id_namespaces_id_fk",
           "tableFrom": "environments",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2124,18 +1929,12 @@
       "indexes": {
         "idx_notifications_user_created": {
           "name": "idx_notifications_user_created",
-          "columns": [
-            "user_id",
-            "created_at"
-          ],
+          "columns": ["user_id", "created_at"],
           "isUnique": false
         },
         "idx_notifications_user_unread": {
           "name": "idx_notifications_user_unread",
-          "columns": [
-            "user_id",
-            "read_at"
-          ],
+          "columns": ["user_id", "read_at"],
           "isUnique": false
         }
       },
@@ -2144,12 +1943,8 @@
           "name": "notifications_user_id_users_id_fk",
           "tableFrom": "notifications",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2235,17 +2030,12 @@
       "indexes": {
         "uq_connectors_ns_ident": {
           "name": "uq_connectors_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_connectors_ns": {
           "name": "idx_connectors_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -2254,12 +2044,8 @@
           "name": "connectors_namespace_id_namespaces_id_fk",
           "tableFrom": "connectors",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2333,17 +2119,12 @@
       "indexes": {
         "uq_delegates_ns_ident": {
           "name": "uq_delegates_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_delegates_ns": {
           "name": "idx_delegates_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -2352,12 +2133,8 @@
           "name": "delegate_agents_namespace_id_namespaces_id_fk",
           "tableFrom": "delegate_agents",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2437,16 +2214,12 @@
       "indexes": {
         "idx_tickets_ns": {
           "name": "idx_tickets_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         },
         "idx_tickets_repo": {
           "name": "idx_tickets_repo",
-          "columns": [
-            "repository_id"
-          ],
+          "columns": ["repository_id"],
           "isUnique": false
         }
       },
@@ -2455,12 +2228,8 @@
           "name": "external_tickets_namespace_id_namespaces_id_fk",
           "tableFrom": "external_tickets",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2468,12 +2237,8 @@
           "name": "external_tickets_repository_id_repositories_id_fk",
           "tableFrom": "external_tickets",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2547,17 +2312,12 @@
       "indexes": {
         "uq_flags_ns_ident": {
           "name": "uq_flags_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_flags_ns": {
           "name": "idx_flags_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -2566,12 +2326,8 @@
           "name": "feature_flags_namespace_id_namespaces_id_fk",
           "tableFrom": "feature_flags",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2643,17 +2399,12 @@
       "indexes": {
         "uq_files_ns_name": {
           "name": "uq_files_ns_name",
-          "columns": [
-            "namespace_id",
-            "name"
-          ],
+          "columns": ["namespace_id", "name"],
           "isUnique": true
         },
         "idx_files_ns": {
           "name": "idx_files_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -2662,12 +2413,8 @@
           "name": "file_store_namespace_id_namespaces_id_fk",
           "tableFrom": "file_store",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2734,17 +2481,12 @@
       "indexes": {
         "uq_freeze_ns_ident": {
           "name": "uq_freeze_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_freeze_ns": {
           "name": "idx_freeze_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -2753,12 +2495,8 @@
           "name": "freeze_windows_namespace_id_namespaces_id_fk",
           "tableFrom": "freeze_windows",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2846,17 +2584,12 @@
       "indexes": {
         "uq_gitops_ns_ident": {
           "name": "uq_gitops_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_gitops_repo": {
           "name": "idx_gitops_repo",
-          "columns": [
-            "repository_id"
-          ],
+          "columns": ["repository_id"],
           "isUnique": false
         }
       },
@@ -2865,12 +2598,8 @@
           "name": "gitops_targets_namespace_id_namespaces_id_fk",
           "tableFrom": "gitops_targets",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2878,12 +2607,8 @@
           "name": "gitops_targets_repository_id_repositories_id_fk",
           "tableFrom": "gitops_targets",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2956,10 +2681,7 @@
       "indexes": {
         "uq_iac_ns_name": {
           "name": "uq_iac_ns_name",
-          "columns": [
-            "namespace_id",
-            "name"
-          ],
+          "columns": ["namespace_id", "name"],
           "isUnique": true
         }
       },
@@ -2968,12 +2690,8 @@
           "name": "iac_states_namespace_id_namespaces_id_fk",
           "tableFrom": "iac_states",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3038,9 +2756,7 @@
       "indexes": {
         "idx_overrides_ns": {
           "name": "idx_overrides_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -3049,12 +2765,8 @@
           "name": "overrides_namespace_id_namespaces_id_fk",
           "tableFrom": "overrides",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3136,17 +2848,12 @@
       "indexes": {
         "uq_policies_ns_ident": {
           "name": "uq_policies_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_policies_ns": {
           "name": "idx_policies_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -3155,12 +2862,8 @@
           "name": "policies_namespace_id_namespaces_id_fk",
           "tableFrom": "policies",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3226,17 +2929,12 @@
       "indexes": {
         "uq_certs_ns_domain": {
           "name": "uq_certs_ns_domain",
-          "columns": [
-            "namespace_id",
-            "domain"
-          ],
+          "columns": ["namespace_id", "domain"],
           "isUnique": true
         },
         "idx_certs_expiry": {
           "name": "idx_certs_expiry",
-          "columns": [
-            "expires_at"
-          ],
+          "columns": ["expires_at"],
           "isUnique": false
         }
       },
@@ -3245,12 +2943,8 @@
           "name": "certificates_namespace_id_namespaces_id_fk",
           "tableFrom": "certificates",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3330,17 +3024,12 @@
       "indexes": {
         "uq_chaos_ns_ident": {
           "name": "uq_chaos_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_chaos_ns": {
           "name": "idx_chaos_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -3349,12 +3038,8 @@
           "name": "chaos_experiments_namespace_id_namespaces_id_fk",
           "tableFrom": "chaos_experiments",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3362,12 +3047,8 @@
           "name": "chaos_experiments_repository_id_repositories_id_fk",
           "tableFrom": "chaos_experiments",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3447,10 +3128,7 @@
       "indexes": {
         "idx_costs_ns": {
           "name": "idx_costs_ns",
-          "columns": [
-            "namespace_id",
-            "period_start"
-          ],
+          "columns": ["namespace_id", "period_start"],
           "isUnique": false
         }
       },
@@ -3459,12 +3137,8 @@
           "name": "cost_snapshots_namespace_id_namespaces_id_fk",
           "tableFrom": "cost_snapshots",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3529,9 +3203,7 @@
       "indexes": {
         "idx_downtimes_ns": {
           "name": "idx_downtimes_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -3540,12 +3212,8 @@
           "name": "downtimes_namespace_id_namespaces_id_fk",
           "tableFrom": "downtimes",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3553,12 +3221,8 @@
           "name": "downtimes_monitor_id_monitors_id_fk",
           "tableFrom": "downtimes",
           "tableTo": "monitors",
-          "columnsFrom": [
-            "monitor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["monitor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3616,10 +3280,7 @@
       "indexes": {
         "idx_iupdates_incident": {
           "name": "idx_iupdates_incident",
-          "columns": [
-            "incident_id",
-            "created_at"
-          ],
+          "columns": ["incident_id", "created_at"],
           "isUnique": false
         }
       },
@@ -3628,12 +3289,8 @@
           "name": "incident_updates_incident_id_incidents_id_fk",
           "tableFrom": "incident_updates",
           "tableTo": "incidents",
-          "columnsFrom": [
-            "incident_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["incident_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3721,10 +3378,7 @@
       "indexes": {
         "idx_incidents_ns": {
           "name": "idx_incidents_ns",
-          "columns": [
-            "namespace_id",
-            "created_at"
-          ],
+          "columns": ["namespace_id", "created_at"],
           "isUnique": false
         }
       },
@@ -3733,12 +3387,8 @@
           "name": "incidents_namespace_id_namespaces_id_fk",
           "tableFrom": "incidents",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3796,10 +3446,7 @@
       "indexes": {
         "idx_mchecks_monitor": {
           "name": "idx_mchecks_monitor",
-          "columns": [
-            "monitor_id",
-            "checked_at"
-          ],
+          "columns": ["monitor_id", "checked_at"],
           "isUnique": false
         }
       },
@@ -3808,12 +3455,8 @@
           "name": "monitor_checks_monitor_id_monitors_id_fk",
           "tableFrom": "monitor_checks",
           "tableTo": "monitors",
-          "columnsFrom": [
-            "monitor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["monitor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3917,17 +3560,12 @@
       "indexes": {
         "uq_monitors_ns_ident": {
           "name": "uq_monitors_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_monitors_ns": {
           "name": "idx_monitors_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -3936,12 +3574,8 @@
           "name": "monitors_namespace_id_namespaces_id_fk",
           "tableFrom": "monitors",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4007,17 +3641,12 @@
       "indexes": {
         "uq_slos_ns_ident": {
           "name": "uq_slos_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_slos_ns": {
           "name": "idx_slos_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -4026,12 +3655,8 @@
           "name": "slos_namespace_id_namespaces_id_fk",
           "tableFrom": "slos",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4039,12 +3664,8 @@
           "name": "slos_monitor_id_monitors_id_fk",
           "tableFrom": "slos",
           "tableTo": "monitors",
-          "columnsFrom": [
-            "monitor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["monitor_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4125,17 +3746,12 @@
       "indexes": {
         "uq_catalog_ns_ident": {
           "name": "uq_catalog_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_catalog_ns": {
           "name": "idx_catalog_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -4144,12 +3760,8 @@
           "name": "catalog_entities_namespace_id_namespaces_id_fk",
           "tableFrom": "catalog_entities",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4157,12 +3769,8 @@
           "name": "catalog_entities_repository_id_repositories_id_fk",
           "tableFrom": "catalog_entities",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4228,17 +3836,12 @@
       "indexes": {
         "uq_dash_ns_ident": {
           "name": "uq_dash_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_dash_ns": {
           "name": "idx_dash_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -4247,12 +3850,8 @@
           "name": "dashboards_namespace_id_namespaces_id_fk",
           "tableFrom": "dashboards",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4327,17 +3926,12 @@
       "indexes": {
         "uq_dbrec_ns_ident": {
           "name": "uq_dbrec_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_dbrec_ns": {
           "name": "idx_dbrec_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -4346,12 +3940,8 @@
           "name": "database_records_namespace_id_namespaces_id_fk",
           "tableFrom": "database_records",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4432,17 +4022,12 @@
       "indexes": {
         "uq_devenv_ns_ident": {
           "name": "uq_devenv_ns_ident",
-          "columns": [
-            "namespace_id",
-            "identifier"
-          ],
+          "columns": ["namespace_id", "identifier"],
           "isUnique": true
         },
         "idx_devenv_ns": {
           "name": "idx_devenv_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         }
       },
@@ -4451,12 +4036,8 @@
           "name": "dev_environments_namespace_id_namespaces_id_fk",
           "tableFrom": "dev_environments",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4464,12 +4045,8 @@
           "name": "dev_environments_repository_id_repositories_id_fk",
           "tableFrom": "dev_environments",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4564,17 +4141,12 @@
       "indexes": {
         "idx_sectests_ns": {
           "name": "idx_sectests_ns",
-          "columns": [
-            "namespace_id",
-            "created_at"
-          ],
+          "columns": ["namespace_id", "created_at"],
           "isUnique": false
         },
         "idx_sectests_repo": {
           "name": "idx_sectests_repo",
-          "columns": [
-            "repository_id"
-          ],
+          "columns": ["repository_id"],
           "isUnique": false
         }
       },
@@ -4583,12 +4155,8 @@
           "name": "security_tests_namespace_id_namespaces_id_fk",
           "tableFrom": "security_tests",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4596,12 +4164,8 @@
           "name": "security_tests_repository_id_repositories_id_fk",
           "tableFrom": "security_tests",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4673,16 +4237,12 @@
       "indexes": {
         "idx_supply_ns": {
           "name": "idx_supply_ns",
-          "columns": [
-            "namespace_id"
-          ],
+          "columns": ["namespace_id"],
           "isUnique": false
         },
         "idx_supply_repo": {
           "name": "idx_supply_repo",
-          "columns": [
-            "repository_id"
-          ],
+          "columns": ["repository_id"],
           "isUnique": false
         }
       },
@@ -4691,12 +4251,8 @@
           "name": "supply_chain_docs_namespace_id_namespaces_id_fk",
           "tableFrom": "supply_chain_docs",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4704,12 +4260,8 @@
           "name": "supply_chain_docs_repository_id_repositories_id_fk",
           "tableFrom": "supply_chain_docs",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4753,18 +4305,12 @@
       "indexes": {
         "uq_follows_user_namespace": {
           "name": "uq_follows_user_namespace",
-          "columns": [
-            "user_id",
-            "namespace_id"
-          ],
+          "columns": ["user_id", "namespace_id"],
           "isUnique": true
         },
         "idx_follows_namespace": {
           "name": "idx_follows_namespace",
-          "columns": [
-            "namespace_id",
-            "created_at"
-          ],
+          "columns": ["namespace_id", "created_at"],
           "isUnique": false
         }
       },
@@ -4773,12 +4319,8 @@
           "name": "follows_user_id_users_id_fk",
           "tableFrom": "follows",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4786,12 +4328,8 @@
           "name": "follows_namespace_id_namespaces_id_fk",
           "tableFrom": "follows",
           "tableTo": "namespaces",
-          "columnsFrom": [
-            "namespace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["namespace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4821,18 +4359,12 @@
       "indexes": {
         "uq_repo_topics_repo_topic": {
           "name": "uq_repo_topics_repo_topic",
-          "columns": [
-            "repository_id",
-            "topic"
-          ],
+          "columns": ["repository_id", "topic"],
           "isUnique": true
         },
         "idx_repo_topics_topic": {
           "name": "idx_repo_topics_topic",
-          "columns": [
-            "topic",
-            "repository_id"
-          ],
+          "columns": ["topic", "repository_id"],
           "isUnique": false
         }
       },
@@ -4841,12 +4373,8 @@
           "name": "repo_topics_repository_id_repositories_id_fk",
           "tableFrom": "repo_topics",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4895,18 +4423,12 @@
       "indexes": {
         "uq_watchers_user_repo": {
           "name": "uq_watchers_user_repo",
-          "columns": [
-            "user_id",
-            "repository_id"
-          ],
+          "columns": ["user_id", "repository_id"],
           "isUnique": true
         },
         "idx_watchers_repo": {
           "name": "idx_watchers_repo",
-          "columns": [
-            "repository_id",
-            "created_at"
-          ],
+          "columns": ["repository_id", "created_at"],
           "isUnique": false
         }
       },
@@ -4915,12 +4437,8 @@
           "name": "repo_watchers_user_id_users_id_fk",
           "tableFrom": "repo_watchers",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4928,12 +4446,8 @@
           "name": "repo_watchers_repository_id_repositories_id_fk",
           "tableFrom": "repo_watchers",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -4977,18 +4491,12 @@
       "indexes": {
         "uq_stars_user_repo": {
           "name": "uq_stars_user_repo",
-          "columns": [
-            "user_id",
-            "repository_id"
-          ],
+          "columns": ["user_id", "repository_id"],
           "isUnique": true
         },
         "idx_stars_repo": {
           "name": "idx_stars_repo",
-          "columns": [
-            "repository_id",
-            "created_at"
-          ],
+          "columns": ["repository_id", "created_at"],
           "isUnique": false
         }
       },
@@ -4997,12 +4505,8 @@
           "name": "stars_user_id_users_id_fk",
           "tableFrom": "stars",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5010,12 +4514,8 @@
           "name": "stars_repository_id_repositories_id_fk",
           "tableFrom": "stars",
           "tableTo": "repositories",
-          "columnsFrom": [
-            "repository_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["repository_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
