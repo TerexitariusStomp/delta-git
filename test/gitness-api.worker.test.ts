@@ -1345,3 +1345,96 @@ describe("dr — bundle export, drill, download", () => {
     expect(new TextDecoder().decode(bytes.subarray(0, 14))).toBe("GIT BUNDLE V3\n");
   });
 });
+
+describe("npm registry /npm", () => {
+  const enc = (scope: string, name: string) => `@${scope}%2F${name}`;
+
+  function publishBody(name: string, version: string, tgz: Uint8Array): Record<string, unknown> {
+    let bin = "";
+    for (const b of tgz) bin += String.fromCharCode(b);
+    return {
+      name,
+      "dist-tags": { latest: version },
+      versions: {
+        [version]: {
+          name,
+          version,
+          description: "fixture pkg",
+          dist: {
+            tarball: `https://upstream.example/${name}/-/${name.split("/")[1]}-0.0.0.tgz`,
+          },
+        },
+      },
+      _attachments: {
+        [`${name.split("/")[1]}-${version}.tgz`]: {
+          content_type: "application/octet-stream",
+          data: btoa(bin),
+        },
+      },
+    };
+  }
+
+  it("publish → packument → tarball round-trip with sha checks", async () => {
+    const repo = await setupRepoForTests(env, uniq("npm-ns"), "npmbase");
+    const tgz = new TextEncoder().encode(`fixture-tarball-${Date.now()}`);
+    const put = await workerExports.default.fetch(
+      `https://example.com/npm/${enc(repo.namespaceSlug, "widget")}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${repo.patPlaintext}`,
+        },
+        body: JSON.stringify(publishBody(`@${repo.namespaceSlug}/widget`, "1.0.0", tgz)),
+      }
+    );
+    const putText = await put.text();
+    expect(put.status, putText).toBe(201);
+
+    const doc = await get(`/npm/${enc(repo.namespaceSlug, "widget")}`);
+    expect(doc.status).toBe(200);
+    const pack = doc.body as {
+      "dist-tags": { latest: string };
+      versions: Record<string, { dist: { tarball: string; shasum: string; integrity: string } }>;
+    };
+    expect(pack["dist-tags"].latest).toBe("1.0.0");
+    const dist = pack.versions["1.0.0"].dist;
+    expect(dist.integrity.startsWith("sha512-")).toBe(true);
+    expect(dist.shasum).toMatch(/^[0-9a-f]{40}$/);
+    // Server rewrites tarball to our origin — never trust the declared URL.
+    expect(dist.tarball.startsWith("https://example.com/npm/")).toBe(true);
+
+    const dl = await workerExports.default.fetch(dist.tarball);
+    // Fixture tarball is ASCII — text() round-trips it losslessly.
+    const dlText = await dl.text();
+    expect(dl.status, `${dist.tarball} :: ${dlText}`).toBe(200);
+    expect(new TextEncoder().encode(dlText)).toEqual(tgz);
+    // Re-publish same version → npm immutability semantics.
+    const repub = await workerExports.default.fetch(
+      `https://example.com/npm/${enc(repo.namespaceSlug, "widget")}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${repo.patPlaintext}`,
+        },
+        body: JSON.stringify(publishBody(`@${repo.namespaceSlug}/widget`, "1.0.0", tgz)),
+      }
+    );
+    expect(repub.status).toBe(409);
+
+    // Bad token → 401; unknown scope namespace → 404.
+    const badToken = await workerExports.default.fetch(
+      `https://example.com/npm/${enc(repo.namespaceSlug, "widget")}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer bogus" },
+        body: JSON.stringify(publishBody(`@${repo.namespaceSlug}/widget`, "1.0.1", tgz)),
+      }
+    );
+    expect(badToken.status).toBe(401);
+
+    const missingScope = await get("/npm/@no-such-ns%2Fwidget");
+    expect(missingScope.status).toBe(404);
+  });
+});
