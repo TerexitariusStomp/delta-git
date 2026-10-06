@@ -42,11 +42,10 @@ interface DpopKey {
 }
 
 async function makeDpopKey(): Promise<DpopKey> {
-  const pair = await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"]
-  );
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ]);
   const jwk = (await crypto.subtle.exportKey("jwk", pair.publicKey)) as DpopKey["jwk"];
   return { pair, jwk: { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y } };
 }
@@ -159,10 +158,7 @@ async function runGrantFlow(
     error?: string;
     error_description?: string;
   };
-  expect(
-    token.status,
-    `token failed: ${JSON.stringify(tokenBody)}`
-  ).toBe(200);
+  expect(token.status, `token failed: ${JSON.stringify(tokenBody)}`).toBe(200);
   return { accessToken: tokenBody.access_token!, refreshToken: tokenBody.refresh_token };
 }
 
@@ -255,17 +251,14 @@ describe("oauth provider", () => {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     expect(read.status).toBe(200);
-    const push = await request(
-      `/${seeded.namespaceSlug}/${seeded.repoSlug}/git-receive-pack`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-git-receive-pack-request",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: "",
-      }
-    );
+    const push = await request(`/${seeded.namespaceSlug}/${seeded.repoSlug}/git-receive-pack`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-git-receive-pack-request",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: "",
+    });
     expect([401, 403]).toContain(push.status);
   });
 
@@ -287,26 +280,22 @@ describe("oauth provider", () => {
     expect(gitRead.status).toBe(200);
 
     // API surface: bound token without a proof is rejected.
-    const apiNoProof = await request(
-      `/api/v3/repos/${seeded.namespaceSlug}/${seeded.repoSlug}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    const apiNoProof = await request(`/api/v3/repos/${seeded.namespaceSlug}/${seeded.repoSlug}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
     expect(apiNoProof.status).toBe(401);
 
     // With a valid proof it passes.
-    const apiProof = await request(
-      `/api/v3/repos/${seeded.namespaceSlug}/${seeded.repoSlug}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          DPoP: await dpopProof(
-            key,
-            "GET",
-            `${ORIGIN}/api/v3/repos/${seeded.namespaceSlug}/${seeded.repoSlug}`
-          ),
-        },
-      }
-    );
+    const apiProof = await request(`/api/v3/repos/${seeded.namespaceSlug}/${seeded.repoSlug}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        DPoP: await dpopProof(
+          key,
+          "GET",
+          `${ORIGIN}/api/v3/repos/${seeded.namespaceSlug}/${seeded.repoSlug}`
+        ),
+      },
+    });
     expect(apiProof.status).toBe(200);
   });
 

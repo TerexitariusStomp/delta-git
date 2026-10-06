@@ -25,12 +25,12 @@ component in listed order, then `"@signature-params": <verbatim params>`.
 
 ## Required covered components (node policy — REQUIRED)
 
-| Component        | Why required                                             |
-|------------------|----------------------------------------------------------|
+| Component        | Why required                                              |
+| ---------------- | --------------------------------------------------------- |
 | `@method`        | binds the verb                                            |
-| `@authority`     | binds the host — closes the cross-host replay hole       |
-| `@path`          | binds the route (`@target-uri` accepted as alternative)  |
-| `content-digest` | binds the body — a replayed signature can't swap the pack|
+| `@authority`     | binds the host — closes the cross-host replay hole        |
+| `@path`          | binds the route (`@target-uri` accepted as alternative)   |
+| `content-digest` | binds the body — a replayed signature can't swap the pack |
 
 Requests missing any required component are rejected with
 `401 + WWW-Authenticate: Signature` naming the profile.

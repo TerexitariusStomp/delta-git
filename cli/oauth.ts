@@ -14,13 +14,7 @@
 // API calls attach a fresh proof per request.
 
 import { execFile } from "node:child_process";
-import {
-  createHash,
-  createPrivateKey,
-  generateKeyPairSync,
-  randomBytes,
-  sign,
-} from "node:crypto";
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
@@ -243,7 +237,10 @@ export async function login(host: string): Promise<HostCredentials> {
       server.on("error", (e) => finish(() => reject(e)));
       // Abandon the listener if the browser never comes back.
       const timeout = setTimeout(
-        () => finish(() => reject(new Error("authorization timed out waiting for the browser callback"))),
+        () =>
+          finish(() =>
+            reject(new Error("authorization timed out waiting for the browser callback"))
+          ),
         5 * 60 * 1000
       );
       server.listen(0, "127.0.0.1", () => {

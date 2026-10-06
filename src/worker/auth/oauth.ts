@@ -194,7 +194,13 @@ export async function resolveOAuthBearer(
     const url = new URL(request.url);
     const ok =
       proof &&
-      (await verifyDpopProof(proof, request.method, `${url.origin}${url.pathname}`, jkt, env.OAUTH_KV));
+      (await verifyDpopProof(
+        proof,
+        request.method,
+        `${url.origin}${url.pathname}`,
+        jkt,
+        env.OAUTH_KV
+      ));
     if (!ok) return null;
   }
 

@@ -1466,8 +1466,12 @@ export function registerAgentRoutes(router: AppRouter): void {
       db: c.var.db,
     }).catch(() => null);
     if (auth && auth.kind === "pat") return auth.verified.userId;
-    if (auth && auth.kind === "oauth" && auth.verified.member &&
-        hasOAuthScope(auth.verified.scopes, OAUTH_SCOPES.REPO_READ)) {
+    if (
+      auth &&
+      auth.kind === "oauth" &&
+      auth.verified.member &&
+      hasOAuthScope(auth.verified.scopes, OAUTH_SCOPES.REPO_READ)
+    ) {
       return auth.verified.userId;
     }
     return c.req.header("x-dg-did") ?? "anon";

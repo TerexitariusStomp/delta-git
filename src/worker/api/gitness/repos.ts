@@ -87,11 +87,7 @@ import { readTree } from "@/worker/git/operations/read";
 const OPEN_STATUSES = ["open", "merging", "adjudicating", "conflict"];
 const DONE_STATUSES = ["merged", "rejected", "expired"];
 
-const SECURITY_POLICY_PATHS = [
-  ".github/SECURITY.md",
-  "SECURITY.md",
-  "docs/SECURITY.md",
-];
+const SECURITY_POLICY_PATHS = [".github/SECURITY.md", "SECURITY.md", "docs/SECURITY.md"];
 
 // Secret-signature patterns for the security-scan endpoint — the same class
 // of detector the push gate runs (high-signal, low-false-positive).
@@ -1325,9 +1321,13 @@ export function registerGitnessRepos(router: AppRouter) {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
     for (const path of SECURITY_POLICY_PATHS) {
-      const result = await readPath(c.env, access.route.doName, "HEAD", path, access.cacheCtx).catch(
-        () => null
-      );
+      const result = await readPath(
+        c.env,
+        access.route.doName,
+        "HEAD",
+        path,
+        access.cacheCtx
+      ).catch(() => null);
       if (!result || result.type !== "blob" || result.tooLarge) continue;
       return c.json({ path, content: new TextDecoder().decode(result.content) });
     }

@@ -67,7 +67,13 @@ export function Header({ currentView, viewer }: HeaderProps) {
               className="transition-transform duration-200 group-hover:-rotate-6"
               aria-hidden="true"
             >
-              <img src="/gitflare-icon.png" alt="" width="64" height="27" className="block h-8 w-auto" />
+              <img
+                src="/gitflare-icon.png"
+                alt=""
+                width="64"
+                height="27"
+                className="block h-8 w-auto"
+              />
             </span>
             <span className="hidden sm:block">
               <strong

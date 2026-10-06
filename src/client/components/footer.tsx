@@ -7,7 +7,14 @@ export function Footer() {
           className="m-0 flex items-center gap-1.5 text-xs no-underline hover:no-underline"
           style={{ color: "var(--fgColor-muted)" }}
         >
-          <img src="/gitflare-icon.png" alt="" width="48" height="20" className="block h-5 w-auto" aria-hidden="true" />
+          <img
+            src="/gitflare-icon.png"
+            alt=""
+            width="48"
+            height="20"
+            className="block h-5 w-auto"
+            aria-hidden="true"
+          />
           <span>Gitflare</span>
         </a>
         <nav

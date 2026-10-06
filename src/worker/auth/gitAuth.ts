@@ -12,11 +12,7 @@ import {
   type PatVerifyError,
   type PatVerifyOk,
 } from "./pat";
-import {
-  oauthNamespaceAccess,
-  resolveOAuthBearer,
-  type OAuthPrincipal,
-} from "./oauth";
+import { oauthNamespaceAccess, resolveOAuthBearer, type OAuthPrincipal } from "./oauth";
 
 // Decode `Authorization: Basic <b64>` into `{ username, password }`. The
 // caller decides whether the credentials are valid; this helper does no

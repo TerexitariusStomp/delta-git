@@ -19,17 +19,17 @@ human `message`. Agents branch on `error`; `message` is prose and MAY change.
 
 ## Frozen vocabulary
 
-| HTTP | `error`             | Meaning                                        |
-|------|---------------------|------------------------------------------------|
-| 400  | `bad-request`       | malformed input, unparseable                    |
-| 401  | `unauthorized`      | authenticate; challenge header names the scheme |
-| 403  | `forbidden`         | authenticated but not permitted                 |
-| 404  | `not-found`         | missing OR private (existence never disclosed)  |
-| 409  | `conflict`          | state conflict (dup vouch, closed epoch)        |
-| 422  | `validation-failed` | well-formed but invalid (missing field, bad ref)|
-| 429  | `rate-limited`      | quota window exhausted; see `proof_required`    |
-| 500  | `internal-error`    | server fault                                    |
-| 503  | `unavailable`       | transient; honor `Retry-After`                  |
+| HTTP | `error`             | Meaning                                          |
+| ---- | ------------------- | ------------------------------------------------ |
+| 400  | `bad-request`       | malformed input, unparseable                     |
+| 401  | `unauthorized`      | authenticate; challenge header names the scheme  |
+| 403  | `forbidden`         | authenticated but not permitted                  |
+| 404  | `not-found`         | missing OR private (existence never disclosed)   |
+| 409  | `conflict`          | state conflict (dup vouch, closed epoch)         |
+| 422  | `validation-failed` | well-formed but invalid (missing field, bad ref) |
+| 429  | `rate-limited`      | quota window exhausted; see `proof_required`     |
+| 500  | `internal-error`    | server fault                                     |
+| 503  | `unavailable`       | transient; honor `Retry-After`                   |
 
 Codes are FROZEN: new codes may be added, existing ones never renamed or
 reused. Domain-specific sub-codes may appear as extra fields

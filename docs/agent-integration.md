@@ -2,12 +2,12 @@
 
 How coding agents plug into delta-git. Three surfaces, pick per client:
 
-| Client                                  | Surface                                   | Auth                                   |
-| --------------------------------------- | ----------------------------------------- | -------------------------------------- |
-| Claude Code / opencode / any MCP client | `POST /mcp` (JSON-RPC tool calls)         | OAuth 2.1 bearer or PAT (`Bearer`)     |
+| Client                                  | Surface                                   | Auth                                    |
+| --------------------------------------- | ----------------------------------------- | --------------------------------------- |
+| Claude Code / opencode / any MCP client | `POST /mcp` (JSON-RPC tool calls)         | OAuth 2.1 bearer or PAT (`Bearer`)      |
 | Devin Desktop / bespoke agents          | REST `/api/:o/:r/dg/*` + signed envelopes | ed25519 `did:key` agent or OAuth bearer |
-| Git (`clone`/`fetch`/`push`)            | `/:o/:r` Smart HTTP                       | OAuth 2.1 bearer or PAT (`Basic`)      |
-| Hermes embed                            | `/embed/hermes` + ideas lane              | browser session or PAT                 |
+| Git (`clone`/`fetch`/`push`)            | `/:o/:r` Smart HTTP                       | OAuth 2.1 bearer or PAT (`Basic`)       |
+| Hermes embed                            | `/embed/hermes` + ideas lane              | browser session or PAT                  |
 
 ## 1. Agent identity (all surfaces)
 
@@ -50,13 +50,13 @@ delta-git is its own OAuth 2.1 authorization server
 (`@cloudflare/workers-oauth-provider`, KV-backed in `OAUTH_KV`). Any surface
 that takes a PAT also takes a scoped access token:
 
-| Endpoint                                              | Purpose                                        |
-| ----------------------------------------------------- | ---------------------------------------------- |
-| `GET /.well-known/oauth-authorization-server`         | RFC 8414 issuer metadata                       |
-| `GET /.well-known/oauth-protected-resource`           | RFC 9728 resource metadata                     |
-| `POST /oauth/register`                                | RFC 7591 dynamic client registration + CIMD    |
-| `GET /oauth/authorize`                                | consent UI (SPA; needs a `dg_session` cookie)  |
-| `POST /oauth/token`                                   | code exchange + refresh                        |
+| Endpoint                                      | Purpose                                       |
+| --------------------------------------------- | --------------------------------------------- |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 issuer metadata                      |
+| `GET /.well-known/oauth-protected-resource`   | RFC 9728 resource metadata                    |
+| `POST /oauth/register`                        | RFC 7591 dynamic client registration + CIMD   |
+| `GET /oauth/authorize`                        | consent UI (SPA; needs a `dg_session` cookie) |
+| `POST /oauth/token`                           | code exchange + refresh                       |
 
 Scopes: `repo:read` (clone/fetch, read APIs, read MCP tools), `repo:write`
 (implies read; push + mutations), `offline_access` (refresh token). Tokens

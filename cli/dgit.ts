@@ -70,7 +70,10 @@ async function headers(method: string, url: string): Promise<Record<string, stri
 async function api(path: string, init?: RequestInit): Promise<unknown> {
   const res = await fetch(`${host()}${path}`, {
     ...init,
-    headers: { ...(await headers(init?.method ?? "GET", `${host()}${path}`)), ...(init?.headers ?? {}) },
+    headers: {
+      ...(await headers(init?.method ?? "GET", `${host()}${path}`)),
+      ...(init?.headers ?? {}),
+    },
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -281,22 +284,18 @@ async function attest(
   if (!info) return;
   const authHeaders = await attestAuth(url);
   if (!authHeaders) return;
-  const res = await attestScan(
-    info,
-    authHeaders,
-    {
-      heads: updates.map((u) => ({ ref: u.remoteRef, oid: u.localSha })),
-      status: status as "pass" | "warn" | "fail" | "skipped",
-      tools: toolRuns.map((r) => ({
-        tool: r.tool,
-        version: r.version,
-        status: r.status as "pass" | "warn" | "fail" | "skipped" | "missing",
-        findings: r.findings,
-        duration_ms: r.durationMs,
-      })),
-      duration_ms: durationMs,
-    }
-  ).catch((err: unknown) => {
+  const res = await attestScan(info, authHeaders, {
+    heads: updates.map((u) => ({ ref: u.remoteRef, oid: u.localSha })),
+    status: status as "pass" | "warn" | "fail" | "skipped",
+    tools: toolRuns.map((r) => ({
+      tool: r.tool,
+      version: r.version,
+      status: r.status as "pass" | "warn" | "fail" | "skipped" | "missing",
+      findings: r.findings,
+      duration_ms: r.durationMs,
+    })),
+    duration_ms: durationMs,
+  }).catch((err: unknown) => {
     console.error(`[dgit-scan] attestation failed: ${String(err)}`);
     return null;
   });

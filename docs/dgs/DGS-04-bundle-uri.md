@@ -40,7 +40,7 @@ GET /{owner}/{repo}.git/bundle/{token}
 → 200 application/x-git-bundle: GIT BUNDLE V3 + ref list + PACK
 ```
 
-Stale tokens still serve a correct *current* bundle — the client treats it
+Stale tokens still serve a correct _current_ bundle — the client treats it
 as a baseline and negotiates the delta, so drift is never an error.
 
 ## Auth

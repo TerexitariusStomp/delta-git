@@ -36,10 +36,7 @@ import { base64UrlToBytes, bytesToUtf8 } from "@/vendor/widespread/crypto/index.
 import { findIdentityByUserId } from "@/worker/db/d1/dal/identities";
 import { listNamespacesForUser } from "@/worker/db/d1/dal/namespaces";
 
-function jsonResponse(
-  body: unknown,
-  init?: { status?: number; headers?: Headers }
-): Response {
+function jsonResponse(body: unknown, init?: { status?: number; headers?: Headers }): Response {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
   headers.set("Cache-Control", "no-store");
@@ -83,17 +80,13 @@ async function authorizeInfo(c: AppContext): Promise<Response> {
   const active = await readActiveSession(c);
   if (!active) return jsonResponse({ error: "signin_required" }, { status: 401 });
 
-  const authRequest = await api.parseAuthRequest(
-    asAuthorizeRequest(c.req.raw, origin)
-  );
+  const authRequest = await api.parseAuthRequest(asAuthorizeRequest(c.req.raw, origin));
   const [description, tx] = await Promise.all([
     api.describeConsent(authRequest),
     api.beginConsent(authRequest),
   ]);
 
-  const identity = await findIdentityByUserId(c.var.db, active.user.id).catch(
-    () => undefined
-  );
+  const identity = await findIdentityByUserId(c.var.db, active.user.id).catch(() => undefined);
   const namespaces = await listNamespacesForUser(c.var.db, active.user.id).catch(() => []);
 
   return jsonResponse(
@@ -154,9 +147,7 @@ async function authorizeDecision(c: AppContext): Promise<Response> {
     scope: body.scope,
   });
 
-  const identity = await findIdentityByUserId(c.var.db, active.user.id).catch(
-    () => undefined
-  );
+  const identity = await findIdentityByUserId(c.var.db, active.user.id).catch(() => undefined);
   const namespaces = await listNamespacesForUser(c.var.db, active.user.id).catch(() => []);
 
   const props: OAuthTokenProps = {
@@ -223,7 +214,10 @@ async function tokenEndpoint(c: AppContext): Promise<Response> {
     if (boundJkt && boundJkt !== requestJkt) {
       log.info("oauth-token:refresh-binding-violation", {});
       return jsonResponse(
-        { error: "invalid_dpop_proof", error_description: "bound refresh token requires the original DPoP key" },
+        {
+          error: "invalid_dpop_proof",
+          error_description: "bound refresh token requires the original DPoP key",
+        },
         { status: 401 }
       );
     }
@@ -242,7 +236,10 @@ async function tokenEndpoint(c: AppContext): Promise<Response> {
 
   // On success, persist the binding for the minted tokens.
   if (res.ok && requestJkt) {
-    const payload = (await res.clone().json().catch(() => null)) as {
+    const payload = (await res
+      .clone()
+      .json()
+      .catch(() => null)) as {
       access_token?: string;
       refresh_token?: string;
     } | null;
@@ -303,10 +300,7 @@ export function registerOAuthProviderRoutes(router: AppRouter): void {
       return await authorizeDecision(c);
     } catch (err) {
       if (err instanceof AuthorizationError) {
-        return jsonResponse(
-          { error: err.code, description: err.description },
-          { status: 400 }
-        );
+        return jsonResponse({ error: err.code, description: err.description }, { status: 400 });
       }
       throw err;
     }
