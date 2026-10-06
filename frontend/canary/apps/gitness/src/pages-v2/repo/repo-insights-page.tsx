@@ -1,11 +1,37 @@
 import { useParams } from 'react-router-dom'
 
-import { Layout, NoData, SandboxLayout, Text } from '@harnessio/ui/components'
+import { Layout, NoData, SandboxLayout, StatusBadge, Text } from '@harnessio/ui/components'
 
 import { PathParams } from '../../RouteDefinitions'
-import { useActivity, useContributors, usePulse } from '../delta/delta-api'
+import { useActivity, useContributors, useOpLog, usePulse } from '../delta/delta-api'
 
 const ts = (sec: number) => new Date(sec * 1000).toLocaleDateString()
+
+const KIND_THEME: Record<string, 'success' | 'info' | 'warning' | 'danger' | 'muted'> = {
+  'merge.landed': 'success',
+  'merge.land': 'success',
+  'intent.created': 'info',
+  'intent.merged': 'success',
+  'intent.rejected': 'danger',
+  'push.received': 'info',
+  'issue.opened': 'info',
+  'issue.closed': 'muted',
+  'discussion.opened': 'info',
+  'release.published': 'success',
+  'project.create': 'info'
+}
+
+function kindTheme(kind: string) {
+  return KIND_THEME[kind] ?? 'muted'
+}
+
+function relTime(ms: number) {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000))
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
 
 function useRepoParams() {
   const { spaceId = '', repoId = '' } = useParams<PathParams>()
@@ -34,7 +60,40 @@ function ActivityChart({ weeks }: { weeks: { week: number; commits: number }[] }
   )
 }
 
-/** Insights — pulse numbers, activity chart, contributors. */
+/** Live audit trail — the hash-chained op-log, newest first. */
+function AuditTrail({ spaceId, repoId }: { spaceId: string; repoId: string }) {
+  const { data: entries } = useOpLog(spaceId, repoId)
+  const recent = (entries ?? []).slice(-25).reverse()
+  if (recent.length === 0) return null
+  return (
+    <Layout.Vertical gap="xs" className="mt-cn-lg">
+      <Text variant="body-strong" color="foreground-1">
+        Audit trail — live
+      </Text>
+      <Text color="foreground-3" className="mb-cn-xs">
+        Every repo operation, hash-chained. Verify: <code>/api/{spaceId}/{repoId}/dg/oplog/verify</code>
+      </Text>
+      <div className="border border-cn-2 rounded-cn-3 divide-y divide-cn-2">
+        {recent.map(e => (
+          <Layout.Flex key={e.seq} align="center" gap="sm" className="px-cn-sm py-cn-xs">
+            <StatusBadge variant="status" theme={kindTheme(e.kind)}>
+              {e.kind}
+            </StatusBadge>
+            <Text variant="body-normal" color="foreground-2" className="flex-1 truncate">
+              {e.actor}
+            </Text>
+            <Text color="foreground-3" className="font-mono-code">
+              #{e.seq} · {e.hash.slice(0, 7)}
+            </Text>
+            <Text color="foreground-3">{relTime(e.created_at)}</Text>
+          </Layout.Flex>
+        ))}
+      </div>
+    </Layout.Vertical>
+  )
+}
+
+/** Insights — pulse numbers, activity chart, contributors, live audit trail. */
 export function RepoInsightsPage() {
   const { spaceId, repoId } = useRepoParams()
   const { data: pulse, isLoading: pulseLoading } = usePulse(spaceId, repoId)
@@ -139,6 +198,8 @@ export function RepoInsightsPage() {
             })
           )}
         </Layout.Vertical>
+
+        <AuditTrail spaceId={spaceId} repoId={repoId} />
       </SandboxLayout.Content>
     </SandboxLayout.Main>
   )

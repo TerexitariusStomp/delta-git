@@ -784,3 +784,22 @@ export const useSecuritySettings = (spaceId: string, repoId: string) =>
   useQuery(['delta', 'security-settings', spaceId, repoId], () =>
     dgFetch<SecuritySettings>(`${v1Path(spaceId, repoId)}/settings/security`)
   )
+
+// --- op-log (hash-chained audit trail — the live activity viz) -----------------
+
+export interface OpLogEntry {
+  seq: number
+  hash: string
+  prev_hash: string
+  kind: string
+  actor: string
+  payload: Record<string, unknown>
+  created_at: number
+}
+
+export const useOpLog = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'oplog', spaceId, repoId],
+    () => dgFetch<{ entries: OpLogEntry[] }>(`/api/${spaceId}/${repoId}/dg/oplog`),
+    { select: data => data.entries ?? [], refetchInterval: 30_000 }
+  )
