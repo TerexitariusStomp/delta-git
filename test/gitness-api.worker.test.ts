@@ -730,4 +730,61 @@ describe("gitness /api/v1 write paths", () => {
     expect(forkDetail.status).toBe(200);
     expect((forkDetail.body as { num_forks: number }).num_forks).toBe(0);
   });
+
+  it("code-scanning: SARIF upload → analyses → alerts → dismiss", async () => {
+    const sarif = {
+      version: "2.1.0",
+      runs: [
+        {
+          tool: { driver: { name: "test-scanner" } },
+          results: [
+            {
+              ruleId: "CVE-TEST-1",
+              level: "error",
+              message: { text: "hardcoded key" },
+              locations: [
+                {
+                  physicalLocation: {
+                    artifactLocation: { uri: "src/key.ts" },
+                    region: { startLine: 7 },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const upload = await post(
+      `/api/v1/repos/${ref}/code-scanning/sarifs`,
+      { commit_sha: "abc123", ref: "refs/heads/main", sarif },
+      w.cookieHeader
+    );
+    expect(upload.status).toBe(202);
+
+    const analyses = await get(`/api/v1/repos/${ref}/code-scanning/analyses`, w.cookieHeader);
+    const runs = analyses.body as { tool: { name: string }; results_count: number }[];
+    expect(runs[0].tool.name).toBe("test-scanner");
+    expect(runs[0].results_count).toBe(1);
+
+    const alerts = await get(`/api/v1/repos/${ref}/code-scanning/alerts`, w.cookieHeader);
+    const rows = alerts.body as {
+      number: number;
+      rule_id: string;
+      location: { path: string };
+    }[];
+    expect(rows[0].rule_id).toBe("CVE-TEST-1");
+    expect(rows[0].location.path).toBe("src/key.ts");
+
+    const dismissed = await patch(
+      `/api/v1/repos/${ref}/code-scanning/alerts/${rows[0].number}`,
+      { state: "dismissed" },
+      w.cookieHeader
+    );
+    expect(dismissed.status).toBe(200);
+    expect((dismissed.body as { state: string }).state).toBe("dismissed");
+
+    const open = await get(`/api/v1/repos/${ref}/code-scanning/alerts?state=open`, w.cookieHeader);
+    expect((open.body as unknown[]).length).toBe(0);
+  });
 });

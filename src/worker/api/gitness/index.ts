@@ -36,6 +36,7 @@ import { registerGitnessCodeowners } from "./codeowners";
 import { registerGitnessSocial } from "./social";
 import { registerGitnessInsights } from "./insights";
 import { registerGitnessProjects } from "./projects";
+import { registerGitnessCodeScan } from "./codescan";
 import { registerGitnessReleases } from "./releases";
 import { registerGitnessWiki } from "./wiki";
 import { registerGitnessRepos } from "./repos";
@@ -113,6 +114,8 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessInsights(router);
   // Projects — boards/columns/cards, literal tails before gitdata.
   registerGitnessProjects(router);
+  // Code scanning — SARIF upload + alerts, literal tails before gitdata.
+  registerGitnessCodeScan(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);

@@ -561,3 +561,103 @@ export async function readSecuritySettings(env: Env, doName: string): Promise<Se
 export async function writeSecuritySettings(env: Env, doName: string, s: SecuritySettings) {
   await env.ROUTES.put(`gsec:${doName}`, JSON.stringify(s));
 }
+
+// ---------------------------------------------------------------------------
+// Code-scanning analyses — SARIF uploads from external scanners (trivy,
+// semgrep, agents). The index record keeps an alert-number → analysis map
+// so alert-level dismissals resolve in one KV read.
+// ---------------------------------------------------------------------------
+
+export interface ScanAlert {
+  /** Repo-global sequential alert number (GitHub shape). */
+  number: number;
+  ruleId: string;
+  level: string;
+  message: string;
+  path: string;
+  line: number;
+  state: "open" | "dismissed";
+  dismissedAt?: number;
+}
+
+export interface ScanAnalysis {
+  id: string;
+  commitSha: string;
+  ref: string;
+  toolName: string;
+  createdAt: number;
+  alerts: ScanAlert[];
+}
+
+interface ScanIndexEntry {
+  id: string;
+  commitSha: string;
+  ref: string;
+  toolName: string;
+  createdAt: number;
+  resultsCount: number;
+}
+
+interface ScanIndex {
+  analyses: ScanIndexEntry[];
+  /** Repo-global alert numbering — never reused even if analyses drop off. */
+  nextNumber: number;
+  /** number → analysis id. */
+  alertMap: Record<number, string>;
+}
+
+export const MAX_SCAN_ANALYSES = 200;
+
+async function readScanIndex(env: Env, doName: string): Promise<ScanIndex> {
+  const raw = await env.ROUTES.get(`gscan-idx:${doName}`, "json").catch(() => null);
+  return (raw as ScanIndex | null) ?? { analyses: [], nextNumber: 1, alertMap: {} };
+}
+
+export async function listScanAnalyses(env: Env, doName: string): Promise<ScanIndexEntry[]> {
+  return (await readScanIndex(env, doName)).analyses;
+}
+
+export async function readScanAnalysis(
+  env: Env,
+  doName: string,
+  id: string
+): Promise<ScanAnalysis | null> {
+  return await env.ROUTES.get<ScanAnalysis>(`gscan:${doName}:${id}`, "json").catch(() => null);
+}
+
+export async function findAnalysisForAlert(
+  env: Env,
+  doName: string,
+  alertNumber: number
+): Promise<string | undefined> {
+  return (await readScanIndex(env, doName)).alertMap[alertNumber];
+}
+
+/** Insert an analysis, assigning repo-global alert numbers. */
+export async function writeScanAnalysis(env: Env, doName: string, analysis: ScanAnalysis) {
+  const idx = await readScanIndex(env, doName);
+  for (const alert of analysis.alerts) {
+    idx.alertMap[idx.nextNumber] = analysis.id;
+    alert.number = idx.nextNumber++;
+  }
+  idx.analyses.unshift({
+    id: analysis.id,
+    commitSha: analysis.commitSha,
+    ref: analysis.ref,
+    toolName: analysis.toolName,
+    createdAt: analysis.createdAt,
+    resultsCount: analysis.alerts.length,
+  });
+  // Ring buffer — oldest analyses age out past the cap (alertMap entries
+  // are left; the alerts 404 like GitHub's deleted analyses).
+  const evicted = idx.analyses.splice(MAX_SCAN_ANALYSES);
+  await env.ROUTES.put(`gscan:${doName}:${analysis.id}`, JSON.stringify(analysis));
+  await env.ROUTES.put(`gscan-idx:${doName}`, JSON.stringify(idx));
+  for (const old of evicted) {
+    await env.ROUTES.delete(`gscan:${doName}:${old.id}`);
+  }
+}
+
+export async function writeScanAnalysisRecord(env: Env, doName: string, analysis: ScanAnalysis) {
+  await env.ROUTES.put(`gscan:${doName}:${analysis.id}`, JSON.stringify(analysis));
+}
