@@ -290,6 +290,18 @@ describe("releases: generate-notes", () => {
     });
     expect(rel.status, JSON.stringify(rel.body)).toBe(201);
     expect((rel.body as { body: string }).body).toContain("crash on empty config");
+
+    // GitHub's anonymous Atom feeds at the repo paths.
+    const releasesFeed = await call("GET", `/${repo.namespaceSlug}/notesrepo/releases.atom`);
+    expect(releasesFeed.status).toBe(200);
+    const releasesXml = new TextDecoder().decode(releasesFeed.bytes!);
+    expect(releasesXml).toContain("<feed");
+    expect(releasesXml).toContain("v1.0.0");
+
+    const commitsFeed = await call("GET", `/${repo.namespaceSlug}/notesrepo/commits.atom`);
+    expect(commitsFeed.status).toBe(200);
+    const commitsXml = new TextDecoder().decode(commitsFeed.bytes!);
+    expect(commitsXml).toContain("drop the legacy API");
   });
 });
 

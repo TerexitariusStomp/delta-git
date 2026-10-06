@@ -10,6 +10,7 @@ import { registerPagesRoutes } from "./routes/pages";
 import { registerArchiveRoutes } from "./routes/archive";
 import { registerAgentSurfaceRoutes } from "./routes/agentSurface";
 import { registerBadgeRoutes } from "./routes/badge";
+import { registerFeedRoutes } from "./routes/feed";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
 import { registerOAuthProviderRoutes } from "./routes/oauthProvider";
@@ -93,6 +94,8 @@ registerPagesRoutes(app);
 registerArchiveRoutes(app);
 // shields.io-compatible SVG badges under /badge/:owner/:repo/:metric
 registerBadgeRoutes(app);
+// Atom feeds at GitHub's paths — /:owner/:repo/{releases,commits}.atom
+registerFeedRoutes(app);
 // Agent-readable surface — /.well-known/delta-node, /llms.txt, /skill.md,
 // and `Accept: text/markdown` repo cards (falls through to UI otherwise).
 registerAgentSurfaceRoutes(app);
