@@ -11,6 +11,7 @@ import { registerArchiveRoutes } from "./routes/archive";
 import { registerAgentSurfaceRoutes } from "./routes/agentSurface";
 import { registerBadgeRoutes } from "./routes/badge";
 import { registerFeedRoutes } from "./routes/feed";
+import { registerDocsRoutes } from "./routes/docs";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
 import { registerOAuthProviderRoutes } from "./routes/oauthProvider";
@@ -63,6 +64,10 @@ app.get("/readyz", async (c) => {
   return c.json({ ok, checks }, ok ? 200 : 503);
 });
 
+// Self-hosted docs — this repo's docs/ tree rendered at /docs/{page}.
+// Registered before the gitness {.+} table: a static /docs sibling
+// drowns in the compiled regex when registered after greedy routes.
+registerDocsRoutes(app);
 // Register Git protocol routes (info/refs, upload-pack, receive-pack)
 registerGitRoutes(app);
 // Register Admin routes

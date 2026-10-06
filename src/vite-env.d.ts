@@ -4,6 +4,10 @@ interface ImportMetaEnv {
 
 interface ImportMeta {
   readonly env: ImportMetaEnv;
+  glob(
+    pattern: string,
+    options?: { query?: string; import?: string; eager?: boolean }
+  ): Record<string, unknown>;
 }
 
 declare module "*.css" {
