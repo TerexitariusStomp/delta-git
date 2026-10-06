@@ -35,4 +35,14 @@ describe("docs: /docs self-hosted renderer", () => {
     expect(spec.status).toBe(200);
     expect(await spec.text()).toContain("RFC 9421");
   });
+
+  it("serves the Scalar API reference pointing at /api/openapi.json", async () => {
+    const res = await workerExports.default.fetch("https://example.com/api-docs");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('data-url="/api/openapi.json"');
+    const spec = await workerExports.default.fetch("https://example.com/api/openapi.json");
+    expect(spec.status).toBe(200);
+    expect(((await spec.json()) as { openapi: string }).openapi).toBeTruthy();
+  });
 });

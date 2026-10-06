@@ -73,6 +73,30 @@ export function registerDocsRoutes(router: AppRouter) {
     return page("delta-git docs", `<h1>delta-git docs</h1>\n<ul>\n${links}\n</ul>`);
   });
 
+  // API reference — Scalar renders /api/openapi.json in-browser. The standalone
+  // bundle comes from jsDelivr rather than our worker (a ~2MB inline blob
+  // would eat the free-plan script budget); the page degrades to a raw spec
+  // link when the CDN is unreachable.
+  router.get("/api-docs", () => {
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>delta-git API reference</title></head>
+<body>
+<script id="api-reference" data-url="/api/openapi.json"></script>
+<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2"></script>
+<noscript><p>API spec: <a href="/api/openapi.json">/api/openapi.json</a></p></noscript>
+</body></html>`;
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=300",
+        "Content-Security-Policy":
+          "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self'; style-src 'unsafe-inline'",
+      },
+    });
+  });
+
   router.get("/docs/:page{.+}", (c) => {
     const name = c.req.param("page").replace(/\/$/, "");
     const md = pages.get(name) ?? pages.get(`${name}/README`);
