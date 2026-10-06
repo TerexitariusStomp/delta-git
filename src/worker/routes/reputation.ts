@@ -2,6 +2,7 @@ import type { AppContext, AppRouter } from "./hono";
 import type { VouchKind } from "@/worker/db/d1/schema";
 
 import { verifyAgentRequest } from "@/worker/agent/auth";
+import { issueRepCert, loadNodeKey } from "@/worker/agent/repCert";
 import { loadViewer } from "@/worker/auth/session";
 import { sameOriginViolation } from "@/worker/auth/origin";
 import { metric, rateLimit, LIMITS } from "@/worker/agent/abuse";
@@ -56,6 +57,21 @@ function bad(c: AppContext, reason: string, status = 400): Response {
   return json(c, { error: reason }, status);
 }
 
+// Machine-readable quota gate: agents learn *what* proof lifts the limit and
+// *where* to mint it, not just "try later". The rep cert is portable — any
+// GLIP node accepts it for its own standing-based tiers.
+function proofRequired(c: AppContext, reason: string): Response {
+  return json(
+    c,
+    {
+      error: reason,
+      proof_required: "dg-rep-cert",
+      acquire: `${new URL(c.req.url).origin}/api/dg/agents/{did}/certificate`,
+    },
+    429
+  );
+}
+
 /**
  * Authenticate a global (non-repo-scoped) reputation request: signed agent
  * envelope first, then browser session. Returns the actor key (agent DID or
@@ -97,7 +113,7 @@ export function registerReputationRoutes(router: AppRouter): void {
     const principal = await authenticateActor(c, body);
     if (principal instanceof Response) return principal;
     const limited = await rateLimit(c.env, LIMITS.vote, principal.actor);
-    if (!limited.ok) return bad(c, "rate-limited", 429);
+    if (!limited.ok) return proofRequired(c, "rate-limited");
 
     const parsed = JSON.parse(new TextDecoder().decode(body) || "{}") as {
       to?: string;
@@ -152,6 +168,27 @@ export function registerReputationRoutes(router: AppRouter): void {
         created_at: v.createdAt,
       })),
     });
+  });
+
+  // --- reputation certificates -------------------------------------------------
+  //
+  // GET /api/dg/agents/:did/certificate — a portable, node-signed proof of
+  // standing (dg-rep-cert-1). Any GLIP node verifies it offline against the
+  // embedded node key; quota gates point here via `proof_required` bodies.
+  router.get("/api/dg/agents/:did/certificate", async (c) => {
+    const did = c.req.param("did");
+    if (!did.startsWith("did:")) return bad(c, "did-required", 400);
+    const target = await findRepTarget(c.var.db, did);
+    if (!target) return bad(c, "unknown-target", 404);
+    const node = await loadNodeKey(c.env);
+    if (!node) return bad(c, "node-key-not-configured", 503);
+    const cert = await issueRepCert({
+      node,
+      sub: did,
+      rep: target.rep,
+      accountCreatedAt: target.createdAt,
+    });
+    return json(c, cert);
   });
 
   // --- epochs (Coordinape-style allocation windows) ---------------------------

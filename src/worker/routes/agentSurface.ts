@@ -5,6 +5,7 @@ import { getRepoStub } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { getHeadAndRefs, readPath } from "@/worker/git/operations/read";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
+import { loadNodeKey } from "@/worker/agent/repCert";
 
 // Agent-readable surface — the "agents that ask get markdown" contract.
 // Humans get the SPA; agents that send `Accept: text/markdown` get a
@@ -16,7 +17,7 @@ const README_MAX_BYTES = 64 * 1024;
 
 const td = new TextDecoder();
 
-function nodeInfo(c: AppContext) {
+function nodeInfo(c: AppContext, nodeDid?: string, nodeKey?: JsonWebKey) {
   const origin = new URL(c.req.url).origin;
   return {
     // GLIP-02-compatible node descriptor (Twigpine interop) plus the
@@ -24,7 +25,7 @@ function nodeInfo(c: AppContext) {
     name: "delta-git",
     software: { name: "delta-git", version: "0.2.0", repository: "delta-git" },
     protocols: {
-      git: ["smart-http-v2"],
+      git: ["smart-http-v2", "bundle-uri"],
       api: ["/api/v1 (session)", "/api/v3 (github-rest)"],
       federation: ["sh.tangled.* records", "radicle mirror-out"],
     },
@@ -33,10 +34,20 @@ function nodeInfo(c: AppContext) {
         "bearer:pat",
         "oauth2:atproto-dpop",
         "did:plc session",
-        "did:key signature (planned)",
+        "rfc9421:ed25519 did:key (GLIP-01)",
       ],
-      push: "PAT basic-auth over smart HTTP, or DID-bound OAuth",
+      push: "PAT basic-auth, DID-bound OAuth, or RFC 9421 signature (did:key agents)",
     },
+    ...(nodeDid && nodeKey
+      ? {
+          signing: {
+            node_did: nodeDid,
+            key: nodeKey,
+            rep_cert: `${origin}/api/dg/agents/{did}/certificate`,
+            rep_cert_kind: "dg-rep-cert-1",
+          },
+        }
+      : {}),
     capabilities: {
       merge_intents: "divergent pushes queue as merge intents, never rejected",
       adjudication: "quorum + AI seats vote on contested merges",
@@ -231,7 +242,10 @@ async function repoMarkdownCard(c: AppContext, owner: string, repo: string): Pro
 }
 
 export function registerAgentSurfaceRoutes(router: AppRouter) {
-  router.get("/.well-known/delta-node", (c) => c.json(nodeInfo(c)));
+  router.get("/.well-known/delta-node", async (c) => {
+    const node = await loadNodeKey(c.env);
+    return c.json(nodeInfo(c, node?.did, node?.publicJwk));
+  });
   router.get("/llms.txt", (c) =>
     c.text(LLMS_TXT, 200, { "content-type": "text/plain; charset=utf-8" })
   );
