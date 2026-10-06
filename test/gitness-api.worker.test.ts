@@ -944,3 +944,117 @@ describe("gitness /api/v1 write paths", () => {
     expect(await find("pat.revoke")).toBeTruthy();
   });
 });
+
+describe("gists — repo-backed gist surface", () => {
+  async function call(
+    method: string,
+    path: string,
+    body?: unknown,
+    cookie?: string
+  ): Promise<{ status: number; body: unknown; text: string }> {
+    const headers: Record<string, string> = {};
+    if (cookie) headers.Cookie = cookie;
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const res = await workerExports.default.fetch(`https://example.com${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let parsed: unknown = text;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      /* raw text body */
+    }
+    return { status: res.status, body: parsed, text };
+  }
+
+  it("covers create → list → detail → raw → patch → commits → star → delete", async () => {
+    const cookie = seeded.cookieHeader;
+
+    // create — anonymous 401, authed 201 with file contents echoed back
+    const anon = await call("POST", "/api/v1/gists", { files: { "a.txt": "x" } });
+    expect(anon.status).toBe(401);
+
+    const created = await call(
+      "POST",
+      "/api/v1/gists",
+      {
+        description: "first gist",
+        public: true,
+        files: { "hello.txt": "hello world", "other.md": "# t\n" },
+      },
+      cookie
+    );
+    expect(created.status).toBe(201);
+    const gist = created.body as {
+      id: string;
+      public: boolean;
+      files: Record<string, { filename: string; content: string }>;
+    };
+    expect(gist.id).toMatch(/^g-[0-9a-f]{12}$/);
+    expect(gist.public).toBe(true);
+    expect(gist.files["hello.txt"].content).toBe("hello world");
+
+    // gist repo hidden from the space repo list
+    const spaceRepos = await call(
+      "GET",
+      `/api/v1/spaces/${seeded.namespaceSlug}/repos`,
+      undefined,
+      cookie
+    );
+    const slugs = (spaceRepos.body as { identifier: string }[]).map((r) => r.identifier);
+    expect(slugs).not.toContain(gist.id);
+
+    // list — anonymous 401, authed contains the gist
+    expect((await call("GET", "/api/v1/gists")).status).toBe(401);
+    const mine = await call("GET", "/api/v1/gists", undefined, cookie);
+    expect((mine.body as { id: string }[]).map((g) => g.id)).toContain(gist.id);
+
+    // detail — anonymous ok on public gist
+    const detail = await call("GET", `/api/v1/gists/${gist.id}`);
+    expect(detail.status).toBe(200);
+    expect((detail.body as { description: string }).description).toBe("first gist");
+
+    // raw file content
+    const raw = await call("GET", `/api/v1/gists/${gist.id}/raw/hello.txt`);
+    expect(raw.status).toBe(200);
+    expect(raw.text).toBe("hello world");
+
+    // patch — rename hello.txt→hi.txt, delete other.md, update description
+    const patched = await call(
+      "PATCH",
+      `/api/v1/gists/${gist.id}`,
+      {
+        description: "renamed",
+        files: { "hello.txt": { filename: "hi.txt", content: "hello v2" }, "other.md": null },
+      },
+      cookie
+    );
+    expect(patched.status).toBe(200);
+    const patchedGist = patched.body as {
+      description: string;
+      files: Record<string, { content: string }>;
+    };
+    expect(patchedGist.description).toBe("renamed");
+    expect(Object.keys(patchedGist.files).sort()).toEqual(["hi.txt"]);
+    expect(patchedGist.files["hi.txt"].content).toBe("hello v2");
+
+    // commits — root + update
+    const commits = await call("GET", `/api/v1/gists/${gist.id}/commits`);
+    expect(commits.status).toBe(200);
+    expect((commits.body as { sha: string }[]).length).toBeGreaterThanOrEqual(2);
+
+    // star toggle
+    expect((await call("PUT", `/api/v1/gists/${gist.id}/star`, undefined, cookie)).status).toBe(
+      200
+    );
+    const starred = await call("GET", `/api/v1/gists/${gist.id}`, undefined, cookie);
+    expect((starred.body as { viewer_starred: boolean }).viewer_starred).toBe(true);
+
+    // delete → subsequent reads 404 (queue teardown is async; the route
+    // itself must accept + enqueue)
+    expect((await call("DELETE", `/api/v1/gists/${gist.id}`, undefined, cookie)).status).toBe(204);
+  });
+});

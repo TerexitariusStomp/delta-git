@@ -51,6 +51,9 @@ export const repositories = sqliteTable(
     // Fork lineage — repo this was forked from (NULL for roots). Enables
     // num_forks counts and the fork-network graph; forks-of-forks chain.
     forkedFromId: text("forked_from_id"),
+    // Gist flag: gist-backed repos are real git repos (cloneable, full
+    // history) but hide from space repo lists and show up via /gists.
+    isGist: integer("is_gist").notNull().default(0),
     // "do" (default) = native DO+R2 engine. "artifacts" = canonical objects
     // live in a Cloudflare Artifacts repository; `artifacts_name` holds the
     // repo name inside the bound namespace (`dg-<uuid>`).

@@ -292,7 +292,9 @@ export function registerGitnessSpaces(router: AppRouter) {
     const ns = await resolveSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
     const viewer = await loadViewer(c);
-    const rows = await listRepositoriesForNamespace(c.var.db, ns.id, viewer?.userId ?? null);
+    const rows = (await listRepositoriesForNamespace(c.var.db, ns.id, viewer?.userId ?? null))
+      // Gist-backed rows are surfaced under /api/v1/gists, not repo lists.
+      .filter((r) => r.isGist === 0);
     const query = (c.req.query("query") ?? "").toLowerCase();
     const filtered = query ? rows.filter((r) => r.slug.toLowerCase().includes(query)) : rows;
     const page = pageParams(c);

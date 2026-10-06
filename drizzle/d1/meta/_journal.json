@@ -169,6 +169,13 @@
       "when": 1791322487378,
       "tag": "0023_perfect_deadpool",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791322759440,
+      "tag": "0024_massive_otto_octavius",
+      "breakpoints": true
     }
   ]
 }

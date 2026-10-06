@@ -1,4 +1,4 @@
-import { and, eq, exists, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, or, sql } from "drizzle-orm";
 
 import type { Db } from "@/worker/db/d1/client";
 import { namespaceMemberships } from "@/worker/db/d1/schema/namespaceMemberships";
@@ -292,4 +292,27 @@ export async function listForkNetwork(db: Db, repositoryId: string): Promise<For
     }
   }
   return out;
+}
+
+/** Gist-backed repos hide from space lists but resolve publicly by slug. */
+export async function findGistBySlug(
+  db: Db,
+  slug: string
+): Promise<{ repository: RepositoryRow; namespaceSlug: string } | undefined> {
+  const rows = await db
+    .select({ repository: repositories, namespaceSlug: namespaces.slug })
+    .from(repositories)
+    .innerJoin(namespaces, eq(repositories.namespaceId, namespaces.id))
+    .where(and(eq(repositories.slug, slug), eq(repositories.isGist, 1)))
+    .limit(1);
+  return rows[0];
+}
+
+/** All gist repos a user created (any namespace), newest first. */
+export async function listGistsForUser(db: Db, userId: string): Promise<RepositoryRow[]> {
+  return await db
+    .select()
+    .from(repositories)
+    .where(and(eq(repositories.createdBy, userId), eq(repositories.isGist, 1)))
+    .orderBy(desc(repositories.createdAt));
 }
