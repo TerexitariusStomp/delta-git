@@ -32,6 +32,7 @@ import { registerGitnessGitdata } from "./gitdata";
 import { registerGitnessPullreqs } from "./pullreqs";
 import { registerGitnessDiscussions } from "./discussions";
 import { registerGitnessIssues } from "./issues";
+import { registerGitnessCodeowners } from "./codeowners";
 import { registerGitnessSocial } from "./social";
 import { registerGitnessInsights } from "./insights";
 import { registerGitnessProjects } from "./projects";
@@ -96,6 +97,9 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessPullreqs(router);
   // Issues/milestones/labels — same greedy-tail ordering as pullreqs.
   registerGitnessIssues(router);
+  // CODEOWNERS — parsed rules + per-path owner resolution for reviewer
+  // suggestions; literal tails before the greedy gitdata suffixes.
+  registerGitnessCodeowners(router);
   // Discussions — literal tails before the greedy gitdata/repos suffixes.
   registerGitnessDiscussions(router);
   // Social (`/+/star`, `/+/topics`, `/spaces/:s/+/follow`, `/explore`,

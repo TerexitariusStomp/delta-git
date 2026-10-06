@@ -29,6 +29,7 @@ import { computeOid } from "@/worker/git/core";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { readPayload, resolvePathEntry, setTreePath } from "@/worker/agent/patch";
 import { diffCommitsText } from "./gitdata";
+import { suggestCodeOwnerReviewers } from "./codeowners";
 import { readRepoLabels } from "./stores";
 import { mergeIntentToPullReq } from "./pullreq";
 import {
@@ -424,11 +425,22 @@ export function registerGitnessPullreqs(router: AppRouter) {
       kind: "pullreq.create",
     });
     const intent = accepted.intent;
-    if (body.title || body.description) {
+    // CODEOWNERS reviewer suggestions — owners of every path the PR touches,
+    // minus the author (self-review is meaningless).
+    const targetOid = refs.find((r) => r.name === targetRef)?.oid ?? intent.baseOid;
+    const suggestions = await suggestCodeOwnerReviewers({
+      env: c.env,
+      access: gate,
+      baseOid: targetOid,
+      headOid: source.oid,
+      exclude: gate.actor,
+    }).catch(() => [] as string[]);
+    if (body.title || body.description || suggestions.length > 0) {
       await writePrMeta(c.env, gate.route.doName, intent.id, {
         title: body.title,
         description: body.description,
         comments: [],
+        reviewers: suggestions.map((owner) => owner.replace(/^@/, "")),
       });
     }
     const all = await allIntentsOrdered(gate, c.env);
@@ -440,6 +452,7 @@ export function registerGitnessPullreqs(router: AppRouter) {
         title: body.title,
       }),
       description: body.description ?? "",
+      suggested_reviewers: suggestions,
     });
   });
 

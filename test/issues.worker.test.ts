@@ -372,6 +372,68 @@ describe("issues: .github issue templates", () => {
       labels: ["bug", "triage"],
     });
     expect(templates[0].body).toContain("Describe what happened.");
+
+    // CODEOWNERS endpoint on the same repo — second commit adds the file.
+    const coSource = ["* @all-hands", "*.ts @ts-guild", ".github/ @meta-owners", ""].join(
+      "\n"
+    );
+    const coBlobPayload = new TextEncoder().encode(coSource);
+    const coBlob = await encodeGitObject("blob", coBlobPayload);
+    const coDirPayload = buildTreePayload([
+      { mode: "40000", name: "ISSUE_TEMPLATE", oid: templateDirTree.oid },
+      { mode: "100644", name: "CODEOWNERS", oid: coBlob.oid },
+    ]);
+    const coDir = await encodeGitObject("tree", coDirPayload);
+    const coRootPayload = buildTreePayload([
+      { mode: "40000", name: ".github", oid: coDir.oid },
+      { mode: "100644", name: "README.md", oid: readmeBlob.oid },
+    ]);
+    const coRoot = await encodeGitObject("tree", coRootPayload);
+    const coCommitPayload = new TextEncoder().encode(
+      `tree ${coRoot.oid}\n` +
+        `parent ${commit.oid}\n` +
+        `author ${author}\n` +
+        `committer ${author}\n\n` +
+        `add codeowners\n`
+    );
+    const coCommit = await encodeGitObject("commit", coCommitPayload);
+    const coPack = await buildPack([
+      { type: "blob", payload: coBlobPayload },
+      { type: "tree", payload: coDirPayload },
+      { type: "tree", payload: coRootPayload },
+      { type: "commit", payload: coCommitPayload },
+    ]);
+    const coPush = await workerExports.default.fetch(
+      `https://example.com/${seededTpl.namespaceSlug}/issrepo/git-receive-pack`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-git-receive-pack-request",
+          Authorization: lookupPushAuth(seededTpl.namespaceSlug, "issrepo")!,
+        },
+        body: toRequestBody(
+          concatChunks([
+            pktLine(
+              `${commit.oid} ${coCommit.oid} refs/heads/main\0 report-status ofs-delta agent=test\n`
+            ),
+            flushPkt(),
+            coPack,
+          ])
+        ),
+      } as any
+    );
+    expect(coPush.status).toBe(200);
+
+    const owners = await call(
+      "GET",
+      `${tplBase}/codeowners/owners?paths=${encodeURIComponent("src/app.ts,README.md,.github/CODEOWNERS")}`,
+      { cookie: seededTpl.cookieHeader }
+    );
+    expect(owners.status).toBe(200);
+    const resolved = (owners.body as { owners: Record<string, string[]> }).owners;
+    expect(resolved["src/app.ts"]).toEqual(["@ts-guild"]);
+    expect(resolved["README.md"]).toEqual(["@all-hands"]);
+    expect(resolved[".github/CODEOWNERS"]).toEqual(["@meta-owners"]);
   });
 });
 

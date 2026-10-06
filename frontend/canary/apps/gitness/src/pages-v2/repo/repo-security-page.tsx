@@ -1,10 +1,10 @@
 import { useParams } from 'react-router-dom'
 
-import { Layout, Link, SandboxLayout, StatusBadge, Text } from '@harnessio/ui/components'
+import { Layout, Link, MarkdownViewer, SandboxLayout, StatusBadge, Text } from '@harnessio/ui/components'
 
 import { PathParams } from '../../RouteDefinitions'
 import { useGitRef } from '../../hooks/useGitRef'
-import { useSecurityScan, useSecuritySettings } from '../delta/delta-api'
+import { useSecurityPolicy, useSecurityScan, useSecuritySettings } from '../delta/delta-api'
 
 const KIND_LABEL: Record<string, string> = {
   'pem-private-key': 'Private key',
@@ -19,6 +19,7 @@ export function RepoSecurityPage() {
   const base = `/${spaceId}/repos/${repoId}`
   const { data: scan, isLoading } = useSecurityScan(spaceId, repoId)
   const { data: settings } = useSecuritySettings(spaceId, repoId)
+  const { data: policy } = useSecurityPolicy(spaceId, repoId)
 
   const findings = scan?.findings ?? []
   const grouped = new Map<string, typeof findings>()
@@ -62,6 +63,16 @@ export function RepoSecurityPage() {
               </Link>
               .
             </Text>
+          </Layout.Vertical>
+        )}
+
+        {policy?.content && (
+          <Layout.Vertical gap="sm" className="border border-cn-2 rounded-cn-3 p-cn-md mb-cn-md">
+            <Text variant="body-strong">Security policy</Text>
+            <Text color="foreground-3" variant="body-normal">
+              From <Link to={`${base}/files/~/blob/${policy.path}`} variant="secondary">{policy.path}</Link>
+            </Text>
+            <MarkdownViewer source={policy.content} />
           </Layout.Vertical>
         )}
 

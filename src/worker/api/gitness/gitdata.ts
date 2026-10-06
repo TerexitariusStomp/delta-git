@@ -82,7 +82,7 @@ async function mustResolveRef(
   };
 }
 
-interface TreeChange {
+export interface TreeChange {
   path: string;
   status: "added" | "modified" | "deleted";
   oldOid?: string;
@@ -93,7 +93,7 @@ interface TreeChange {
  * Recursive two-tree diff. Entries with equal oids prune whole subtrees, so
  * cost tracks actual change surface, not repo size.
  */
-async function diffTrees(
+export async function diffTrees(
   env: Env,
   repoId: string,
   baseTreeOid: string | undefined,
@@ -196,7 +196,7 @@ async function readBlobText(
   return new TextDecoder().decode(obj.payload);
 }
 
-async function commitTreeOf(
+export async function commitTreeOf(
   env: Env,
   repoId: string,
   oid: string,

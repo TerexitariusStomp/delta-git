@@ -808,6 +808,13 @@ export const useSecuritySettings = (spaceId: string, repoId: string) =>
     dgFetch<SecuritySettings>(`${v1Path(spaceId, repoId)}/settings/security`)
   )
 
+export const useSecurityPolicy = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'security-policy', spaceId, repoId], () =>
+    dgFetch<{ path: string | null; content: string | null }>(
+      `${v1Path(spaceId, repoId)}/security-policy`
+    )
+  )
+
 // --- op-log (hash-chained audit trail — the live activity viz) -----------------
 
 export interface OpLogEntry {

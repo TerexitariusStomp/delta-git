@@ -347,6 +347,59 @@ describe("gitness /api/v1 write paths", () => {
     expect(afterIssue.state_reason).toBe("completed");
   });
 
+  it("PR create suggests CODEOWNERS reviewers for touched paths", async () => {
+    // CODEOWNERS on main covers the path the feature branch will touch.
+    const co = await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "main",
+        message: "add CODEOWNERS",
+        actions: [
+          {
+            action: "CREATE",
+            path: "CODEOWNERS",
+            encoding: "text",
+            payload: "*.md @docs-owner\n",
+          },
+        ],
+      },
+      w.cookieHeader
+    );
+    expect(co.status).toBe(200);
+
+    await post(
+      `/api/v1/repos/${ref}/branches`,
+      { name: "docs-branch", target: "main" },
+      w.cookieHeader
+    );
+    const cm = await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "docs-branch",
+        message: "add readme",
+        actions: [{ action: "CREATE", path: "README.md", encoding: "text", payload: "# hi\n" }],
+      },
+      w.cookieHeader
+    );
+    expect(cm.status).toBe(200);
+
+    const pr = await post(
+      `/api/v1/repos/${ref}/pullreq`,
+      { source_branch: "docs-branch", target_branch: "main", title: "docs" },
+      w.cookieHeader
+    );
+    expect(pr.status).toBe(200);
+    const prOut = pr.body as { number: number; suggested_reviewers?: string[] };
+    expect(prOut.suggested_reviewers).toContain("@docs-owner");
+
+    // Reviewers persisted in the PR metadata — visible via the reviewers API.
+    const detail = await get(`/api/v1/repos/${ref}/pullreq/${prOut.number}/reviewers/combined`);
+    const reviewers = (detail.body as { reviewers: { reviewer: { uid: string } }[] }).reviewers.map(
+      (r) => r.reviewer.uid
+    );
+    expect(reviewers).toContain("docs-owner");
+  });
+
   it("tag create + delete", async () => {
     const tag = await post(
       `/api/v1/repos/${ref}/tags`,
