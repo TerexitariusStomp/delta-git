@@ -11,6 +11,7 @@ import {
 } from "@/worker/git";
 import { loadPeeledTagTargets } from "@/worker/git/object-store";
 import { handleFetchV2Streaming } from "@/worker/git/operations/uploadStream";
+import { handleObjectInfoCommand } from "@/worker/git/operations/objectInfo";
 import { handleBundleGet, handleBundleUriCommand } from "@/worker/git/operations/bundle";
 import {
   hasHttpSignature,
@@ -217,6 +218,10 @@ async function handleUploadPackPOST(
 
   if (command === "fetch") {
     return handleFetchV2Streaming(env, route.doName, body, request.signal, cacheCtx);
+  }
+
+  if (command === "object-info") {
+    return handleObjectInfoCommand(env, route.doName, body, cacheCtx);
   }
 
   if (command === "bundle-uri") {

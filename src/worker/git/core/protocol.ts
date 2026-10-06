@@ -33,6 +33,8 @@ export async function capabilityAdvertisement(
     chunks.push(pktLine("fetch=shallow deepen-not filter wait-for-done\n"));
     // baseline-clone bundles over plain GET (protocol-v2 bundle-uri)
     chunks.push(pktLine("bundle-uri\n"));
+    // object-info: size lookups for promisor/partial-clone clients
+    chunks.push(pktLine("object-info\n"));
     // We stream pack data over sideband; advertise side-band-64k for client awareness
     chunks.push(pktLine("side-band-64k\n"));
     chunks.push(pktLine("ofs-delta\n"));
