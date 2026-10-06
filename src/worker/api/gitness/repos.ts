@@ -29,6 +29,7 @@ import {
   countForks,
   countRepositoriesForNamespace,
   listForkNetwork,
+  updateRepositoryMirrorTargets,
 } from "@/worker/db/d1/dal";
 import { LIMITS, rateLimit, metric, DEFAULT_REPO_COUNT_QUOTA } from "@/worker/agent/abuse";
 
@@ -863,6 +864,57 @@ export function registerGitnessRepos(router: AppRouter) {
       await stub.setHead({ target });
     }
     return c.json({});
+  });
+
+  // Mirror-out federation targets — the D1 `mirror_targets` column the
+  // federate queue task reads on every public ref advance. Schemes:
+  // https:// → real smart-HTTP push; rad:/ssh:/tangled: → signed relay.
+  // Members read the config; writers replace it atomically.
+  router.get("/api/v1/repos/:repo_ref{.+}/mirrors", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+    if (!row) return gNotFound(c, "repository");
+    let targets: { name: string; url: string }[] = [];
+    if (row.mirrorTargets) {
+      try {
+        targets = JSON.parse(row.mirrorTargets);
+      } catch {
+        /* malformed metadata — surface as empty rather than 500 */
+      }
+    }
+    return c.json({ mirrors: targets });
+  });
+
+  router.put("/api/v1/repos/:repo_ref{.+}/mirrors", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as {
+      mirrors?: { name?: string; url?: string }[];
+    } | null;
+    if (!Array.isArray(body?.mirrors)) {
+      return gErr(c, 400, "mirrors must be an array of {name,url}");
+    }
+    const targets: { name: string; url: string }[] = [];
+    for (const m of body.mirrors) {
+      const url = (m.url ?? "").trim();
+      const name = (m.name ?? "").trim();
+      if (!name || !url) return gErr(c, 400, "each mirror needs name + url");
+      if (!/^(https:\/\/|rad:|ssh:\/\/|tangled:)/.test(url)) {
+        return gErr(c, 400, `unsupported mirror scheme: ${url}`);
+      }
+      if (targets.length >= 8) return gErr(c, 400, "at most 8 mirror targets");
+      targets.push({ name, url });
+    }
+    const row = await findRepositoryByDoName(c.var.db, gate.route.doName);
+    if (!row) return gNotFound(c, "repository");
+    await updateRepositoryMirrorTargets(
+      c.var.db,
+      row.id,
+      targets.length ? JSON.stringify(targets) : null,
+      Date.now()
+    );
+    return c.json({ mirrors: targets });
   });
 
   // Vendored contract: GET/PATCH exchange the SPA's flat security shape.

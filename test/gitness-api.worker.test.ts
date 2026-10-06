@@ -1567,3 +1567,40 @@ describe("DID resolution /1.0/identifiers", () => {
     expect([404, 400, 500]).toContain(missing.status);
   });
 });
+
+describe("mirror-out targets", () => {
+  it("PUT/GET mirrors round-trips federation config", async () => {
+    const repo = await setupRepoForTests(env, uniq("mir-ns"), "mirrepo");
+    const base = `/api/v1/repos/${repo.namespaceSlug}/mirrepo/+`;
+
+    const empty = await get(`${base}/mirrors`, repo.cookieHeader);
+    expect(empty.status).toBe(200);
+    expect((empty.body as { mirrors: unknown[] }).mirrors).toEqual([]);
+
+    const put = await workerExports.default.fetch(`https://example.com${base}/mirrors`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+      body: JSON.stringify({
+        mirrors: [
+          { name: "knot", url: "https://knot.example.com/mir-ns/mirrepo.git" },
+          { name: "radicle", url: "rad:z3gKSJU9ZU5sGf7z6YhXq8KjE5Zq2" },
+        ],
+      }),
+    });
+    const putText = await put.text();
+    expect(put.status, putText).toBe(200);
+
+    const got = await get(`${base}/mirrors`, repo.cookieHeader);
+    const mirrors = (got.body as { mirrors: { name: string; url: string }[] }).mirrors;
+    expect(mirrors.length).toBe(2);
+    expect(mirrors[1].url.startsWith("rad:")).toBe(true);
+
+    // Scheme validation + cap enforcement.
+    const bad = await workerExports.default.fetch(`https://example.com${base}/mirrors`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+      body: JSON.stringify({ mirrors: [{ name: "x", url: "ftp://nope" }] }),
+    });
+    expect(bad.status).toBe(400);
+  });
+});

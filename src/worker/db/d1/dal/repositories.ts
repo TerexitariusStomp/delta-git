@@ -201,6 +201,19 @@ export async function updateRepositoryVisibility(
   };
 }
 
+/** Replace the mirror-out target list (federation config). */
+export async function updateRepositoryMirrorTargets(
+  db: Db,
+  repositoryId: string,
+  mirrorTargetsJson: string | null,
+  now: number
+): Promise<void> {
+  await db
+    .update(repositories)
+    .set({ mirrorTargets: mirrorTargetsJson, updatedAt: now })
+    .where(eq(repositories.id, repositoryId));
+}
+
 /**
  * Rename a repository's slug within its namespace. The (namespaceId, slug)
  * unique constraint means a collision resolves to a no-op — callers detect
