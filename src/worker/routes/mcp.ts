@@ -7,6 +7,7 @@ import { getRepoStub } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
+import { OAUTH_SCOPES } from "@/worker/auth/oauth";
 import { mergeDryRun } from "@/worker/merge/engine";
 
 // MCP-over-HTTP endpoint. Agents that speak JSON-RPC can drive delta-git's
@@ -23,12 +24,20 @@ function textResult(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
 }
 
+interface McpResolved {
+  doName: string;
+  actor: string;
+  /** true when the principal may run mutating tools (PAT push-level or
+   *  OAuth member + repo:write) */
+  writeOk: boolean;
+}
+
 async function resolveDoName(
   c: AppContext,
   request: Request | undefined,
   owner: string,
   repo: string
-): Promise<{ doName: string; actor: string } | null> {
+): Promise<McpResolved | null> {
   if (!isValidOwnerRepo(owner) || !isValidOwnerRepo(repo)) return null;
   const route = await resolveRepositoryRoute(c.env, owner, repo, {
     mode: "route-cache-only",
@@ -36,13 +45,28 @@ async function resolveDoName(
     log: c.var.logFor({ service: "Mcp" }),
   });
   if (!route) return null;
-  // Mutating tools need a principal: Basic PAT auth on the MCP request.
+  // Mutating tools need a principal: Basic PAT or OAuth Bearer on the MCP
+  // request. OAuth additionally requires namespace membership + scopes.
   const auth = request
     ? await authenticateGitRequest(c.env, request, route, { db: c.var.db })
     : null;
+  if (auth?.kind === "oauth") {
+    const { member, scopes } = auth.verified;
+    // Private repos: oauth reads need membership + repo:read — mirror the
+    // anonymous-404 contract rather than leaking existence.
+    if (route.visibility === "private" && (!member || !scopes.includes(OAUTH_SCOPES.REPO_READ))) {
+      return null;
+    }
+    return {
+      doName: route.doName,
+      actor: auth.verified.userId,
+      writeOk: member && scopes.includes(OAUTH_SCOPES.REPO_WRITE),
+    };
+  }
   return {
     doName: route.doName,
     actor: auth?.kind === "pat" ? auth.verified.userId : "mcp-anon",
+    writeOk: auth?.kind === "pat",
   };
 }
 
@@ -103,8 +127,19 @@ export function registerMcpRoutes(router: AppRouter): void {
           const resolved = await resolveDoName(c, request, owner, repo);
           if (!resolved)
             return { content: [{ type: "text", text: "repo not found" }], isError: true };
-          if (resolved.actor === "mcp-anon") {
-            return { content: [{ type: "text", text: "auth required" }], isError: true };
+          if (!resolved.writeOk) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    resolved.actor === "mcp-anon"
+                      ? "auth required"
+                      : "insufficient scope or not a namespace member (needs repo:write)",
+                },
+              ],
+              isError: true,
+            };
           }
           const stub = getRepoStub(c.env, resolved.doName);
           const { attemptMerge } = await import("@/worker/merge/engine");

@@ -75,34 +75,61 @@ function normalizeHandle(handle: string): string {
     : `${handle}.bsky.social`
 }
 
+/** sessionStorage key holding the authorize URL we attempted to navigate to.
+ *  If the browser never actually leaves (extension interference, frozen
+ *  navigation, bfcache restore), the UI can offer it as a manual link — a
+ *  user click bypasses whatever blocked the scripted navigation. */
+export const PENDING_AUTHORIZE_KEY = 'dg-oauth-pending'
+
+export function pendingAuthorizeUrl(): string | null {
+  try {
+    return sessionStorage.getItem(PENDING_AUTHORIZE_KEY)
+  } catch {
+    return null
+  }
+}
+
 /**
  * Start Bluesky sign-in as a same-tab redirect. On success this never
  * resolves — the browser navigates to the authorization server and returns
  * to /oauth/callback, where completeBskyRedirect() finishes the flow.
  *
+ * If the page is still alive ~5s after assigning location.href, the
+ * navigation stalled — the promise resolves with the authorize URL so the
+ * caller can render a manual fallback link (the lib's own signInRedirect
+ * does the same detection via its "User navigated back" timer).
+ *
  * A redirect (not a popup) is deliberate: popup variants lose the opener
  * handle when COOP severs the relationship mid-flow, and browsers that open
  * window.open as a plain tab leave the callback window unclosable.
- * signInRedirect() rejects with "User navigated back" if bfcache restores
- * this page instead of navigating — callers should treat that as cancel.
  */
-export async function signInBlueskyRedirect(handle: string): Promise<never> {
+export async function signInBlueskyRedirect(handle: string): Promise<URL | never> {
   const normalized = normalizeHandle(handle)
   authLog('redirect:start', { handle: normalized })
   const client = await getBskyClient()
+  let url: URL
   try {
     // Inline of client.signInRedirect so we can log where the browser is
     // actually heading (PAR endpoint, AS origin) before the page unloads.
-    const url = await client.authorize(normalized, { state: 'deltagit' })
-    authLog('redirect:authorize', { host: url.host, path: url.pathname })
-    window.location.href = url.href
-    // Never resolves — same contract as signInRedirect.
-    return new Promise<never>(() => {})
+    url = await client.authorize(normalized, { state: 'deltagit' })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     authLog('redirect:error', { handle: normalized, error: msg })
     throw new Error(`Bluesky sign-in failed (${normalized}): ${msg}`)
   }
+  authLog('redirect:authorize', { host: url.host, path: url.pathname })
+  try {
+    sessionStorage.setItem(PENDING_AUTHORIZE_KEY, url.href)
+  } catch {
+    /* storage unavailable — fallback link just won't be offered */
+  }
+  window.location.href = url.href
+  return new Promise(resolve => {
+    setTimeout(() => {
+      authLog('redirect:stalled', { host: url.host })
+      resolve(url)
+    }, 5_000)
+  })
 }
 
 /**
@@ -228,6 +255,11 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
     throw new Error(`session verify failed: ${verifyRes.status} ${detail}`)
   }
   const result = (await verifyRes.json()) as AtpVerifyResult
+  try {
+    sessionStorage.removeItem(PENDING_AUTHORIZE_KEY)
+  } catch {
+    /* ignore */
+  }
   authLog('verify:done', {
     did: result.did,
     handle: result.handle,
@@ -250,7 +282,7 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
  * (callback → serviceAuth → dg_session → namespace redirect) runs in
  * completeBskySignIn() on /oauth/callback.
  */
-export async function signInWithBluesky(handle: string): Promise<never> {
+export async function signInWithBluesky(handle: string): Promise<URL | never> {
   return signInBlueskyRedirect(handle)
 }
 

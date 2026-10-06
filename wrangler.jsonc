@@ -8,7 +8,10 @@
   "compatibility_date": "2026-05-13",
   "compatibility_flags": [
     "nodejs_als",
-    "nodejs_compat"
+    "nodejs_compat",
+    // Required by @cloudflare/workers-oauth-provider for Client ID Metadata
+    // Document (CIMD) fetches — forbids fetches to private/link-local ranges.
+    "global_fetch_strictly_public"
   ],
   "workers_dev": true,
   "durable_objects": {
@@ -65,6 +68,12 @@
     {
       "binding": "ROUTES",
       "id": "5aec0fe75cee4e65b082cec726de78f9"
+    },
+    {
+      // OAuth provider state — hashed codes/tokens/grants, encrypted props.
+      // Nothing usable leaks from a dump: secrets are only ever hashed.
+      "binding": "OAUTH_KV",
+      "id": "d248c21a464e4189804ea80bd2b64ef2"
     }
   ],
   "d1_databases": [

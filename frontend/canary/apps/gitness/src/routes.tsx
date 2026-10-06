@@ -119,6 +119,7 @@ import { RepoPushRulesContainer } from "./pages-v2/repo/rules/repo-push-rules-co
 import { RepoRulesContainer } from "./pages-v2/repo/rules/repo-rules-container";
 import { RepoTagRulesContainer } from "./pages-v2/repo/rules/repo-tag-rules-container";
 import SearchPage from "./pages-v2/search-page";
+import { OAuthAuthorize } from "./delta/oauth-authorize";
 import { OAuthCallback } from "./delta/oauth-callback";
 import { SignIn } from "./pages-v2/signin";
 import { SignUp } from "./pages-v2/signup";
@@ -1301,10 +1302,17 @@ export const routes: CustomRouteObject[] = [
     handle: { routeName: RouteConstants.toSignIn },
   },
   {
-    // Client-side atproto OAuth redirect target — the popup writes its params
-    // to localStorage for the opener to consume (see delta/bsky-oauth.ts).
+    // Client-side atproto OAuth redirect target — the same-tab Bluesky flow
+    // lands back here to finish the token exchange (see delta/bsky-oauth.ts).
     path: "oauth/callback",
     element: <OAuthCallback />,
+  },
+  {
+    // delta-git OAuth 2.1 consent screen — client-rendered; calls
+    // /oauth/authorize/info + /oauth/authorize/decision (see
+    // delta/oauth-authorize.tsx and src/worker/routes/oauthProvider.ts).
+    path: "oauth/authorize",
+    element: <OAuthAuthorize />,
   },
   {
     path: "signup",

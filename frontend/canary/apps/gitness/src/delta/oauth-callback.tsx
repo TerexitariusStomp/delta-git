@@ -21,7 +21,12 @@ export const OAuthCallback: FC = () => {
     completeBskySignIn()
       .then(result => {
         if (cancelled) return
-        const dest = result.namespace ? `/${result.namespace}` : '/'
+        // A pending OAuth consent round-trip wins over the namespace
+        // landing — /signin stashed it when the consent page bounced us
+        // here unsigned. Same-origin path only (validated on write).
+        const returnTo = sessionStorage.getItem('dg-oauth-return')
+        if (returnTo) sessionStorage.removeItem('dg-oauth-return')
+        const dest = returnTo ?? (result.namespace ? `/${result.namespace}` : '/')
         authLog('callback:redirect', { dest })
         window.location.replace(dest)
       })

@@ -10,7 +10,8 @@
 //   dgit secrets set <owner>/<repo> NAME  write a repo secret (stdin value)
 //   dgit watch <dir>                     auto-commit + push on file changes
 //
-// Auth: DG_PAT env var (Basic PAT) or --did/--key for agent signatures.
+// Auth: `dgit login` (OAuth 2.1 + DPoP-bound tokens, ~/.dgit/auth.json),
+// DG_PAT env var (Basic PAT), or --did/--key for agent signatures.
 // Server: DG_HOST env or --host (default https://delta-git.workers.dev).
 //
 // Push scanning: whatever is uploaded is scanned on this machine (gitleaks,
@@ -24,6 +25,13 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, chmodSy
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import {
+  activeCredentials,
+  clearCredentials,
+  login as oauthLogin,
+  oauthGitHeaders,
+  oauthRequestHeaders,
+} from "./oauth";
 import {
   attestScan,
   dryRunUpdates,
@@ -41,19 +49,28 @@ function host(): string {
   return (program.opts().host ?? process.env.DG_HOST ?? "http://localhost:8787").replace(/\/$/, "");
 }
 
-function headers(): Record<string, string> {
+/**
+ * Auth precedence: DG_PAT (Basic) wins for CI/scripts; otherwise the OAuth
+ * login from `dgit login` supplies Bearer + a per-request DPoP proof.
+ * Server-side, bound tokens enforce the proof on API/MCP; the git transport
+ * takes the bare token (stock git can't mint per-request proofs).
+ */
+async function headers(method: string, url: string): Promise<Record<string, string>> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (process.env.DG_PAT) {
     const user = process.env.DG_USER ?? "agent";
     h.Authorization = `Basic ${Buffer.from(`${user}:${process.env.DG_PAT}`).toString("base64")}`;
+    return h;
   }
+  const oauth = await oauthRequestHeaders(host(), method, url);
+  if (oauth) Object.assign(h, oauth);
   return h;
 }
 
 async function api(path: string, init?: RequestInit): Promise<unknown> {
   const res = await fetch(`${host()}${path}`, {
     ...init,
-    headers: { ...headers(), ...(init?.headers ?? {}) },
+    headers: { ...(await headers(init?.method ?? "GET", `${host()}${path}`)), ...(init?.headers ?? {}) },
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -64,6 +81,50 @@ async function api(path: string, init?: RequestInit): Promise<unknown> {
 }
 
 program.name("dgit").description("delta-git client").option("--host <url>", "delta-git host");
+
+// --- OAuth login --------------------------------------------------------------
+
+program
+  .command("login")
+  .description("authorize dgit via the browser (OAuth 2.1 + DPoP-bound tokens)")
+  .action(async () => {
+    const h = host();
+    const creds = await oauthLogin(h);
+    console.log(
+      `signed in to ${h} — access token bound to this machine's key, expires ${new Date(
+        creds.expiresAt
+      ).toISOString()}`
+    );
+  });
+
+program
+  .command("logout")
+  .description("discard stored OAuth credentials for the host")
+  .action(() => {
+    const removed = clearCredentials(host());
+    console.log(removed ? "credentials removed" : "no stored credentials");
+  });
+
+program
+  .command("whoami")
+  .description("show the credential state for the configured host")
+  .action(async () => {
+    const h = host();
+    if (process.env.DG_PAT) {
+      console.log(`${h}: PAT auth (DG_USER=${process.env.DG_USER ?? "agent"})`);
+      return;
+    }
+    const creds = await activeCredentials(h);
+    if (creds) {
+      console.log(
+        `${h}: OAuth login, client ${creds.clientId}, access expires ${new Date(
+          creds.expiresAt
+        ).toISOString()}`
+      );
+    } else {
+      console.log(`${h}: not authenticated — run \`dgit login\` or set DG_PAT`);
+    }
+  });
 
 program.command("intents <repo>").action(async (repo: string) => {
   const [owner, name] = repo.split("/");
@@ -142,7 +203,7 @@ program
   .action(async (repo: string) => {
     const [owner, name] = repo.split("/");
     const res = await fetch(`${host()}/api/${owner}/${name}/dg/events`, {
-      headers: headers(),
+      headers: await headers("GET", `${host()}/api/${owner}/${name}/dg/events`),
     });
     if (!res.body) {
       console.error("no stream");
@@ -191,6 +252,18 @@ function remoteUrl(dir: string, remote: string): string | null {
 /** Attest the scan outcome for the heads about to be pushed — must run before
  * `git push` so a `require` policy finds the rows. Best-effort: a failed
  * attestation warns rather than aborting (a `require` push fails anyway). */
+/** Auth headers for the scan-attestation POST — PAT Basic or OAuth
+ *  Bearer+DPoP; null when no credential is configured at all. */
+async function attestAuth(url: string): Promise<Record<string, string> | null> {
+  if (process.env.DG_PAT) {
+    const user = process.env.DG_USER ?? "agent";
+    return {
+      Authorization: `Basic ${Buffer.from(`${user}:${process.env.DG_PAT}`).toString("base64")}`,
+    };
+  }
+  return oauthRequestHeaders(host(), "POST", url);
+}
+
 async function attest(
   url: string,
   updates: { remoteRef: string; localSha: string }[],
@@ -205,10 +278,12 @@ async function attest(
   durationMs: number
 ): Promise<void> {
   const info = parseRemoteInfo(url);
-  if (!info || !process.env.DG_PAT) return;
+  if (!info) return;
+  const authHeaders = await attestAuth(url);
+  if (!authHeaders) return;
   const res = await attestScan(
     info,
-    { user: process.env.DG_USER ?? "agent", token: process.env.DG_PAT },
+    authHeaders,
     {
       heads: updates.map((u) => ({ ref: u.remoteRef, oid: u.localSha })),
       status: status as "pass" | "warn" | "fail" | "skipped",
@@ -271,8 +346,19 @@ program
       }
     }
 
+    // OAuth path: inject the bearer token via http.extraHeader — stock git
+    // can't mint per-request DPoP proofs, so the token goes bare on the git
+    // transport (still enforced everywhere else). PAT users keep whatever
+    // credential helper they already configured.
+    const pushArgs = [...args];
+    if (!process.env.DG_PAT) {
+      const gh = await oauthGitHeaders(host());
+      if (gh) {
+        pushArgs.unshift("-c", `http.extraHeader=Authorization: ${gh.Authorization}`);
+      }
+    }
     try {
-      execFileSync("git", ["-C", dir, ...args], { stdio: "inherit" });
+      execFileSync("git", ["-C", dir, ...pushArgs], { stdio: "inherit" });
     } catch (err) {
       process.exit((err as { status?: number }).status ?? 1);
     }

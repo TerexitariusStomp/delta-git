@@ -17,6 +17,7 @@ import { buildCacheKeyFrom, cacheOrLoadJSONForRequest } from "@/worker/cache";
 import { markRequestPrivate, responseCacheControl } from "@/worker/cache/policy";
 import { isValidOwnerRepo } from "@/shared/web";
 import { resolveRepositoryRoute, type RepositoryRoute } from "@/worker/repositories/route";
+import { hasOAuthScope, OAUTH_SCOPES } from "@/worker/auth/oauth";
 import {
   authenticateGitRequest,
   getBasicCredentials,
@@ -314,6 +315,17 @@ function challengeUnresolvedPushRoute(
   return basicChallenge();
 }
 
+// 401 challenge for bearer clients — git clients that sent an OAuth token
+// get a Bearer realm (not Basic) so they know which scheme to retry with.
+function bearerChallenge(): Response {
+  return new Response("Unauthorized", {
+    status: 401,
+    headers: {
+      "WWW-Authenticate": 'Bearer realm="delta-git", error="invalid_token"',
+    },
+  });
+}
+
 function gateD1FallbackGitAuth(
   c: AppContext,
   route: RepositoryRoute,
@@ -321,10 +333,19 @@ function gateD1FallbackGitAuth(
 ): Response | null {
   if (route.source !== "d1") return null;
   if (auth.kind === "pat") return null;
+  if (auth.kind === "oauth" && auth.verified.member) return null;
   const log = c.var.logFor({ service: "GitAcl", repoId: route.doName });
   if (auth.kind === "pat-rejected" && auth.reason === "grant-missing") {
     log.info("git-acl:d1-fallback-grant-missing", { reason: auth.reason });
     return forbidden();
+  }
+  if (auth.kind === "oauth" && !auth.verified.member) {
+    log.info("git-acl:d1-fallback-oauth-nonmember", { userId: auth.verified.userId });
+    return forbidden();
+  }
+  if (auth.kind === "oauth-rejected") {
+    log.info("git-acl:d1-fallback-oauth-rejected", {});
+    return bearerChallenge();
   }
   log.info("git-acl:d1-fallback-unauthorized", { reason: auth.kind });
   return basicChallenge();
@@ -356,6 +377,20 @@ function gateGitRead(c: AppContext, route: RepositoryRoute, auth: GitAuthResult)
       return basicChallenge();
     case "pat":
       return null;
+    case "oauth":
+      // Private-repo read needs both the scope and namespace membership.
+      if (!auth.verified.member || !hasOAuthScope(auth.verified.scopes, OAUTH_SCOPES.REPO_READ)) {
+        log.info("git-acl:oauth-read-denied", {
+          userId: auth.verified.userId,
+          member: auth.verified.member,
+          scopes: auth.verified.scopes.join(","),
+        });
+        return forbidden();
+      }
+      return null;
+    case "oauth-rejected":
+      log.info("git-acl:oauth-rejected", {});
+      return bearerChallenge();
   }
 }
 
@@ -386,6 +421,23 @@ async function gateGitPush(
     log.info("git-acl:pat-rejected", { reason: auth.reason });
     return basicChallenge();
   }
+  if (auth.kind === "oauth") {
+    // Push needs the write scope AND namespace membership — the OAuth
+    // analog of a PAT's namespace-scoped grant at `level === "push"`.
+    if (auth.verified.member && hasOAuthScope(auth.verified.scopes, OAUTH_SCOPES.REPO_WRITE)) {
+      return null;
+    }
+    log.info("git-acl:oauth-push-denied", {
+      userId: auth.verified.userId,
+      member: auth.verified.member,
+      scopes: auth.verified.scopes.join(","),
+    });
+    return forbidden();
+  }
+  if (auth.kind === "oauth-rejected") {
+    log.info("git-acl:push-oauth-rejected", { discovery: isDiscovery });
+    return bearerChallenge();
+  }
   // anonymous | missing-credentials -> 401 challenge so the git client
   // re-issues with Basic credentials.
   log.info("git-acl:push-401-challenge", {
@@ -412,7 +464,13 @@ async function authorizeGitRouteForRequest(
     markRequestPrivate(cacheCtx);
   }
 
-  const auth = await authenticateGitRequest(c.env, c.req.raw, route, { db: c.var.db });
+  // Git Smart HTTP can't carry per-request DPoP proofs (static
+  // http.extraHeader + multi-request conversation) — bound OAuth tokens
+  // degrade to bearer here; API/MCP keep the sender constraint.
+  const auth = await authenticateGitRequest(c.env, c.req.raw, route, {
+    db: c.var.db,
+    enforceDpop: false,
+  });
   const fallbackBlocked = gateD1FallbackGitAuth(c, route, auth);
   if (fallbackBlocked) return { kind: "response", response: fallbackBlocked };
 
@@ -441,7 +499,8 @@ async function authorizeGitRouteForRequest(
   return {
     kind: "ok",
     cacheCtx,
-    actor: auth.kind === "pat" ? auth.verified.userId : undefined,
+    actor:
+      auth.kind === "pat" || auth.kind === "oauth" ? auth.verified.userId : undefined,
   };
 }
 

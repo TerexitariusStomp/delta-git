@@ -47,13 +47,23 @@ widespread auth port.
 
 ## Secrets & privacy posture
 
-- **No server-side OAuth/token custody** (widespread constraint carried over):
-  no refresh tokens stored, no atproto client secret — the OAuth client is
+- **No server-side atproto custody** (widespread constraint carried over):
+  no atproto tokens stored, no atproto client secret — the OAuth client is
   public (`token_endpoint_auth_method: none`) and the access token is
   discarded after reading `sub`.
+- **delta-git OAuth issuer** (`@cloudflare/workers-oauth-provider`): the
+  worker mints its own access/refresh tokens for agents, MCP, and Git Smart
+  HTTP. Tokens are stored SHA-256-hashed in `OAUTH_KV` — a KV dump yields no
+  usable credentials. Token `props` (userId/did/namespace) are encrypted so
+  only the token holder can unwrap them. Scopes (`repo:read`, `repo:write`,
+  `offline_access`) are enforced per-surface on top of namespace membership.
+  First-party clients sender-constrain tokens with DPoP (`cnf.jkt` bound at
+  issuance, single-use `jti` replay protection in KV); the git transport
+  accepts bound tokens as plain bearer because stock git cannot mint
+  per-request proofs.
 - **Repo secrets are write-only**: `PUT /dg/secrets/:name` encrypts with `DG_KEK`
   before storing in the repo DO; values are never readable back through any API.
-- PATs are stored argon2-hashed; the cleartext is shown once at issue.
+- PATs are stored SHA-256-hashed; the cleartext is shown once at issue.
 - Private repos never appear in federation, XRPC, leaderboards, or exports;
   visibility checks happen at route resolution.
 

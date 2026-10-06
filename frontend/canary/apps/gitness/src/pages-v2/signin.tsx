@@ -1,6 +1,11 @@
-import { FC, useState } from 'react'
+import { FC, useEffect, useState } from 'react'
 
-import { authLog, getAuthLog, signInWithBluesky } from '../delta/bsky-oauth'
+import {
+  authLog,
+  getAuthLog,
+  pendingAuthorizeUrl,
+  signInWithBluesky
+} from '../delta/bsky-oauth'
 
 /**
  * Sign-in — the primary auth surface, styled after the SSR /auth page layout
@@ -19,8 +24,36 @@ export const SignIn: FC = () => {
   const [identifier, setIdentifier] = useState(
     () => new URLSearchParams(window.location.search).get('handle') ?? ''
   )
+
+  // The OAuth consent page bounces unsigned users here with ?return_to=
+  // pointing back at /oauth/authorize?…. Stash it — the authorize URL's
+  // query can't ride through the atproto redirect, so the callback page
+  // (oauth-callback.tsx) reads it back out of sessionStorage. Restricted to
+  // the authorize path: a generic return_to would be an open-redirect
+  // gadget.
+  const returnTo = new URLSearchParams(window.location.search).get('return_to')
+  if (returnTo?.startsWith('/oauth/authorize')) {
+    sessionStorage.setItem('dg-oauth-return', returnTo)
+  }
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // If a previous attempt navigated-out but the browser never left (or this
+  // page was bfcache-restored mid-flow), the pending authorize URL is still
+  // in sessionStorage — offer it as a manual link.
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(() => pendingAuthorizeUrl())
+
+  useEffect(() => {
+    // bfcache restore leaves React state (busy) frozen at true with a dead
+    // button — pageshow.persisted is the only signal that we came back.
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        setBusy(false)
+        setFallbackUrl(pendingAuthorizeUrl())
+      }
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
+  }, [])
 
   const onContinue = async () => {
     const id = identifier.trim()
@@ -33,15 +66,22 @@ export const SignIn: FC = () => {
     }
     authLog('signin:submit', { handle: id })
     setBusy(true)
+    setFallbackUrl(null)
     try {
       // Same-tab redirect: resolves never on success (the page navigates to
       // the authorization server); /oauth/callback finishes the sign-in.
-      await signInWithBluesky(id)
+      // If the navigation stalls, it resolves with the authorize URL so the
+      // user can click through manually.
+      const stalled = await signInWithBluesky(id)
+      if (stalled) {
+        setFallbackUrl(stalled.href)
+        setBusy(false)
+      }
     } catch (err) {
-      // "User navigated back" = bfcache restore, not a failure — just re-arm.
       const msg = err instanceof Error ? err.message : String(err)
-      if (msg !== 'User navigated back') setError(msg)
+      setError(msg)
       setBusy(false)
+      setFallbackUrl(pendingAuthorizeUrl())
     }
   }
 
@@ -91,6 +131,17 @@ export const SignIn: FC = () => {
           >
             {busy ? 'Waiting for Bluesky…' : 'Continue with Bluesky'}
           </button>
+          {fallbackUrl && (
+            <p className="mt-4 text-sm text-cn-2">
+              Didn&apos;t get redirected?{' '}
+              <a
+                href={fallbackUrl}
+                className="text-cn-1 underline underline-offset-2 hover:text-cn-2"
+              >
+                Continue to Bluesky →
+              </a>
+            </p>
+          )}
           {error && <p className="mt-4 text-sm text-cn-danger">{error}</p>}
           <details className="mt-4 text-xs text-cn-3">
             <summary className="cursor-pointer select-none">Debug log</summary>

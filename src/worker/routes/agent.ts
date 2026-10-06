@@ -15,6 +15,7 @@ import { getRepoStub, newPrefixedId } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
+import { hasOAuthScope, OAUTH_SCOPES } from "@/worker/auth/oauth";
 import {
   adjustAgentRep,
   getAgent,
@@ -186,7 +187,7 @@ async function resolveRepo(c: AppContext): Promise<RepositoryRoute | null> {
 
 type Principal = { actor: string; agent?: AgentRow };
 
-/** Authenticate as PAT (Basic) or signed agent envelope. */
+/** Authenticate as PAT (Basic), OAuth Bearer, or signed agent envelope. */
 async function authenticate(
   c: AppContext,
   body: Uint8Array,
@@ -197,6 +198,12 @@ async function authenticate(
   }).catch(() => null);
   if (auth && auth.kind === "pat") {
     return { actor: auth.verified.userId };
+  }
+  if (auth && auth.kind === "oauth") {
+    if (auth.verified.member && hasOAuthScope(auth.verified.scopes, OAUTH_SCOPES.REPO_READ)) {
+      return { actor: auth.verified.userId };
+    }
+    return bad(c, "insufficient-scope-or-membership", 403);
   }
 
   const verified = await verifyAgentRequest({
@@ -227,6 +234,12 @@ async function authenticateWrite(
   }).catch(() => null);
   if (auth && auth.kind === "pat") {
     if (auth.verified.level !== "push") return bad(c, "push-grant-required", 403);
+    return { actor: auth.verified.userId };
+  }
+  if (auth && auth.kind === "oauth") {
+    if (!(auth.verified.member && hasOAuthScope(auth.verified.scopes, OAUTH_SCOPES.REPO_WRITE))) {
+      return bad(c, "push-grant-required", 403);
+    }
     return { actor: auth.verified.userId };
   }
   const verified = await verifyAgentRequest({
@@ -769,6 +782,12 @@ export function registerAgentRoutes(router: AppRouter): void {
     let actor: string;
     if (auth && auth.kind === "pat") {
       if (scope === "write" && auth.verified.level !== "push") {
+        return bad(c, "push-grant-required-for-write", 403);
+      }
+      actor = auth.verified.userId;
+    } else if (auth && auth.kind === "oauth") {
+      const needed = scope === "write" ? OAUTH_SCOPES.REPO_WRITE : OAUTH_SCOPES.REPO_READ;
+      if (!(auth.verified.member && hasOAuthScope(auth.verified.scopes, needed))) {
         return bad(c, "push-grant-required-for-write", 403);
       }
       actor = auth.verified.userId;
@@ -1447,6 +1466,10 @@ export function registerAgentRoutes(router: AppRouter): void {
       db: c.var.db,
     }).catch(() => null);
     if (auth && auth.kind === "pat") return auth.verified.userId;
+    if (auth && auth.kind === "oauth" && auth.verified.member &&
+        hasOAuthScope(auth.verified.scopes, OAUTH_SCOPES.REPO_READ)) {
+      return auth.verified.userId;
+    }
     return c.req.header("x-dg-did") ?? "anon";
   }
 

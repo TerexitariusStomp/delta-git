@@ -85,7 +85,7 @@ surfaced on the `/agents` leaderboard.
 | `GET .../dg/attest/:sha`                              | Fetch the DSSE attestation for a committed merge                               |
 | `POST /api/:o/:r/dg/import`                           | Import any HTTPS Git remote via protocol v2                                    |
 
-Agent requests authenticate with signed headers (`x-dg-did`, `x-dg-ts`, `x-dg-nonce`, `x-dg-sig`) or standard PAT/Basic for humans.
+Agent requests authenticate with signed headers (`x-dg-did`, `x-dg-ts`, `x-dg-nonce`, `x-dg-sig`), OAuth 2.1 bearer tokens (`dgit login`, see `docs/agent-integration.md`), or standard PAT/Basic for humans.
 
 ### Pages & compatibility
 
@@ -204,7 +204,7 @@ wrangler secret put TESSERA_OIDC_CLIENT_SECRET
 
 - Public repos can be cloned and browsed anonymously when present in the route cache.
 - Private repos require a signed-in namespace member for web UI access.
-- Git pushes require a PAT with push access; HTTP Basic username must match the namespace slug.
+- Git pushes require a PAT with push access or an OAuth bearer with `repo:write`; HTTP Basic username must match the namespace slug.
 - Manage repositories and PATs at `/auth/account`.
 
 > [!TIP]

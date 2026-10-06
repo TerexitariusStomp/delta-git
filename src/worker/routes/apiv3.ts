@@ -5,6 +5,7 @@ import { getRepoStub } from "@/worker/common";
 import { readObject } from "@/worker/git/object-store/store";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
+import { hasOAuthScope, OAUTH_SCOPES } from "@/worker/auth/oauth";
 import { isValidOwnerRepo } from "@/shared/web";
 import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
@@ -31,6 +32,17 @@ async function resolveRoute(c: AppContext): Promise<RepositoryRoute | null> {
 async function authenticated(c: AppContext, route: RepositoryRoute): Promise<string | Response> {
   const auth = await authenticateGitRequest(c.env, c.req.raw, route, { db: c.var.db });
   if (auth.kind === "pat") return auth.verified.userId;
+  if (auth.kind === "oauth") {
+    // Scope by verb: reads need repo:read, mutations need repo:write; the
+    // token's user must also be a namespace member.
+    const needed = c.req.method === "GET" || c.req.method === "HEAD"
+      ? OAUTH_SCOPES.REPO_READ
+      : OAUTH_SCOPES.REPO_WRITE;
+    if (auth.verified.member && hasOAuthScope(auth.verified.scopes, needed)) {
+      return auth.verified.userId;
+    }
+    return c.json({ message: "Requires authentication" }, 401);
+  }
   if (route.visibility === "public" && c.req.method === "GET") return "anonymous";
   return c.json({ message: "Requires authentication" }, 401);
 }

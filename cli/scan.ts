@@ -591,7 +591,7 @@ export function parseRemoteInfo(url: string): RemoteInfo | null {
 
 export async function attestScan(
   info: RemoteInfo,
-  pat: { user: string; token: string },
+  authHeaders: Record<string, string>,
   payload: {
     heads: { ref: string; oid: string }[];
     status: ScanStatus;
@@ -601,10 +601,7 @@ export async function attestScan(
 ): Promise<Response> {
   const res = await fetch(`${info.host}/api/${info.owner}/${info.repo}/dg/scan-attest`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Basic ${Buffer.from(`${pat.user}:${pat.token}`).toString("base64")}`,
-    },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(payload),
   });
   return res;

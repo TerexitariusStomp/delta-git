@@ -8,6 +8,7 @@ import { registerPagesRoutes } from "./routes/pages";
 import { registerArchiveRoutes } from "./routes/archive";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
+import { registerOAuthProviderRoutes } from "./routes/oauthProvider";
 import { registerGitnessApi } from "./api/gitness";
 import { registerUiRoutes } from "./routes/ui";
 import { registerSpaRoutes } from "./routes/spa";
@@ -48,6 +49,10 @@ registerApiV3Routes(app);
 registerXrpcRoutes(app);
 registerMcpRoutes(app);
 registerHermesRoutes(app);
+// OAuth 2.1 provider: /.well-known discovery, /oauth/token|register,
+// /oauth/authorize info+decision. The consent page itself is a SPA route
+// and falls through to registerSpaRoutes.
+registerOAuthProviderRoutes(app);
 // Gitness /api/v1 facade — before UI so /api/v1/* never reaches /:owner.
 registerGitnessApi(app);
 // Static site serving from repo refs

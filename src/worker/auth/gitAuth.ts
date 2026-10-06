@@ -12,6 +12,11 @@ import {
   type PatVerifyError,
   type PatVerifyOk,
 } from "./pat";
+import {
+  oauthNamespaceAccess,
+  resolveOAuthBearer,
+  type OAuthPrincipal,
+} from "./oauth";
 
 // Decode `Authorization: Basic <b64>` into `{ username, password }`. The
 // caller decides whether the credentials are valid; this helper does no
@@ -41,14 +46,45 @@ export type GitAuthResult =
   | { kind: "anonymous" }
   | { kind: "missing-credentials" }
   | { kind: "pat"; verified: PatVerifyOk }
-  | { kind: "pat-rejected"; reason: PatVerifyError["reason"] };
+  | { kind: "pat-rejected"; reason: PatVerifyError["reason"] }
+  // OAuth bearer (workers-oauth-provider): token valid; `verified.scopes`
+  // carries the granted scope list and `member` the namespace ACL result —
+  // gates check both. `oauth-rejected` mirrors `pat-rejected`.
+  | { kind: "oauth"; verified: OAuthVerified }
+  | { kind: "oauth-rejected" };
+
+export interface OAuthVerified {
+  principal: OAuthPrincipal;
+  /** userId convenience — matches PatVerifyOk's field for actor plumbing */
+  userId: string;
+  scopes: string[];
+  /** whether the user belongs to the route's namespace */
+  member: boolean;
+}
 
 export async function authenticateGitRequest(
   env: Env,
   request: Request,
   route: RepositoryRoute,
-  options: { db?: Db } = {}
+  options: { db?: Db; enforceDpop?: boolean } = {}
 ): Promise<GitAuthResult> {
+  // Bearer lane: OAuth access tokens issued by our own authorization
+  // server. A present-but-invalid Bearer is a rejection, not a fallthrough
+  // to anonymous — the client clearly attempted authentication.
+  if (request.headers.get("Authorization")?.toLowerCase().startsWith("bearer ")) {
+    const principal = await resolveOAuthBearer(env, request, {
+      enforceDpop: options.enforceDpop,
+    });
+    if (!principal) return { kind: "oauth-rejected" };
+    const member = options.db
+      ? await oauthNamespaceAccess(options.db, principal, route.namespaceId).catch(() => false)
+      : false;
+    return {
+      kind: "oauth",
+      verified: { principal, userId: principal.userId, scopes: principal.scopes, member },
+    };
+  }
+
   const basic = getBasicCredentials(request);
   if (!basic) return { kind: "anonymous" };
   if (!basic.password) return { kind: "missing-credentials" };

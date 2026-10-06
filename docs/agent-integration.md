@@ -2,11 +2,12 @@
 
 How coding agents plug into delta-git. Three surfaces, pick per client:
 
-| Client                                  | Surface                                   | Auth                          |
-| --------------------------------------- | ----------------------------------------- | ----------------------------- |
-| Claude Code / opencode / any MCP client | `POST /mcp` (JSON-RPC tool calls)         | PAT (`Authorization: Bearer`) |
-| Devin Desktop / bespoke agents          | REST `/api/:o/:r/dg/*` + signed envelopes | ed25519 `did:key` agent       |
-| Hermes embed                            | `/embed/hermes` + ideas lane              | browser session or PAT        |
+| Client                                  | Surface                                   | Auth                                   |
+| --------------------------------------- | ----------------------------------------- | -------------------------------------- |
+| Claude Code / opencode / any MCP client | `POST /mcp` (JSON-RPC tool calls)         | OAuth 2.1 bearer or PAT (`Bearer`)     |
+| Devin Desktop / bespoke agents          | REST `/api/:o/:r/dg/*` + signed envelopes | ed25519 `did:key` agent or OAuth bearer |
+| Git (`clone`/`fetch`/`push`)            | `/:o/:r` Smart HTTP                       | OAuth 2.1 bearer or PAT (`Basic`)      |
+| Hermes embed                            | `/embed/hermes` + ideas lane              | browser session or PAT                 |
 
 ## 1. Agent identity (all surfaces)
 
@@ -42,6 +43,44 @@ curl -X POST https://HOST/mcp -H 'authorization: Bearer dg_pat_…' \
 ```
 
 `tools/swarm.ts` exercises this path — see "Swarm exercise" below.
+
+## 2b. OAuth 2.1 (`dgit login`, agent bearer tokens)
+
+delta-git is its own OAuth 2.1 authorization server
+(`@cloudflare/workers-oauth-provider`, KV-backed in `OAUTH_KV`). Any surface
+that takes a PAT also takes a scoped access token:
+
+| Endpoint                                              | Purpose                                        |
+| ----------------------------------------------------- | ---------------------------------------------- |
+| `GET /.well-known/oauth-authorization-server`         | RFC 8414 issuer metadata                       |
+| `GET /.well-known/oauth-protected-resource`           | RFC 9728 resource metadata                     |
+| `POST /oauth/register`                                | RFC 7591 dynamic client registration + CIMD    |
+| `GET /oauth/authorize`                                | consent UI (SPA; needs a `dg_session` cookie)  |
+| `POST /oauth/token`                                   | code exchange + refresh                        |
+
+Scopes: `repo:read` (clone/fetch, read APIs, read MCP tools), `repo:write`
+(implies read; push + mutations), `offline_access` (refresh token). Tokens
+carry the consenting user's identity — access is still gated by namespace
+membership, same as PATs.
+
+```bash
+# Loopback flow: opens a browser for consent, stores the token locally.
+dgit login
+
+# From then on every surface accepts the bearer:
+git -c http.extraHeader="Authorization: Bearer <token>" push
+curl -X POST https://HOST/mcp -H 'authorization: Bearer <token>' ...
+```
+
+First-party clients (`dgit`) sender-constrain tokens with DPoP: the access
+token is bound to an ES256 key at issuance and API/MCP requests must carry a
+fresh `DPoP` proof. The git transport can't mint per-request proofs (static
+`http.extraHeader` over a multi-request conversation), so bound tokens
+degrade to plain bearer there only. Third-party clients may stay unbound
+bearer clients.
+
+PATs keep working during migration — `DG_PAT`/`DG_USER` env auth and
+`git`-style Basic credentials are unchanged.
 
 ## 3. Signed-envelope REST (Devin Desktop, `dgit`)
 

@@ -70,6 +70,10 @@ const NON_SPA_PREFIXES = [
   "/info/",
   "/objects/",
   "/.well-known/",
+  // OAuth provider API surface (`/oauth/token`, `/oauth/register`, …). The
+  // two SPA-owned paths (`/oauth/callback`, `/oauth/authorize`) are exact
+  // routes registered below, so they never reach this check.
+  "/oauth/",
 ];
 
 function isNonSpaPath(pathname: string): boolean {
@@ -88,7 +92,10 @@ export function registerSpaRoutes(router: AppRouter) {
   // The atproto OAuth redirect_uri lands on the SPA route `/oauth/callback`
   // with ?code&state&iss params. Parsed as `/:owner/:repo` it would 301 to
   // /oauth/repos/callback — losing the query — so it must be served first.
+  // Same for `/oauth/authorize` (our own provider's consent page) — the
+  // JSON endpoints under it are registered earlier and take precedence.
   router.get("/oauth/callback", (c) => spaIndex(c));
+  router.get("/oauth/authorize", (c) => spaIndex(c));
 
   // `/:owner/:repo` and `/:owner/:repo/<feature>` — the old SSR site map.
   // Skipped when `repo` is a space-level segment so SPA paths pass through.
