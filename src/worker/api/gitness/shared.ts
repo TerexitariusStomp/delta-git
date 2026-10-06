@@ -22,8 +22,10 @@ import { resolveUiRepoAccess } from "@/worker/routes/ui/helpers";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { viewerIsNamespaceMember } from "@/worker/auth/pat";
 import { enforceInNamespace, principalForUser } from "@/worker/rbac";
-import { getRepoStub } from "@/worker/common";
+import { getRepoStub, newPrefixedId } from "@/worker/common";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
+import { insertNotification } from "@/worker/db/d1/dal/modules";
+import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
 import { readUserFavorites } from "./stores";
 
 export type GitnessContext = AppContext;
@@ -333,5 +335,38 @@ export function emitRepoEvent(
         ...payload,
       },
     }).catch(() => {})
+  );
+}
+
+/**
+ * Best-effort namespace notification fan-out — same "every member except the
+ * actor" model as the receive pipeline's push notifications. Runs in
+ * waitUntil; failures never block the mutation.
+ */
+export function notifyMembers(
+  c: GitnessContext,
+  access: RepoAccessOk,
+  args: { kind: string; title: string; body: string; excludeUserId?: string; link?: string }
+): void {
+  // SPA repo pages live under /{space}/repos/{repo} — match that for deep links.
+  const link =
+    args.link ?? `/${access.route.routeNamespaceSlug}/repos/${access.route.routeRepoSlug}`;
+  c.executionCtx.waitUntil(
+    (async () => {
+      const members = await listMembershipsForNamespace(c.var.db, access.route.namespaceId);
+      for (const member of members) {
+        if (member.userId === args.excludeUserId) continue;
+        await insertNotification(c.var.db, {
+          id: newPrefixedId("ntf"),
+          userId: member.userId,
+          kind: args.kind,
+          title: args.title,
+          body: args.body,
+          link,
+          createdAt: Date.now(),
+          readAt: null,
+        });
+      }
+    })().catch(() => {})
   );
 }

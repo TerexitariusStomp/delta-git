@@ -14,6 +14,7 @@ import {
   emitRepoEvent,
   gErr,
   gNotFound,
+  notifyMembers,
   pageParams,
   paginate,
   requireWriter,
@@ -169,6 +170,13 @@ export function registerGitnessIssues(router: AppRouter) {
       number: result.issue.number,
       title: result.issue.title,
       actor: access.actor,
+    });
+    notifyMembers(c, access, {
+      kind: "issue",
+      title: `issue #${result.issue.number}: ${result.issue.title}`,
+      body: `${access.actor} opened a new issue`,
+      excludeUserId: access.viewer?.userId,
+      link: `/${access.route.routeNamespaceSlug}/repos/${access.route.routeRepoSlug}/issues/${result.issue.number}`,
     });
     return c.json(issueView(result.issue), 201);
   });
@@ -339,6 +347,13 @@ export function registerGitnessIssues(router: AppRouter) {
       number,
       comment_id: result.comment.id,
       actor: access.actor,
+    });
+    notifyMembers(c, access, {
+      kind: "issue",
+      title: `issue #${number}: new comment`,
+      body: `${access.actor} commented on an issue`,
+      excludeUserId: access.viewer?.userId,
+      link: `/${access.route.routeNamespaceSlug}/repos/${access.route.routeRepoSlug}/issues/${number}`,
     });
     return c.json(commentView(result.comment), 201);
   });

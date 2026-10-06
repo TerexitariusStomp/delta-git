@@ -43,6 +43,7 @@ import {
   emitRepoEvent,
   gErr,
   gNotFound,
+  notifyMembers,
   numericId,
   pageParams,
   paginate,
@@ -343,6 +344,13 @@ export function registerGitnessPullreqs(router: AppRouter) {
           merged: true,
           sha: result.mergeOid,
         });
+        notifyMembers(c, access, {
+          kind: "pullreq",
+          title: `PR #${n} merged`,
+          body: `${access.viewer?.primaryNamespaceSlug ?? "someone"} merged a pull request`,
+          excludeUserId: access.viewer?.userId,
+          link: `/${access.route.routeNamespaceSlug}/repos/${access.route.routeRepoSlug}/pulls/${n}`,
+        });
         return c.json({ mergeable: true, sha: result.mergeOid, closed_issues: closedIssues });
       }
       case "conflict":
@@ -464,19 +472,27 @@ export function registerGitnessPullreqs(router: AppRouter) {
     }
     const all = await allIntentsOrdered(gate, c.env);
     const number = all.findIndex((i) => i.id === intent.id) + 1;
+    const prNumber = number > 0 ? number : all.length;
     emitRepoEvent(c, gate, "pull_request", {
       action: "opened",
-      number: number > 0 ? number : all.length,
+      number: prNumber,
       title: body.title,
       draft: body.is_draft === true,
       source_branch: body.source_branch,
       target_branch: body.target_branch,
       actor: gate.actor,
     });
+    notifyMembers(c, gate, {
+      kind: "pullreq",
+      title: `PR #${prNumber}: ${body.title ?? `${body.source_branch} → ${body.target_branch}`}`,
+      body: `${gate.actor} opened a pull request`,
+      excludeUserId: gate.viewer?.userId,
+      link: `/${gate.route.routeNamespaceSlug}/repos/${gate.route.routeRepoSlug}/pulls/${prNumber}`,
+    });
     return c.json({
       ...mergeIntentToPullReq({
         intent,
-        number: number > 0 ? number : all.length,
+        number: prNumber,
         title: body.title,
         draft: body.is_draft === true,
       }),
@@ -581,6 +597,13 @@ export function registerGitnessPullreqs(router: AppRouter) {
     };
     meta.comments.push(comment);
     await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    notifyMembers(c, gate, {
+      kind: "pullreq",
+      title: `PR #${n}: new comment`,
+      body: `${gate.actor} commented on a pull request`,
+      excludeUserId: gate.viewer?.userId,
+      link: `/${gate.route.routeNamespaceSlug}/repos/${gate.route.routeRepoSlug}/pulls/${n}`,
+    });
     return c.json({
       id: comment.id,
       type: "comment",
@@ -870,6 +893,13 @@ export function registerGitnessPullreqs(router: AppRouter) {
     const uid = String(body?.reviewer_id ?? gate.actor);
     meta.reviewers = [...new Set([...(meta.reviewers ?? []), uid])];
     await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    notifyMembers(c, gate, {
+      kind: "review-request",
+      title: `PR #${c.req.param("n")}: review requested`,
+      body: `${gate.actor} requested review from ${uid}`,
+      excludeUserId: gate.viewer?.userId,
+      link: `/${gate.route.routeNamespaceSlug}/repos/${gate.route.routeRepoSlug}/pulls/${c.req.param("n")}`,
+    });
     return c.json({
       reviewer: { id: numericId(uid), uid, display_name: uid, type: "user" },
       review_decision: "pending",

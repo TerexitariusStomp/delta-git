@@ -7,7 +7,16 @@ import { buildPack } from "./util/git-pack";
 import { buildTreePayload } from "./util/packed-repo";
 import { ensureD1Migrations } from "./util/d1Setup";
 import { toRequestBody } from "./util/test-helpers";
-import { lookupPushAuth, setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
+import {
+  lookupPushAuth,
+  mintSessionCookie,
+  setupRepoForTests,
+  type SetupRepoForTestsResult,
+} from "./util/repoSeed";
+import { createDb } from "@/worker/db/d1/client";
+import { newPrefixedId } from "@/worker/common";
+import { insertMembershipIfMissing } from "@/worker/db/d1/dal/namespaces";
+import { insertUserIfNew } from "@/worker/db/d1/dal/users";
 
 // Issues surface coverage: the DO-backed tracker exposed twice —
 // session-authed /api/v1 (SPA) and PAT/anonymous /api/v3 (gh/agent clients).
@@ -369,6 +378,48 @@ describe("issues: qualifier search (q=)", () => {
       body: { body: "after unlock" },
     });
     expect(after.status).toBe(201);
+  });
+
+  it("notifies other namespace members when an issue is created", async () => {
+    // A second member gets the inbox row; the author is excluded.
+    const db = createDb(env.DB);
+    const memberId = newPrefixedId("user");
+    await insertUserIfNew(db, {
+      id: memberId,
+      tesseraSub: `seed-${memberId}`,
+      createdAt: Date.now(),
+    });
+    await insertMembershipIfMissing(db, {
+      namespaceId: seeded.namespaceId,
+      userId: memberId,
+      createdAt: Date.now(),
+    });
+    const memberCookie = await mintSessionCookie(env, memberId);
+
+    const issue = await call("POST", `${base}/issues`, {
+      cookie: seeded.cookieHeader,
+      body: { title: "Notify me" },
+    });
+    expect(issue.status).toBe(201);
+    const n = (issue.body as IssueJson).number;
+
+    // Notification fan-out runs in waitUntil — poll the inbox briefly.
+    const deadline = Date.now() + 5000;
+    let found = false;
+    while (Date.now() < deadline && !found) {
+      const inbox = await call("GET", "/api/v1/notifications", { cookie: memberCookie });
+      const rows = (
+        inbox.body as { notifications?: { kind: string; title: string; link: string }[] }
+      ).notifications;
+      found = !!rows?.some(
+        (r) =>
+          r.kind === "issue" &&
+          r.title.includes(`#${n}`) &&
+          r.link === `/${seeded.namespaceSlug}/repos/${seeded.repoSlug}/issues/${n}`
+      );
+      if (!found) await new Promise((r) => setTimeout(r, 150));
+    }
+    expect(found).toBe(true);
   });
 });
 
