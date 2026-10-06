@@ -7,7 +7,7 @@ import { createLogger } from "@/worker/common";
 import { getLimiter, countSubrequest } from "../limits";
 import { parseFetchArgs } from "../args";
 import { findCommonHaves } from "../closure";
-import { buildAckOnlyResponse } from "../fetch/protocol";
+import { buildAckOnlyResponse, buildShallowInfoSection } from "../fetch/protocol";
 import { repositoryNotReadyResponse } from "../fetch/responses";
 import {
   buildServeUploadPackPlan,
@@ -42,7 +42,8 @@ export async function handleFetchV2Streaming(
   signal?: AbortSignal,
   cacheCtx?: CacheContext
 ): Promise<Response> {
-  const { wants, haves, done } = parseFetchArgs(body);
+  const fetchArgs = parseFetchArgs(body);
+  const { wants, haves, done } = fetchArgs;
   const log = createLogger(env.LOG_LEVEL, { service: "StreamFetchV2", repoId });
 
   if (signal?.aborted) {
@@ -53,11 +54,18 @@ export async function handleFetchV2Streaming(
     return buildAckOnlyResponse([], cacheCtx);
   }
 
+  // Client shallow markers participate in negotiation exactly like haves.
+  const negotiateHaves =
+    fetchArgs.clientShallows.length > 0 ? [...haves, ...fetchArgs.clientShallows] : haves;
+
   if (!done) {
     let ackOids: string[] = [];
-    if (haves.length > 0) {
-      ackOids = await findCommonHaves(env, repoId, haves, cacheCtx);
-      log.debug("stream:fetch:negotiation", { haves: haves.length, acks: ackOids.length });
+    if (negotiateHaves.length > 0) {
+      ackOids = await findCommonHaves(env, repoId, negotiateHaves, cacheCtx);
+      log.debug("stream:fetch:negotiation", {
+        haves: negotiateHaves.length,
+        acks: ackOids.length,
+      });
     }
     return buildAckOnlyResponse(ackOids, cacheCtx);
   }
@@ -86,7 +94,22 @@ export async function handleFetchV2Streaming(
   });
   let plan: ServeUploadPackPlan;
   try {
-    plan = await buildServeUploadPackPlan(env, repoId, snapshot, wants, haves, signal, cacheCtx);
+    plan = await buildServeUploadPackPlan(
+      env,
+      repoId,
+      snapshot,
+      wants,
+      haves,
+      signal,
+      cacheCtx,
+      undefined,
+      {
+        deepen: fetchArgs.deepen,
+        deepenNot: fetchArgs.deepenNot,
+        clientShallows: fetchArgs.clientShallows,
+        filter: fetchArgs.filter,
+      }
+    );
   } catch (error) {
     if (error instanceof FetchPlanRetryError) {
       log.warn("stream:fetch:planning-retry", { reason: error.reason });
@@ -103,6 +126,11 @@ export async function handleFetchV2Streaming(
     async start(controller) {
       const streamLog = createLogger(env.LOG_LEVEL, { service: "StreamFetchV2", repoId });
       try {
+        if (plan.shallowInfo) {
+          for (const chunk of buildShallowInfoSection(plan.shallowInfo)) {
+            controller.enqueue(chunk);
+          }
+        }
         controller.enqueue(pktLine("packfile\n"));
         // Once the response body has started, later failures must travel over
         // Git sideband because the HTTP status line is already committed.

@@ -27,8 +27,10 @@ export async function capabilityAdvertisement(
     chunks.push(pktLine("version 2\n"));
     chunks.push(pktLine(`agent=git-on-cloudflare/0.1\n`));
     chunks.push(pktLine("ls-refs\n"));
-    // Advertise fetch and supported features
-    chunks.push(pktLine("fetch\n"));
+    // Advertise fetch with the feature set we honor: shallow/deepen boundary
+    // handling, deepen-not exclusion, partial-clone filters, and negotiation
+    // rounds that pause before `done`.
+    chunks.push(pktLine("fetch=shallow deepen-not filter wait-for-done\n"));
     // baseline-clone bundles over plain GET (protocol-v2 bundle-uri)
     chunks.push(pktLine("bundle-uri\n"));
     // We stream pack data over sideband; advertise side-band-64k for client awareness

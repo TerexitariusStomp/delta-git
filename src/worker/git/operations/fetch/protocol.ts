@@ -29,6 +29,22 @@ export function buildAckSection(ackOids: string[], done: boolean): Uint8Array[] 
 }
 
 /**
+ * Builds the shallow-info section for git protocol v2 fetch responses.
+ * Emitted before the packfile section (delimited) so the client can update
+ * its .git/shallow boundary before consuming objects.
+ */
+export function buildShallowInfoSection(info: {
+  shallow: string[];
+  unshallow: string[];
+}): Uint8Array[] {
+  const chunks: Uint8Array[] = [pktLine("shallow-info\n")];
+  for (const oid of info.shallow) chunks.push(pktLine(`shallow ${oid}\n`));
+  for (const oid of info.unshallow) chunks.push(pktLine(`unshallow ${oid}\n`));
+  chunks.push(delimPkt());
+  return chunks;
+}
+
+/**
  * Builds an ACK/NAK-only response when no packfile is needed.
  */
 export function buildAckOnlyResponse(ackOids: string[], cacheCtx?: CacheContext): Response {

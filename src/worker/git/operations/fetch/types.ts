@@ -17,6 +17,11 @@ export type ServeUploadPackPlan = {
   snapshot: OrderedPackSnapshot;
   neededOids: string[];
   ackOids: string[];
+  /**
+   * shallow-info section contents — present only when the request carried
+   * shallow arguments (deepen/deepen-not/shallow).
+   */
+  shallowInfo?: { shallow: string[]; unshallow: string[] };
   signal?: AbortSignal;
   cacheCtx?: CacheContext;
 };

@@ -1,4 +1,5 @@
 import type { PackRefSnapshotEntry } from "@/worker/git/pack/refIndex";
+import type { ParsedFilter } from "./filter";
 
 import { bytesToHex, createLogger, hexToBytes, isValidOid } from "@/worker/common";
 import { findOidIndexFromBytes } from "@/worker/git/object-store";
@@ -7,12 +8,16 @@ import {
   getPackRefTypeCode,
   visitPackRefRawRefsAt,
 } from "@/worker/git/pack/refIndex";
+import { filterIncludes } from "./filter";
 
 const HAVE_CAP = 128;
 const MAINLINE_ENRICHMENT_BUDGET = 20;
 const CLOSURE_TIMEOUT_MS = 49_000;
 const MISSING_REF_CAP = 1024;
 const OID_BYTES = 20;
+const COMMIT_TYPE_CODE = 1;
+/** Sentinel for the per-object tree-depth table used by `tree:<n>` filters. */
+const DEPTH_UNSET = 0xffff;
 
 export type RefClosureStats = {
   indexedObjects: number;
@@ -58,6 +63,8 @@ type CommonHave = {
 type LocatedObjectQueue = {
   packSlots: Uint32Array;
   oidIndices: Uint32Array;
+  /** Parallel tree-depth per queued entry; allocated only for `tree:<n>` filters. */
+  depths?: Uint16Array;
   cursor: number;
   count: number;
 };
@@ -123,6 +130,11 @@ function ensureLocatedObjectQueueCapacity(queue: LocatedObjectQueue, nextCount: 
   nextOidIndices.set(queue.oidIndices);
   queue.packSlots = nextPackSlots;
   queue.oidIndices = nextOidIndices;
+  if (queue.depths) {
+    const nextDepths = new Uint16Array(nextCapacity);
+    nextDepths.set(queue.depths);
+    queue.depths = nextDepths;
+  }
 }
 
 function pushLocatedObject(queue: LocatedObjectQueue, located: LocatedObject): void {
@@ -287,6 +299,13 @@ export async function computeNeededFromPackRefs(args: {
   packs: PackRefSnapshotEntry[];
   wants: string[];
   haves: string[];
+  /**
+   * Pre-computed shallow cut (see shallow.ts): severed commits are sent but
+   * their parent edges are not traversed; excluded commits act as extra stops.
+   */
+  shallow?: { severedCommits: Set<string>; excludedOids: Set<string> };
+  /** Partial-clone object filter applied while adding to the needed set. */
+  filter?: ParsedFilter;
   onProgress?: (message: string) => void;
 }): Promise<RefClosureResult> {
   const log = createLogger(args.logLevel, { service: "RefClosure", repoId: args.repoId });
@@ -353,6 +372,27 @@ export async function computeNeededFromPackRefs(args: {
     log.debug("stream:plan:mainline-enriched", { stopSize: stopCount, walked });
   }
 
+  // Shallow cut: excluded commits behave like extra stop points, and severed
+  // commits keep only their tree edge during traversal.
+  const boundaryFlags = args.shallow ? new Uint8Array(closureIndex.objectCount) : undefined;
+  if (args.shallow) {
+    for (const oid of args.shallow.excludedOids) {
+      const located = locateObject(args.packs, closureIndex, hexToBytes(oid), 0);
+      if (located) {
+        if (!stopFlags[located.ordinal]) {
+          stopFlags[located.ordinal] = 1;
+          stopCount++;
+        }
+        continue;
+      }
+      if (!missingStop.has(oid)) missingStop.add(oid);
+    }
+    for (const oid of args.shallow.severedCommits) {
+      const located = locateObject(args.packs, closureIndex, hexToBytes(oid), 0);
+      if (located) boundaryFlags![located.ordinal] = 1;
+    }
+  }
+
   args.onProgress?.("Selecting objects to send...\n");
 
   const seenFlags = new Uint8Array(closureIndex.objectCount);
@@ -361,6 +401,16 @@ export async function computeNeededFromPackRefs(args: {
   const missingSeen = new Set<string>();
   const missingNeeded = new Set<string>();
   const queue = createLocatedObjectQueue(args.wants.length);
+
+  // `tree:<n>` filters need per-object tree-depth bookkeeping — a node reached
+  // again through a shallower path must be re-processed. `depthSeen` doubles
+  // as the dedup table in that mode so `queuedFlags`/`seenFlags` stay unused.
+  const trackDepth = args.filter?.trackDepth === true;
+  const depthSeen = trackDepth
+    ? new Uint16Array(closureIndex.objectCount).fill(DEPTH_UNSET)
+    : undefined;
+  const filterNeedsSize = args.filter?.rules.some((rule) => rule.kind === "blob-limit") === true;
+  if (trackDepth) queue.depths = new Uint16Array(queue.packSlots.length);
   const neededPackSlots = { values: new Uint32Array(Math.max(args.wants.length, 16)) };
   const neededOidIndices = { values: new Uint32Array(Math.max(args.wants.length, 16)) };
   const neededCount = { value: 0 };
@@ -379,6 +429,27 @@ export async function computeNeededFromPackRefs(args: {
       edgeVisits,
       duplicateQueueSkips: duplicateQueueSkips.value,
     });
+
+  // Depth-aware enqueue: with tree-depth tracking the min-depth table doubles
+  // as dedup (a shallower re-reach re-queues the node); without it the hot
+  // path stays on the cheaper queuedFlags check.
+  const enqueueAtDepth = (located: LocatedObject, depth: number): void => {
+    if (!depthSeen) {
+      enqueueLocatedObject(queue, queuedFlags, located, duplicateQueueSkips);
+      return;
+    }
+    const prev = depthSeen[located.ordinal]!;
+    if (prev !== DEPTH_UNSET && prev <= depth) {
+      duplicateQueueSkips.value++;
+      return;
+    }
+    depthSeen[located.ordinal] = depth;
+    // Grow before indexing — pushLocatedObject's own capacity check happens
+    // after the depth write and would silently drop it.
+    ensureLocatedObjectQueueCapacity(queue, queue.count + 1);
+    queue.depths![queue.count] = depth;
+    pushLocatedObject(queue, located);
+  };
 
   const buildBudgetExceededResult = (
     reason: "timeout" | "missing-ref-budget"
@@ -422,7 +493,7 @@ export async function computeNeededFromPackRefs(args: {
       continue;
     }
 
-    enqueueLocatedObject(queue, queuedFlags, located, duplicateQueueSkips);
+    enqueueAtDepth(located, 0);
   }
 
   log.info("stream:plan:closure-start", {
@@ -441,12 +512,18 @@ export async function computeNeededFromPackRefs(args: {
 
     const packSlot = queue.packSlots[queue.cursor]!;
     const oidIndex = queue.oidIndices[queue.cursor]!;
+    const nodeDepth = depthSeen ? queue.depths![queue.cursor]! : 0;
     queue.cursor++;
     const ordinal = closureIndex.packBaseOrdinals[packSlot]! + oidIndex;
     const located: LocatedObject = { packSlot, oidIndex, ordinal };
 
-    if (seenFlags[located.ordinal]) continue;
-    seenFlags[located.ordinal] = 1;
+    if (depthSeen) {
+      // A shallower reach already superseded this queue entry.
+      if (depthSeen[ordinal]! < nodeDepth) continue;
+    } else {
+      if (seenFlags[located.ordinal]) continue;
+      seenFlags[located.ordinal] = 1;
+    }
     seenCount++;
 
     if (stopFlags[located.ordinal]) {
@@ -457,39 +534,63 @@ export async function computeNeededFromPackRefs(args: {
       continue;
     }
 
-    addNeededObject(located, neededFlags, neededPackSlots, neededOidIndices, neededCount);
+    const nodeTypeCode = getPackRefTypeCode(args.packs[packSlot]!.refs, oidIndex);
+    let included = true;
+    if (args.filter) {
+      const storedSize = filterNeedsSize
+        ? args.packs[packSlot]!.idx.nextOffsetByIndex[oidIndex]! -
+          args.packs[packSlot]!.idx.offsets[oidIndex]!
+        : 0;
+      included = filterIncludes(args.filter, nodeTypeCode, storedSize, nodeDepth);
+    }
+    if (included) {
+      addNeededObject(located, neededFlags, neededPackSlots, neededOidIndices, neededCount);
+    } else if (!args.filter!.traverseExcluded) {
+      // Omitted by every rule and nothing downstream can qualify — prune the
+      // subtree (tree-depth children are deeper still; blob rules never omit
+      // trees, so this only fires for genuinely prunable nodes).
+      continue;
+    }
+
+    // Severed boundary commits keep their tree edge (refs[0]) but drop all
+    // parent edges — the client records them in .git/shallow.
+    const severed = boundaryFlags !== undefined && boundaryFlags[ordinal] === 1;
+    const parentIsTree = nodeTypeCode === 2;
     let budgetExceeded = false;
-    visitPackRefRawRefsAt(
-      args.packs[located.packSlot]!.refs,
-      located.oidIndex,
-      (rawRefs, start) => {
-        edgeVisits++;
-        if (budgetExceeded) return;
+    const visitEdge = (rawRefs: Uint8Array, start: number) => {
+      edgeVisits++;
+      if (budgetExceeded) return;
 
-        const refLocated = locateObject(args.packs, closureIndex, rawRefs, start);
-        if (refLocated) {
-          enqueueLocatedObject(queue, queuedFlags, refLocated, duplicateQueueSkips);
-          return;
-        }
-
-        const oid = bytesToHex(rawRefs.subarray(start, start + OID_BYTES));
-        const includeNeeded = !missingStop.has(oid);
-        const result = recordMissingOid({
-          oid,
-          missingSeen,
-          missingNeeded,
-          includeNeeded,
-        });
-        if (result === "budget-exceeded") {
-          budgetExceeded = true;
-          return;
-        }
-
-        if (result === "recorded" && !includeNeeded) {
-          log.debug("stream:plan:hit-stop", { oid });
-        }
+      const refLocated = locateObject(args.packs, closureIndex, rawRefs, start);
+      if (refLocated) {
+        enqueueAtDepth(refLocated, parentIsTree ? nodeDepth + 1 : 0);
+        return;
       }
-    );
+
+      const oid = bytesToHex(rawRefs.subarray(start, start + OID_BYTES));
+      const includeNeeded = !missingStop.has(oid);
+      const result = recordMissingOid({
+        oid,
+        missingSeen,
+        missingNeeded,
+        includeNeeded,
+      });
+      if (result === "budget-exceeded") {
+        budgetExceeded = true;
+        return;
+      }
+
+      if (result === "recorded" && !includeNeeded) {
+        log.debug("stream:plan:hit-stop", { oid });
+      }
+    };
+
+    if (severed && nodeTypeCode === COMMIT_TYPE_CODE) {
+      const treeRef = getPackRefRawRefAt(args.packs[packSlot]!.refs, oidIndex, 0);
+      if (treeRef) visitEdge(treeRef, 0);
+    } else {
+      visitPackRefRawRefsAt(args.packs[packSlot]!.refs, oidIndex, visitEdge);
+    }
     if (budgetExceeded) {
       return buildBudgetExceededResult("missing-ref-budget");
     }

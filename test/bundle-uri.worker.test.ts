@@ -4,6 +4,7 @@ import { pktLine, flushPkt, concatChunks } from "@/worker/git";
 import { uniqueRepoId, runDOWithRetry } from "./util/test-helpers";
 import { setupRepoForTests } from "./util/repoSeed";
 import { ensureD1Migrations } from "./util/d1Setup";
+import { asBufferSource } from "@/worker/common";
 
 // protocol-v2 bundle-uri: capability advertisement, the bundle-uri command,
 // and the plain-GET bundle download (GIT BUNDLE V3 header + refs + PACK).
@@ -19,7 +20,7 @@ async function postUploadPack(owner: string, repo: string, body: Uint8Array) {
       "Content-Type": "application/x-git-upload-pack-request",
       "Git-Protocol": "version=2",
     },
-    body,
+    body: asBufferSource(body),
   });
 }
 
