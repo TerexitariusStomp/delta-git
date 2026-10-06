@@ -7,7 +7,8 @@ import { hydrateIsland } from "@/client/hydrate";
 import { Button, ErrorBanner, Input } from "@/client/components/ui";
 
 // DID sign-in island — two paths behind one input:
-//   handle (alice.bsky.social) → /auth/oauth/start → Bluesky OAuth → callback
+//   handle (alice.bsky.social) → /signin → client-side Bluesky OAuth (browser
+//     custody: tokens never transit the worker)
 //   did:* (did:plc:/did:key:) → /auth/did/challenge → paste-signed verify
 //
 // The manual challenge path stays for device keys and agents; humans get the
@@ -35,11 +36,12 @@ export function DidSignInIsland(_props: DidSignInIslandProps) {
 
   const continueWithAtproto = async () => {
     const id = identifier.trim();
-    // Handles (and an empty box — Bluesky asks there) go through OAuth;
-    // DIDs sign a challenge, since did:key/device keys aren't OAuth accounts.
+    // Handles (and an empty box — Bluesky asks there) go through the
+    // client-side OAuth flow on /signin; DIDs sign a challenge, since
+    // did:key/device keys aren't OAuth accounts.
     if (!id.startsWith("did:")) {
       const qs = id ? `?handle=${encodeURIComponent(id)}` : "";
-      window.location.assign(`/auth/oauth/start${qs}`);
+      window.location.assign(`/signin${qs}`);
       return;
     }
     await fetchChallenge();
