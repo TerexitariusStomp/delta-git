@@ -3,11 +3,12 @@
   "name": "git-on-cloudflare",
   // Paid Workers account ("Pressword"). Required: the user owns multiple
   // accounts, so every wrangler call needs explicit scoping.
-  "account_id": "ddf0cf5b4491ba59765378877fe8c697",
+  "account_id": "6c0140469651854b2e358517371a03d3",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-05-13",
   "compatibility_flags": [
-    "nodejs_als"
+    "nodejs_als",
+    "nodejs_compat"
   ],
   "workers_dev": true,
   "durable_objects": {
@@ -63,14 +64,14 @@
   "kv_namespaces": [
     {
       "binding": "ROUTES",
-      "id": "5aec0fe75cee4e65b082cec726de78f9"
+      "id": "947d755b199a45b7bf85c0ddfbe31fac"
     }
   ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "git-on-cloudflare",
-      "database_id": "72f2335d-7f97-415e-82b7-12cf8e80a1a5",
+      "database_id": "651a76f1-4a63-4cc6-9b2d-90e97e5b02a1",
       "migrations_dir": "drizzle/d1"
     }
   ],
@@ -93,24 +94,22 @@
     }
   ],
   // Cloudflare Artifacts: hybrid backend for opted-in repositories. The
-  // namespace ("delta-git") must exist on the account before deploy.
-  "artifacts": [
-    {
-      "binding": "ARTIFACTS",
-      "namespace": "delta-git"
-    }
-  ],
+  // binding is disabled — this account is not enrolled in the Artifacts
+  // private beta (API returns access-denied); every `env.ARTIFACTS` call
+  // site degrades to a 503/optional lane when the binding is absent.
+  // Re-add once enrolled: {"binding":"ARTIFACTS","namespace":"delta-git"}
   // Analytics Engine is included with Workers Paid; `metric()` no-ops if the
   // binding is ever absent (e.g. an older deploy config).
   // Cron tiers: 5-min handles due monitor probes + delegate staleness;
-  // hourly carries the certificate-expiry notification scan.
-  "triggers": { "crons": ["*/5 * * * *", "0 * * * *"] },
-  "analytics_engine_datasets": [
-    {
-      "binding": "ANALYTICS",
-      "dataset": "dg_metrics"
-    }
-  ],
+  // hourly carries the certificate-expiry notification scan. Parked — this
+  // account is at the Workers Free 5-trigger cap (all slots held by other
+  // workers); restore after upgrading to Workers Paid or freeing a slot.
+  //   "triggers": { "crons": ["*/5 * * * *", "0 * * * *"] },
+  // Analytics Engine requires a one-time dashboard enablement per account:
+  // https://dash.cloudflare.com/<acct>/workers/analytics-engine — the
+  // binding is parked until that's done; `metric()` no-ops without it.
+  //   "analytics_engine_datasets": [{"binding":"ANALYTICS","dataset":"dg_metrics"}]
+
   "queues": {
     "producers": [
       {
@@ -199,6 +198,6 @@
     "DG_ADMIN_ACTORS": "",
     // Cloudflare account id — used with the CF_API_TOKEN secret by the
     // deploy-on-commit lane and per-repo Artifacts event subscriptions.
-    "CF_ACCOUNT_ID": "ddf0cf5b4491ba59765378877fe8c697"
+    "CF_ACCOUNT_ID": "6c0140469651854b2e358517371a03d3"
   }
 }
