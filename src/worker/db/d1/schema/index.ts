@@ -17,3 +17,4 @@ export * from "./reliability";
 export * from "./devx";
 export * from "./social";
 export * from "./securityEvents";
+export * from "./passkeys";
