@@ -1716,3 +1716,18 @@ describe("clone traffic", () => {
     expect(body.clones.find((d) => d.timestamp.startsWith(today))?.count).toBe(3);
   });
 });
+
+describe("ops probes", () => {
+  it("/healthz + /readyz report dependency health", async () => {
+    const health = await get("/healthz");
+    expect(health.status).toBe(200);
+    expect((health.body as { ok: boolean }).ok).toBe(true);
+
+    const ready = await get("/readyz");
+    expect(ready.status).toBe(200);
+    const checks = (ready.body as { checks: Record<string, boolean> }).checks;
+    expect(checks.d1).toBe(true);
+    expect(checks.kv).toBe(true);
+    expect(checks.r2).toBe(true);
+  });
+});

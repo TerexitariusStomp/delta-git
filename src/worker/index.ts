@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { sql } from "drizzle-orm";
+import { namespaces } from "./db/d1/schema";
 import { registerGitRoutes } from "./routes/git";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerAgentRoutes } from "./routes/agent";
@@ -38,6 +40,28 @@ app.use("*", async (c, next) => {
     for (const [k, v] of Object.entries(ISOLATION_HEADERS)) c.res.headers.set(k, v);
   }
 });
+// Ops probes — liveness is dependency-free; readiness touches each
+// storage primitive so a broken binding surfaces as 503, not a hung
+// request downstream. Registered first so nothing shadows them.
+app.get("/healthz", (c) => c.json({ ok: true }));
+app.get("/readyz", async (c) => {
+  const checks: Record<string, boolean> = {};
+  checks.d1 = await c.var.db
+    .select({ one: sql`1` })
+    .from(namespaces)
+    .limit(1)
+    .then(() => true)
+    .catch(() => false);
+  checks.kv = await c.env.ROUTES.get("__readyz__")
+    .then(() => true)
+    .catch(() => false);
+  checks.r2 = await c.env.REPO_BUCKET.list({ limit: 1 })
+    .then(() => true)
+    .catch(() => false);
+  const ok = Object.values(checks).every(Boolean);
+  return c.json({ ok, checks }, ok ? 200 : 503);
+});
+
 // Register Git protocol routes (info/refs, upload-pack, receive-pack)
 registerGitRoutes(app);
 // Register Admin routes
