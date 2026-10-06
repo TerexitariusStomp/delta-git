@@ -1048,6 +1048,7 @@ export function registerGitnessRepos(router: AppRouter) {
         update_forbidden: r.definition.update ?? false,
       },
       pullreq: { approvals: { require_latest_commit: r.definition.pullreq ?? false } },
+      status_checks: { require_contexts: r.definition.status_checks?.contexts ?? [] },
     },
     created: r.created,
     updated: r.updated,
@@ -1067,7 +1068,12 @@ export function registerGitnessRepos(router: AppRouter) {
       type?: string;
       pattern?: string;
       state?: string;
-      definition?: { delete?: boolean; update?: boolean; pullreq?: boolean };
+      definition?: {
+        delete?: boolean;
+        update?: boolean;
+        pullreq?: boolean;
+        status_checks?: { contexts?: string[] };
+      };
     } | null;
     if (!body?.identifier?.trim()) return gErr(c, 400, "identifier required");
     const rules = await readRepoRules(c.env, gate.route.doName);
@@ -1081,6 +1087,11 @@ export function registerGitnessRepos(router: AppRouter) {
         delete: body.definition?.delete ?? false,
         update: body.definition?.update ?? false,
         pullreq: body.definition?.pullreq ?? false,
+        status_checks: {
+          contexts: (body.definition?.status_checks?.contexts ?? [])
+            .map((ctx) => ctx.trim())
+            .filter(Boolean),
+        },
       },
       created: Date.now(),
       updated: Date.now(),

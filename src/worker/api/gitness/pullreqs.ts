@@ -30,7 +30,7 @@ import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { readPayload, resolvePathEntry, setTreePath } from "@/worker/agent/patch";
 import { diffCommitsText } from "./gitdata";
 import { suggestCodeOwnerReviewers } from "./codeowners";
-import { readRepoLabels } from "./stores";
+import { readRepoLabels, readRepoRules, requiredCheckContexts } from "./stores";
 import { mergeIntentToPullReq } from "./pullreq";
 import {
   closeIssuesLinkedFromText,
@@ -319,6 +319,21 @@ export function registerGitnessPullreqs(router: AppRouter) {
     const preMeta = await readPrMeta(c.env, access.route.doName, intent.id);
     if (preMeta.draft) return gErr(c, 409, "pull request is a draft");
     const stub = getRepoStub(c.env, access.route.doName);
+    // Required status checks: active branch rules matching the target ref
+    // block merge until every listed context reports success on the PR head.
+    const required = requiredCheckContexts(
+      await readRepoRules(c.env, access.route.doName),
+      intent.targetRef
+    );
+    if (required.length > 0) {
+      const statuses = await stub.getCommitStatuses(intent.deltaOid).catch(() => []);
+      const failing = required.filter(
+        (ctx) => statuses.find((row) => row.context === ctx)?.state !== "success"
+      );
+      if (failing.length > 0) {
+        return gErr(c, 409, `required status checks not passing: ${failing.join(", ")}`);
+      }
+    }
     const result = await attemptMerge({
       env: c.env,
       repoId: access.route.doName,

@@ -45,6 +45,12 @@ export interface RepoRule {
     update?: boolean;
     /** Require pull-request review (block direct commits). */
     pullreq?: boolean;
+    /**
+     * Required status-check contexts — merges into matching refs 409
+     * until every listed context reports `success` on the PR head
+     * (GitHub "require status checks to pass" parity).
+     */
+    status_checks?: { contexts?: string[] };
   };
   created: number;
   updated: number;
@@ -61,19 +67,36 @@ export async function writeRepoRules(env: Env, doName: string, rules: RepoRule[]
 
 /**
  * Minimal glob: `*` matches anything, `prefix/*` matches a namespace prefix,
- * otherwise exact. Rules in `monitor`/`disabled` state never block.
+ * otherwise exact. Rules in `monitor`/`disabled` state never match.
  */
+function ruleMatchesRef(rule: RepoRule, short: string, kind: string): boolean {
+  if (rule.state !== "active" || rule.type !== kind) return false;
+  const p = rule.pattern;
+  if (p === "*" || p === short) return true;
+  if (p.endsWith("/*") && short.startsWith(p.slice(0, -1))) return true;
+  return false;
+}
+
 export function ruleBlocksRef(rules: RepoRule[], ref: string, verb: "update" | "delete"): boolean {
   const short = ref.replace(/^refs\/(heads|tags)\//, "");
   const kind = ref.startsWith("refs/tags/") ? "tag" : "branch";
-  return rules.some((r) => {
-    if (r.state !== "active" || r.type !== kind) return false;
-    if (!r.definition[verb]) return false;
-    const p = r.pattern;
-    if (p === "*" || p === short) return true;
-    if (p.endsWith("/*") && short.startsWith(p.slice(0, -1))) return true;
-    return false;
-  });
+  return rules.some((r) => ruleMatchesRef(r, short, kind) && Boolean(r.definition[verb]));
+}
+
+/**
+ * Union of required status-check contexts across active branch rules
+ * matching `ref` (full `refs/heads/...`). Empty array = no check gate.
+ */
+export function requiredCheckContexts(rules: RepoRule[], ref: string): string[] {
+  const short = ref.replace(/^refs\/heads\//, "");
+  const contexts = new Set<string>();
+  for (const rule of rules) {
+    if (!ruleMatchesRef(rule, short, "branch")) continue;
+    for (const ctx of rule.definition.status_checks?.contexts ?? []) {
+      if (ctx.trim()) contexts.add(ctx.trim());
+    }
+  }
+  return [...contexts];
 }
 
 // ---------------------------------------------------------------------------

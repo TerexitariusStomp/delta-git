@@ -539,6 +539,77 @@ describe("gitness /api/v1 write paths", () => {
     expect((after.body as { assignees: string[] }).assignees).not.toContain("teammate-1");
   });
 
+  it("required status checks block merge until contexts report success", async () => {
+    // Branch rule requiring the "ci/build" context on main.
+    const rule = await post(
+      `/api/v1/repos/${ref}/rules`,
+      {
+        identifier: "require-ci",
+        type: "branch",
+        pattern: "main",
+        definition: { status_checks: { contexts: ["ci/build"] } },
+      },
+      w.cookieHeader
+    );
+    expect(rule.status).toBe(200);
+    const ruleId = (rule.body as { id: number }).id;
+
+    await post(
+      `/api/v1/repos/${ref}/branches`,
+      { name: "ci-branch", target: "main" },
+      w.cookieHeader
+    );
+    await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "ci-branch",
+        message: "ci",
+        actions: [{ action: "CREATE", path: "ci.txt", encoding: "text", payload: "ci\n" }],
+      },
+      w.cookieHeader
+    );
+    const pr = await post(
+      `/api/v1/repos/${ref}/pullreq`,
+      { source_branch: "ci-branch", target_branch: "main", title: "ci" },
+      w.cookieHeader
+    );
+    const prOut = pr.body as { number: number; source_sha: string };
+
+    // No status reported → merge blocked.
+    const blocked = await post(
+      `/api/v1/repos/${ref}/pullreq/${prOut.number}/merge`,
+      {},
+      w.cookieHeader
+    );
+    expect(blocked.status).toBe(409);
+    expect(String((blocked.body as { message?: string }).message)).toContain("ci/build");
+
+    // Report success via the v3 statuses API (PAT auth), then merge lands.
+    const status = await workerExports.default.fetch(
+      `https://example.com/api/v3/repos/${w.namespaceSlug}/gwrepo/statuses/${prOut.source_sha}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: w.pushAuthHeader },
+        body: JSON.stringify({ state: "success", context: "ci/build" }),
+      }
+    );
+    expect(status.status).toBe(201);
+
+    const merged = await post(
+      `/api/v1/repos/${ref}/pullreq/${prOut.number}/merge`,
+      {},
+      w.cookieHeader
+    );
+    expect(merged.status).toBe(200);
+    expect((merged.body as { mergeable: boolean }).mergeable).toBe(true);
+
+    // Clean up the rule so it doesn't gate later tests.
+    await workerExports.default.fetch(`https://example.com/api/v1/repos/${ref}/rules/${ruleId}`, {
+      method: "DELETE",
+      headers: { Cookie: w.cookieHeader },
+    });
+  });
+
   it("tag create + delete", async () => {
     const tag = await post(
       `/api/v1/repos/${ref}/tags`,
