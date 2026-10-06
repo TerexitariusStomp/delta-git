@@ -74,6 +74,9 @@ const NON_SPA_PREFIXES = [
   // two SPA-owned paths (`/oauth/callback`, `/oauth/authorize`) are exact
   // routes registered below, so they never reach this check.
   "/oauth/",
+  // Badge SVGs are machine-fetched resources (README embeds); an unmatched
+  // `/badge/...` path should 404, not serve index.html.
+  "/badge/",
 ];
 
 function isNonSpaPath(pathname: string): boolean {

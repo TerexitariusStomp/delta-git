@@ -27,6 +27,13 @@ interface RepoSubheaderProps {
   deltaPaths?: { intents?: string; ideas?: string; arena?: string; agents?: string; knowledge?: string }
 }
 
+/**
+ * GitHub-style tab order: Code | Issues | Pull requests | Discussions |
+ * Actions | Projects | Wiki | Security | Insights, then the delta-native
+ * surfaces (Intents | Ideas | Arena | Agents | Knowledge), then Commits /
+ * Tags / Branches / Settings. Surfaces that have not landed yet route to a
+ * stub page that explains the roadmap instead of a dead link.
+ */
 export const RepoSubheader = ({
   showPipelinesTab = true,
   showSearchTab = false,
@@ -43,44 +50,48 @@ export const RepoSubheader = ({
     <SandboxLayout.SubHeader className={className}>
       <Tabs.NavRoot>
         <Tabs.List className="cn-repo-subheader-tabs">
-          <Tabs.Trigger value={summaryPath || RepoTabsKeys.SUMMARY}>{t('views:repos.summary', 'Summary')}</Tabs.Trigger>
-          <Tabs.Trigger value={filesPath || RepoTabsKeys.CODE} disabled={isRepoEmpty}>
-            {t('views:repos.files', 'Files')}
-          </Tabs.Trigger>
-          {showPipelinesTab && (
-            <Tabs.Trigger value={RepoTabsKeys.PIPELINES}>{t('views:repos.pipelines', 'Pipelines')}</Tabs.Trigger>
-          )}
-          <Tabs.Trigger value={commitsPath || RepoTabsKeys.COMMITS} disabled={isRepoEmpty}>
-            {t('views:repos.commits', 'Commits')}
-          </Tabs.Trigger>
-          <Tabs.Trigger value={RepoTabsKeys.TAGS} disabled={isRepoEmpty}>
-            {t('views:repos.tags', 'Tags')}
-          </Tabs.Trigger>
+          <Tabs.Trigger value={summaryPath || RepoTabsKeys.SUMMARY}>{t('views:repos.code', 'Code')}</Tabs.Trigger>
+          <Tabs.Trigger value="issues">{t('views:repos.issues', 'Issues')}</Tabs.Trigger>
           <Tabs.Trigger value={RepoTabsKeys.PULLS} disabled={isRepoEmpty}>
             {t('views:repos.pullRequests', 'Pull requests')}
           </Tabs.Trigger>
-          <Tabs.Trigger value={RepoTabsKeys.BRANCHES} disabled={isRepoEmpty}>
-            {t('views:repos.branches.title', 'Branches')}
+          <Tabs.Trigger value="discussions">{t('views:repos.discussions', 'Discussions')}</Tabs.Trigger>
+          {showPipelinesTab && (
+            <Tabs.Trigger value={RepoTabsKeys.PIPELINES}>{t('views:repos.actions', 'Actions')}</Tabs.Trigger>
+          )}
+          <Tabs.Trigger value="projects">{t('views:repos.projects', 'Projects')}</Tabs.Trigger>
+          <Tabs.Trigger value="wiki" disabled={isRepoEmpty}>
+            {t('views:repos.wiki', 'Wiki')}
+          </Tabs.Trigger>
+          <Tabs.Trigger value="security">{t('views:repos.security', 'Security')}</Tabs.Trigger>
+          <Tabs.Trigger value="insights" disabled={isRepoEmpty}>
+            {t('views:repos.insights', 'Insights')}
           </Tabs.Trigger>
           {deltaPaths?.intents && (
             <Tabs.Trigger value={deltaPaths.intents} disabled={isRepoEmpty}>
               Intents
             </Tabs.Trigger>
           )}
-          {deltaPaths?.ideas && (
-            <Tabs.Trigger value={deltaPaths.ideas}>Ideas</Tabs.Trigger>
-          )}
-          {deltaPaths?.arena && (
-            <Tabs.Trigger value={deltaPaths.arena}>Arena</Tabs.Trigger>
-          )}
-          {deltaPaths?.agents && (
-            <Tabs.Trigger value={deltaPaths.agents}>Agents</Tabs.Trigger>
-          )}
+          {deltaPaths?.ideas && <Tabs.Trigger value={deltaPaths.ideas}>Ideas</Tabs.Trigger>}
+          {deltaPaths?.arena && <Tabs.Trigger value={deltaPaths.arena}>Arena</Tabs.Trigger>}
+          {deltaPaths?.agents && <Tabs.Trigger value={deltaPaths.agents}>Agents</Tabs.Trigger>}
           {deltaPaths?.knowledge && (
             <Tabs.Trigger value={deltaPaths.knowledge} disabled={isRepoEmpty}>
               Knowledge
             </Tabs.Trigger>
           )}
+          <Tabs.Trigger value={filesPath || RepoTabsKeys.CODE} disabled={isRepoEmpty}>
+            {t('views:repos.files', 'Files')}
+          </Tabs.Trigger>
+          <Tabs.Trigger value={commitsPath || RepoTabsKeys.COMMITS} disabled={isRepoEmpty}>
+            {t('views:repos.commits', 'Commits')}
+          </Tabs.Trigger>
+          <Tabs.Trigger value={RepoTabsKeys.TAGS} disabled={isRepoEmpty}>
+            {t('views:repos.tags', 'Tags')}
+          </Tabs.Trigger>
+          <Tabs.Trigger value={RepoTabsKeys.BRANCHES} disabled={isRepoEmpty}>
+            {t('views:repos.branches.title', 'Branches')}
+          </Tabs.Trigger>
           {showSearchTab && (
             <Tabs.Trigger value={RepoTabsKeys.SEARCH} disabled={isRepoEmpty}>
               {t('views:repos.search', 'Search')}

@@ -68,6 +68,7 @@ import {
   RepoDeltaIdeasPage,
   RepoDeltaIntentsPage,
 } from "./pages-v2/delta/repo-pages";
+import RepoStubPage from "./pages-v2/repo/repo-stub-page";
 import { LandingPage } from "./pages-v2/landing-page-container";
 import { Logout } from "./pages-v2/logout";
 import { SettingsProfileGeneralPage } from "./pages-v2/profile-settings/profile-settings-general-container";
@@ -685,6 +686,62 @@ export const repoRoutes: CustomRouteObject[] = [
               breadcrumb: () => <span>Knowledge</span>,
               routeName: RouteConstants.toRepoKnowledge,
               pageTitle: "Knowledge",
+            },
+          },
+          // GitHub-parity stub surfaces — keep the tab IA legible while the
+          // real implementations land phase by phase.
+          {
+            path: "issues",
+            element: <RepoStubPage surface="issues" />,
+            handle: {
+              breadcrumb: () => <span>Issues</span>,
+              pageTitle: "Issues",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "discussions",
+            element: <RepoStubPage surface="discussions" />,
+            handle: {
+              breadcrumb: () => <span>Discussions</span>,
+              pageTitle: "Discussions",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "projects",
+            element: <RepoStubPage surface="projects" />,
+            handle: {
+              breadcrumb: () => <span>Projects</span>,
+              pageTitle: "Projects",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "wiki",
+            element: <RepoStubPage surface="wiki" />,
+            handle: {
+              breadcrumb: () => <span>Wiki</span>,
+              pageTitle: "Wiki",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "security",
+            element: <RepoStubPage surface="security" />,
+            handle: {
+              breadcrumb: () => <span>Security</span>,
+              pageTitle: "Security",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "insights",
+            element: <RepoStubPage surface="insights" />,
+            handle: {
+              breadcrumb: () => <span>Insights</span>,
+              pageTitle: "Insights",
+              publicAccess: true,
             },
           },
           {

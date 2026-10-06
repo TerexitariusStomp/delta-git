@@ -415,3 +415,23 @@
     }
   }
 }
+
+/* GitHub-style heading anchors — '#' appears on heading hover, always
+   keyboard-focusable. Applied by rehype-autolink-headings. */
+.dg-heading-anchor {
+  opacity: 0;
+  margin-left: var(--cn-spacing-1, 0.25rem);
+  text-decoration: none;
+  color: var(--cn-text-3, currentColor);
+  transition: opacity 120ms ease-in-out;
+}
+
+h1:hover .dg-heading-anchor,
+h2:hover .dg-heading-anchor,
+h3:hover .dg-heading-anchor,
+h4:hover .dg-heading-anchor,
+h5:hover .dg-heading-anchor,
+h6:hover .dg-heading-anchor,
+.dg-heading-anchor:focus {
+  opacity: 1;
+}

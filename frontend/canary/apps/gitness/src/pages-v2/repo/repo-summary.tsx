@@ -47,7 +47,7 @@ import {
   REFS_BRANCH_PREFIX,
   REFS_TAGS_PREFIX
 } from '../../utils/git-utils'
-import { createImageUrlTransform } from '../../utils/path-utils'
+import { createImageUrlTransform, encodeResourcePath } from '../../utils/path-utils'
 import { buildPathSearchList } from './transform-utils/path-transform'
 
 export default function RepoSummaryPage() {
@@ -262,6 +262,26 @@ export default function RepoSummaryPage() {
     return entries.find(entry => entry.type === 'file' && /^readme(\.md)?$/i.test(entry?.name || ''))
   }, [repoDetails?.content?.entries])
 
+  // GitHub-style About sidebar: surface the license file when one sits at
+  // the repo root (LICENSE, LICENCE, COPYING, UNLICENSE, optional .md/.txt).
+  const licenseFile = useMemo(() => {
+    const entries = repoDetails?.content?.entries
+    if (!entries?.length) return undefined
+
+    const match = entries.find(
+      entry =>
+        entry.type === 'file' &&
+        /^(licen[sc]e|copying|unlicen[sc]e|notice)(\.\w{1,4})?$/i.test(entry?.name || '')
+    )
+    return match?.name && match?.path ? { name: match.name, path: match.path } : undefined
+  }, [repoDetails?.content?.entries])
+
+  const toRepoFilePath = useCallback(
+    ({ path }: { path: string }) =>
+      routes.toRepoFiles({ spaceId, repoId, '*': `${fullGitRef}/~/${encodeResourcePath(path)}` }),
+    [routes, spaceId, repoId, fullGitRef]
+  )
+
   // Fetch README content only when readmeInfo exists
   const { data: { body: readmeContent } = {}, refetch: refetchReadmeContent } = useGetContentQuery(
     {
@@ -440,6 +460,11 @@ export default function RepoSummaryPage() {
         upstream={repoData?.upstream}
         onFetchAndMerge={handleFetchAndMerge}
         isFetchingUpstream={isSyncingFork}
+        licenseFile={licenseFile}
+        toRepoFilePath={toRepoFilePath}
+        zipUrl={apiPath(`/api/v1/repos/${repoRef}/archive/${fullGitRef || 'HEAD'}.zip`)}
+        dgitRepoRef={spaceId && repoId ? `${spaceId}/${repoId}` : undefined}
+        dgitHost={typeof window !== 'undefined' ? window.location.origin : undefined}
       />
       <CreateBranchDialog
         open={isCreateBranchDialogOpen}

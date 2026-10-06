@@ -31,6 +31,10 @@ interface SummaryPanelProps {
   timestamp?: string
   description?: string
   tags?: Record<string, string>
+  /** Route path to the repo's license file, if one exists at the root. */
+  licensePath?: string
+  /** Display name of the detected license file (e.g. `LICENSE`, `COPYING`). */
+  licenseName?: string
   saveDescription: (description: string) => void
   updateRepoError?: string
   isEditDialogOpen: boolean
@@ -43,6 +47,8 @@ const SummaryPanel: FC<SummaryPanelProps> = ({
   timestamp,
   description = '',
   tags,
+  licensePath,
+  licenseName,
   saveDescription,
   updateRepoError,
   isEditDialogOpen,
@@ -120,6 +126,18 @@ const SummaryPanel: FC<SummaryPanelProps> = ({
               <Tag key={key} label={key || value} value={value || ''} variant="outline" size="sm" theme="gray" />
             ))}
           </Layout.Flex>
+        )}
+
+        {!!licensePath && (
+          <>
+            <Separator />
+            <Link variant="secondary" to={licensePath}>
+              <Layout.Flex className="cursor-pointer gap-cn-2xs" align="center" gap="2xs">
+                <IconV2 name="menu-scale" size="xs" className="text-cn-2" />
+                <Text color="foreground-1">{licenseName ?? 'License'}</Text>
+              </Layout.Flex>
+            </Link>
+          </>
         )}
 
         <Separator />

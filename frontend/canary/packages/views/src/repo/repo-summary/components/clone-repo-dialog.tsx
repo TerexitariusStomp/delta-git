@@ -1,6 +1,6 @@
 import { FC } from 'react'
 
-import { Alert, Button, CopyButton, IconV2, Layout, Popover, Tabs, TextInput } from '@harnessio/ui/components'
+import { Alert, Button, CopyButton, IconV2, Layout, Link, Popover, Tabs, TextInput } from '@harnessio/ui/components'
 import { useCustomDialogTrigger, useTranslation } from '@harnessio/ui/context'
 
 export interface CloneRepoDialogProps {
@@ -9,11 +9,18 @@ export interface CloneRepoDialogProps {
   isSSHEnabled?: boolean
   handleCreateToken: () => void
   tokenGenerationError?: string | null
+  /** Direct-download archive URL for the selected ref (`.zip`). */
+  zipUrl?: string
+  /** Namespace/repo slug the `dgit` client addresses (e.g. `alice/my-repo`). */
+  dgitRepoRef?: string
+  /** Host origin the `dgit` client targets — `dgit login --host`. */
+  dgitHost?: string
 }
 
 export enum CloneRepoTabs {
   HTTPS = 'https',
-  SSH = 'ssh'
+  SSH = 'ssh',
+  DGIT = 'dgit'
 }
 
 export const CloneRepoDialog: FC<CloneRepoDialogProps> = ({
@@ -21,7 +28,10 @@ export const CloneRepoDialog: FC<CloneRepoDialogProps> = ({
   sshUrl,
   isSSHEnabled,
   handleCreateToken: _handleCreateToken,
-  tokenGenerationError
+  tokenGenerationError,
+  zipUrl,
+  dgitRepoRef,
+  dgitHost
 }) => {
   const { t } = useTranslation()
   const { triggerRef, registerTrigger } = useCustomDialogTrigger()
@@ -30,6 +40,8 @@ export const CloneRepoDialog: FC<CloneRepoDialogProps> = ({
     registerTrigger()
     _handleCreateToken()
   }
+
+  const dgitLogin = dgitHost ? `dgit login --host ${dgitHost}` : 'dgit login'
 
   return (
     <Popover.Root>
@@ -53,6 +65,7 @@ export const CloneRepoDialog: FC<CloneRepoDialogProps> = ({
                 {t('views:repos.cloneSsh', 'SSH')}
               </Tabs.Trigger>
             )}
+            {!!dgitRepoRef && <Tabs.Trigger value={CloneRepoTabs.DGIT}>dgit</Tabs.Trigger>}
           </Tabs.List>
 
           <Tabs.Content value={CloneRepoTabs.HTTPS}>
@@ -92,7 +105,51 @@ export const CloneRepoDialog: FC<CloneRepoDialogProps> = ({
               suffix={<CopyButton name={sshUrl || ''} buttonVariant="transparent" />}
             />
           </Tabs.Content>
+
+          <Tabs.Content value={CloneRepoTabs.DGIT}>
+            <Layout.Vertical gap="sm">
+              <TextInput
+                className="truncate"
+                id="dgitLogin"
+                label={t('views:repos.dgitLogin', 'Sign in once')}
+                readOnly
+                value={dgitLogin}
+                suffix={<CopyButton name={dgitLogin} buttonVariant="transparent" />}
+              />
+              <TextInput
+                className="truncate"
+                id="dgitIntents"
+                label={t('views:repos.dgitIntents', 'List merge intents')}
+                readOnly
+                value={`dgit intents ${dgitRepoRef ?? ''}`}
+                suffix={<CopyButton name={`dgit intents ${dgitRepoRef ?? ''}`} buttonVariant="transparent" />}
+              />
+              <TextInput
+                className="truncate"
+                id="dgitHooks"
+                label={t('views:repos.dgitHooks', 'Scan-gated pushes')}
+                readOnly
+                value="dgit hooks install --global"
+                suffix={<CopyButton name="dgit hooks install --global" buttonVariant="transparent" />}
+                caption={t(
+                  'views:repos.dgitCaption',
+                  'The delta-git client adds OAuth sign-in and a pre-push secret scan to plain git.'
+                )}
+              />
+            </Layout.Vertical>
+          </Tabs.Content>
         </Tabs.Root>
+
+        {!!zipUrl && (
+          <Layout.Vertical gap="xs" className="mt-cn-sm border-t pt-cn-sm">
+            <Link external variant="secondary" href={zipUrl} noHoverUnderline>
+              <Layout.Flex align="center" gap="2xs">
+                <IconV2 name="download" size="sm" />
+                {t('views:repos.downloadZip', 'Download ZIP')}
+              </Layout.Flex>
+            </Link>
+          </Layout.Vertical>
+        )}
       </Popover.Content>
     </Popover.Root>
   )

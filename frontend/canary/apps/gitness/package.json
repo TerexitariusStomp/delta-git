@@ -54,6 +54,7 @@
     "react-hook-form": "^7.55.0",
     "react-i18next": "^15.1.1",
     "react-router-dom": "^6.26.0",
+    "tinykeys": "4.0.1",
     "yaml": "^2.5.0",
     "zod": "^4.0.0",
     "zustand": "^4.5.4"

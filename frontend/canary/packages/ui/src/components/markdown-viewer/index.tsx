@@ -2,9 +2,11 @@ import { CSSProperties, memo, ReactNode, useCallback, useEffect, useMemo, useRef
 
 import { CopyButton, IconV2, IconV2NamesType, Text } from '@/components'
 import MarkdownPreview from '@uiw/react-markdown-preview'
+import rehypeAutolinkHeadings from 'rehype-autolink-headings'
 import rehypeExternalLinks from 'rehype-external-links'
 import { getCodeString, RehypeRewriteOptions } from 'rehype-rewrite'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import rehypeSlug from 'rehype-slug'
 import rehypeVideo from 'rehype-video'
 import remarkBreaks from 'remark-breaks'
 
@@ -302,7 +304,20 @@ const MarkdownViewerLocal = ({
           rehypeRewrite={rehypeRewrite}
           remarkPlugins={[remarkBreaks]}
           rehypePlugins={[
+            // Sanitize first — the slug/autolink plugins run after and add
+            // known-safe `id`/anchor markup, so the schema needs no widening.
             [rehypeSanitize, sanitizeSchema],
+            // GitHub-compatible heading ids (github-slugger) + hover anchors
+            // so README/comment headings are deep-linkable like on GitHub.
+            rehypeSlug,
+            [
+              rehypeAutolinkHeadings,
+              {
+                behavior: 'append',
+                properties: { className: 'dg-heading-anchor', ariaHidden: 'true', tabIndex: -1 },
+                content: { type: 'text', value: '#' }
+              }
+            ],
             [rehypeVideo, { test: /\.(mp4|mov|webm|mkv|flv)$/, details: false }],
             [rehypeExternalLinks, { rel: ['nofollow noreferrer noopener'], target: '_blank' }]
           ]}

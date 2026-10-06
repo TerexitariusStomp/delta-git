@@ -47,6 +47,7 @@ the shipping bundle.
 | @atcute/identity, identity-resolver, lexicons           | 0BSD                        | handle/DID/PDS resolution       |
 | @modelcontextprotocol/server                            | MIT → Apache-2.0 transition | MCP JSON-RPC/SSE transport      |
 | modern-tar                                              | MIT                         | Archive writer; wpcloud reader  |
+| badge-maker                                             | CC0-1.0                     | shields.io SVG badge generator  |
 
 ## Build/dev tooling (not distributed)
 
@@ -95,6 +96,8 @@ Notable transitive runtime deps inside the SPA bundle (all permissive):
 | react-query (tanstack v4), zustand, jotai, immer | MIT     | Data/state                    |
 | i18next family                                   | MIT     | i18n                          |
 | react-hook-form, zod                             | MIT     | Forms/validation              |
+| tinykeys                                         | MIT     | Repo keyboard shortcuts       |
+| rehype-slug, rehype-autolink-headings            | MIT     | README heading anchors        |
 
 S0.6 audit: 220 vendored deps — 190 MIT, 17 Apache-2.0, remainder
 ISC/BSD/MIT-0. The only flagged package is `gitness@0.1.0` itself, covered by

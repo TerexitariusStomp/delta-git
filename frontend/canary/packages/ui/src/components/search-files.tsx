@@ -147,7 +147,8 @@ export const SearchFiles = ({
     <DropdownMenu.Root open={isOpen} onOpenChange={setIsOpen} modal={false}>
       <div className={cn('relative', inputContainerClassName)}>
         <DropdownMenu.Trigger className="pointer-events-none absolute inset-0 -z-0 !outline-0" tabIndex={-1} />
-        <SearchInput
+        <div className="dg-file-search" data-dg-file-search>
+          <SearchInput
           ref={searchInputRef}
           size={searchInputSize}
           searchValue={currentQuery}
@@ -157,6 +158,7 @@ export const SearchFiles = ({
           onFocus={handleFocus}
           autoFocus
         />
+        </div>
       </div>
 
       <DropdownMenu.Content

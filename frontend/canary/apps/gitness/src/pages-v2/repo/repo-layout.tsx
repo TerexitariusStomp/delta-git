@@ -10,6 +10,7 @@ import { toast } from '@harnessio/ui/components'
 import { NotFoundPage, RepoHeader, RepoSubheader, SubHeaderWrapper } from '@harnessio/views'
 
 import { PublicAccessGuard } from '../../components-v2/public-access'
+import { useRepoHotkeys } from '../../delta/use-repo-hotkeys'
 import { useRoutes } from '../../framework/context/NavigationContext'
 import { useGetRepoRef } from '../../framework/hooks/useGetRepoPath'
 import { useIsMFE } from '../../framework/hooks/useIsMFE'
@@ -28,6 +29,8 @@ const RepoLayout = () => {
   const { isLoading, gitRefName, gitRefPath, repoData, fullGitRef, refetchRepo, defaultBranch, repoFetchError } =
     useGitRef()
   const toUpstreamRepo = useUpstreamRepoUrl()
+  // GitHub-flavoured repo hotkeys (t/y/./g */?) — returns the ? cheatsheet element.
+  const repoHotkeys = useRepoHotkeys()
 
   const repoRef = useGetRepoRef()
 
@@ -121,6 +124,7 @@ const RepoLayout = () => {
       <PublicAccessGuard>
         <Outlet />
       </PublicAccessGuard>
+      {repoHotkeys.cheatsheet}
     </>
   )
 }

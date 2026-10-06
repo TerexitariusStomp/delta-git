@@ -111,6 +111,16 @@ export interface RepoSummaryViewProps extends Partial<RoutingProps> {
   upstream?: TypesRepositoryCore
   onFetchAndMerge?: () => void
   isFetchingUpstream?: boolean
+  /** Detected repo-root license file — rendered as an About-sidebar row. */
+  licenseFile?: { name: string; path: string }
+  /** Route builder for a repo file path (renders the license link). */
+  toRepoFilePath?: ({ path }: { path: string }) => string
+  /** Direct-download `.zip` archive URL for the selected ref (clone dialog). */
+  zipUrl?: string
+  /** `namespace/repo` the dgit client addresses in the clone dialog. */
+  dgitRepoRef?: string
+  /** Host origin for `dgit login --host` in the clone dialog. */
+  dgitHost?: string
 }
 
 export function RepoSummaryView({
@@ -151,6 +161,11 @@ export function RepoSummaryView({
   upstream,
   onFetchAndMerge,
   isFetchingUpstream,
+  licenseFile,
+  toRepoFilePath,
+  zipUrl,
+  dgitRepoRef,
+  dgitHost,
   ...props
 }: RepoSummaryViewProps) {
   const { t } = useTranslation()
@@ -278,6 +293,9 @@ export function RepoSummaryView({
                     httpsUrl={repository?.git_url ?? 'could not fetch url'}
                     handleCreateToken={handleCreateToken}
                     tokenGenerationError={tokenGenerationError}
+                    zipUrl={zipUrl}
+                    dgitRepoRef={dgitRepoRef}
+                    dgitHost={dgitHost}
                   />
                 </ButtonLayout>
               </ListActions.Right>
@@ -381,7 +399,7 @@ export function RepoSummaryView({
         <SandboxLayout.Column>
           <SandboxLayout.Content className="pl-0">
             <SummaryPanel
-              title={t('views:repos.summary', 'Summary')}
+              title={t('views:repos.about', 'About')}
               details={[
                 {
                   id: '0',
@@ -415,6 +433,8 @@ export function RepoSummaryView({
               timestamp={repository?.created ? new Date(repository.created).toISOString() : ''}
               description={repository?.description}
               tags={repository?.tags}
+              licensePath={licenseFile && toRepoFilePath ? toRepoFilePath({ path: licenseFile.path }) : undefined}
+              licenseName={licenseFile?.name}
               saveDescription={saveDescription}
               updateRepoError={updateRepoError}
               isEditDialogOpen={isEditDialogOpen}
