@@ -30,6 +30,8 @@ export interface PrMeta {
   description?: string;
   comments: PrComment[];
   reviewers?: string[];
+  /** Distinct from reviewers — GitHub tracks both on a PR. */
+  assignees?: string[];
   reviews?: PrReview[];
   labels?: string[];
   /** Draft PRs block merge until flipped ready — GitHub's is_draft. */
@@ -49,6 +51,7 @@ export async function readPrMeta(env: Env, doName: string, intentId: string): Pr
     description: meta?.description,
     comments: meta?.comments ?? [],
     reviewers: meta?.reviewers ?? [],
+    assignees: meta?.assignees ?? [],
     reviews: meta?.reviews ?? [],
     labels: meta?.labels ?? [],
     draft: meta?.draft,

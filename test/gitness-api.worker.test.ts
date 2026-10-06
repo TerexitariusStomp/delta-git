@@ -494,6 +494,51 @@ describe("gitness /api/v1 write paths", () => {
     expect((merged.body as { mergeable: boolean }).mergeable).toBe(true);
   });
 
+  it("PR assignees add/remove and surface on detail", async () => {
+    await post(
+      `/api/v1/repos/${ref}/branches`,
+      { name: "assign-branch", target: "main" },
+      w.cookieHeader
+    );
+    await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "assign-branch",
+        message: "x",
+        actions: [{ action: "CREATE", path: "a.txt", encoding: "text", payload: "a\n" }],
+      },
+      w.cookieHeader
+    );
+    const pr = await post(
+      `/api/v1/repos/${ref}/pullreq`,
+      { source_branch: "assign-branch", target_branch: "main", title: "x" },
+      w.cookieHeader
+    );
+    const n = (pr.body as { number: number }).number;
+
+    // PUT is the assign verb (gitness shape), not POST.
+    const put = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${ref}/pullreq/${n}/assignees`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: w.cookieHeader },
+        body: JSON.stringify({ assignee_id: "teammate-1" }),
+      }
+    );
+    expect(put.status).toBe(200);
+
+    const detail = await get(`/api/v1/repos/${ref}/pullreq/${n}`);
+    expect((detail.body as { assignees: string[] }).assignees).toContain("teammate-1");
+
+    const del = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${ref}/pullreq/${n}/assignees/teammate-1`,
+      { method: "DELETE", headers: { Cookie: w.cookieHeader } }
+    );
+    expect(del.status).toBe(200);
+    const after = await get(`/api/v1/repos/${ref}/pullreq/${n}`);
+    expect((after.body as { assignees: string[] }).assignees).not.toContain("teammate-1");
+  });
+
   it("tag create + delete", async () => {
     const tag = await post(
       `/api/v1/repos/${ref}/tags`,

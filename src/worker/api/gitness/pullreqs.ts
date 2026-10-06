@@ -170,6 +170,7 @@ export function registerGitnessPullreqs(router: AppRouter) {
     return c.json({
       ...mergeIntentToPullReq({ intent, number: n, title: meta.title, draft: meta.draft }),
       description: meta.description ?? "",
+      assignees: meta.assignees ?? [],
     });
   });
 
@@ -852,6 +853,51 @@ export function registerGitnessPullreqs(router: AppRouter) {
     const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
     const want = c.req.param("principal_id");
     meta.reviewers = (meta.reviewers ?? []).filter(
+      (uid) => uid !== want && String(numericId(uid)) !== want
+    );
+    await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    return c.json({});
+  });
+
+  // --- assignees (distinct from reviewers — GitHub tracks both) ---------------
+
+  router.get("/api/v1/repos/:repo_ref{.+}/pullreq/:n/assignees", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const intent = await intentByNumber(access, c.env, parseInt(c.req.param("n"), 10));
+    if (!intent) return gNotFound(c, "pull request");
+    const meta = await readPrMeta(c.env, access.route.doName, intent.id);
+    return c.json(
+      (meta.assignees ?? []).map((uid) => ({
+        id: numericId(uid),
+        uid,
+        display_name: uid,
+        type: "user",
+      }))
+    );
+  });
+
+  router.put("/api/v1/repos/:repo_ref{.+}/pullreq/:n/assignees", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const intent = await intentByNumber(gate, c.env, parseInt(c.req.param("n"), 10));
+    if (!intent) return gNotFound(c, "pull request");
+    const body = (await c.req.json().catch(() => null)) as { assignee_id?: string } | null;
+    const uid = body?.assignee_id?.trim() || gate.actor;
+    const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
+    meta.assignees = [...new Set([...(meta.assignees ?? []), uid])];
+    await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    return c.json({ id: numericId(uid), uid, display_name: uid, type: "user" });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/pullreq/:n/assignees/:principal_id", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const intent = await intentByNumber(gate, c.env, parseInt(c.req.param("n"), 10));
+    if (!intent) return gNotFound(c, "pull request");
+    const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
+    const want = c.req.param("principal_id");
+    meta.assignees = (meta.assignees ?? []).filter(
       (uid) => uid !== want && String(numericId(uid)) !== want
     );
     await writePrMeta(c.env, gate.route.doName, intent.id, meta);
