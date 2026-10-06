@@ -32,6 +32,8 @@ export interface PrMeta {
   reviewers?: string[];
   reviews?: PrReview[];
   labels?: string[];
+  /** Draft PRs block merge until flipped ready — GitHub's is_draft. */
+  draft?: boolean;
   automerge?: { method?: string; setBy: string; at: number };
 }
 
@@ -49,6 +51,7 @@ export async function readPrMeta(env: Env, doName: string, intentId: string): Pr
     reviewers: meta?.reviewers ?? [],
     reviews: meta?.reviews ?? [],
     labels: meta?.labels ?? [],
+    draft: meta?.draft,
     automerge: meta?.automerge,
   };
 }

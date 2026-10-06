@@ -133,7 +133,12 @@ export function registerGitnessPullreqs(router: AppRouter) {
         items.map(async (i) => {
           const meta = await readPrMeta(c.env, access.route.doName, i.id);
           return {
-            ...mergeIntentToPullReq({ intent: i, number: all.indexOf(i) + 1, title: meta.title }),
+            ...mergeIntentToPullReq({
+              intent: i,
+              number: all.indexOf(i) + 1,
+              title: meta.title,
+              draft: meta.draft,
+            }),
             description: meta.description ?? "",
           };
         })
@@ -163,7 +168,7 @@ export function registerGitnessPullreqs(router: AppRouter) {
     if (!intent) return gNotFound(c, "pull request");
     const meta = await readPrMeta(c.env, access.route.doName, intent.id);
     return c.json({
-      ...mergeIntentToPullReq({ intent, number: n, title: meta.title }),
+      ...mergeIntentToPullReq({ intent, number: n, title: meta.title, draft: meta.draft }),
       description: meta.description ?? "",
     });
   });
@@ -306,6 +311,10 @@ export function registerGitnessPullreqs(router: AppRouter) {
     const n = parseInt(c.req.param("n"), 10);
     const intent = await intentByNumber(access, c.env, n);
     if (!intent) return gNotFound(c, "pull request");
+    // Drafts block merge until marked ready — checked before the engine so
+    // the rejection is a clean 409 rather than an intent-state error.
+    const preMeta = await readPrMeta(c.env, access.route.doName, intent.id);
+    if (preMeta.draft) return gErr(c, 409, "pull request is a draft");
     const stub = getRepoStub(c.env, access.route.doName);
     const result = await attemptMerge({
       env: c.env,
@@ -404,6 +413,7 @@ export function registerGitnessPullreqs(router: AppRouter) {
       target_branch?: string;
       title?: string;
       description?: string;
+      is_draft?: boolean;
     } | null;
     if (!body?.source_branch || !body?.target_branch) {
       return gErr(c, 400, "source_branch and target_branch required");
@@ -435,12 +445,13 @@ export function registerGitnessPullreqs(router: AppRouter) {
       headOid: source.oid,
       exclude: gate.actor,
     }).catch(() => [] as string[]);
-    if (body.title || body.description || suggestions.length > 0) {
+    if (body.title || body.description || body.is_draft || suggestions.length > 0) {
       await writePrMeta(c.env, gate.route.doName, intent.id, {
         title: body.title,
         description: body.description,
         comments: [],
         reviewers: suggestions.map((owner) => owner.replace(/^@/, "")),
+        draft: body.is_draft === true,
       });
     }
     const all = await allIntentsOrdered(gate, c.env);
@@ -450,6 +461,7 @@ export function registerGitnessPullreqs(router: AppRouter) {
         intent,
         number: number > 0 ? number : all.length,
         title: body.title,
+        draft: body.is_draft === true,
       }),
       description: body.description ?? "",
       suggested_reviewers: suggestions,
@@ -476,13 +488,19 @@ export function registerGitnessPullreqs(router: AppRouter) {
     }
     const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
     return c.json({
-      ...mergeIntentToPullReq({ intent: result.intent, number: n, title: meta.title }),
+      ...mergeIntentToPullReq({
+        intent: result.intent,
+        number: n,
+        title: meta.title,
+        draft: meta.draft,
+      }),
       description: meta.description ?? "",
     });
   });
 
   // Title/description land on the KV meta record — merge intents carry no
-  // human text fields of their own.
+  // human text fields of their own. `is_draft` toggles the draft state —
+  // false is GitHub's "ready for review".
   router.patch("/api/v1/repos/:repo_ref{.+}/pullreq/:n", async (c) => {
     const gate = await requireWriter(c);
     if (gate instanceof Response) return gate;
@@ -492,13 +510,15 @@ export function registerGitnessPullreqs(router: AppRouter) {
     const body = (await c.req.json().catch(() => null)) as {
       title?: string;
       description?: string;
+      is_draft?: boolean;
     } | null;
     const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
     if (body?.title !== undefined) meta.title = body.title;
     if (body?.description !== undefined) meta.description = body.description;
+    if (body?.is_draft !== undefined) meta.draft = body.is_draft;
     await writePrMeta(c.env, gate.route.doName, intent.id, meta);
     return c.json({
-      ...mergeIntentToPullReq({ intent, number: n, title: meta.title }),
+      ...mergeIntentToPullReq({ intent, number: n, title: meta.title, draft: meta.draft }),
       description: meta.description ?? "",
     });
   });

@@ -443,6 +443,57 @@ describe("gitness /api/v1 write paths", () => {
     expect([401, 403]).toContain(unauth.status);
   });
 
+  it("draft PRs block merge until marked ready", async () => {
+    await post(
+      `/api/v1/repos/${ref}/branches`,
+      { name: "draft-branch", target: "main" },
+      w.cookieHeader
+    );
+    await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "draft-branch",
+        message: "wip",
+        actions: [{ action: "CREATE", path: "wip.txt", encoding: "text", payload: "wip\n" }],
+      },
+      w.cookieHeader
+    );
+
+    const pr = await post(
+      `/api/v1/repos/${ref}/pullreq`,
+      { source_branch: "draft-branch", target_branch: "main", title: "wip", is_draft: true },
+      w.cookieHeader
+    );
+    expect(pr.status).toBe(200);
+    const prOut = pr.body as { number: number; is_draft: boolean };
+    expect(prOut.is_draft).toBe(true);
+
+    // Draft blocks merge.
+    const blocked = await post(
+      `/api/v1/repos/${ref}/pullreq/${prOut.number}/merge`,
+      {},
+      w.cookieHeader
+    );
+    expect(blocked.status).toBe(409);
+
+    // Ready-for-review flips the flag; merge now succeeds.
+    const ready = await patch(
+      `/api/v1/repos/${ref}/pullreq/${prOut.number}`,
+      { is_draft: false },
+      w.cookieHeader
+    );
+    expect(ready.status).toBe(200);
+    expect((ready.body as { is_draft: boolean }).is_draft).toBe(false);
+
+    const merged = await post(
+      `/api/v1/repos/${ref}/pullreq/${prOut.number}/merge`,
+      {},
+      w.cookieHeader
+    );
+    expect(merged.status).toBe(200);
+    expect((merged.body as { mergeable: boolean }).mergeable).toBe(true);
+  });
+
   it("tag create + delete", async () => {
     const tag = await post(
       `/api/v1/repos/${ref}/tags`,

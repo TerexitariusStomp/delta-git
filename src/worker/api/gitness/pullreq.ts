@@ -67,10 +67,11 @@ export function mergeIntentToPullReq(args: {
   intent: MergeIntentRow;
   number: number;
   title?: string;
+  draft?: boolean;
   stats?: Partial<GitnessPullReq["stats"]>;
   unresolved?: number;
 }): GitnessPullReq {
-  const { intent, number, title, stats, unresolved } = args;
+  const { intent, number, title, draft, stats, unresolved } = args;
   const branch = (ref: string) => ref.replace(/^refs\/heads\//, "").replace(/^refs\//, "");
   const isTerminal =
     intent.status === "merged" || intent.status === "rejected" || intent.status === "expired";
@@ -83,7 +84,7 @@ export function mergeIntentToPullReq(args: {
     // via the delta tab. Kept honest-empty rather than fabricated.
     description: "",
     state: STATUS_MAP[intent.status] ?? "open",
-    is_draft: false,
+    is_draft: draft ?? false,
     author: { uid: intent.actor, display_name: intent.actor },
     source_branch: branch(intent.deltaRef),
     source_sha: intent.deltaOid,
