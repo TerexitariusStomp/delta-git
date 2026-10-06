@@ -48,6 +48,7 @@ the shipping bundle.
 | @modelcontextprotocol/server                            | MIT → Apache-2.0 transition | MCP JSON-RPC/SSE transport      |
 | modern-tar                                              | MIT                         | Archive writer; wpcloud reader  |
 | badge-maker                                             | CC0-1.0                     | shields.io SVG badge generator  |
+| @simplewebauthn/server                                  | MIT                         | WebAuthn passkey ceremonies     |
 
 ## Build/dev tooling (not distributed)
 
