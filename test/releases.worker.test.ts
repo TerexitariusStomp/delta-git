@@ -1,8 +1,14 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { env, exports as workerExports } from "cloudflare:workers";
 
+import { encodeGitObject } from "@/worker/git/core/objects";
+import { pktLine, flushPkt, concatChunks } from "@/worker/git/core";
 import { ensureD1Migrations } from "./util/d1Setup";
 import { setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
+import { buildPack } from "./util/git-pack";
+import { buildTreePayload } from "./util/packed-repo";
+
+const te = new TextEncoder();
 
 // Releases coverage: DO-backed release metadata + R2 asset bytes, on the
 // session /api/v1 facade plus the /api/v3 gh-release subset.
@@ -50,6 +56,57 @@ interface ReleaseJson {
   prerelease: boolean;
   author: { login: string };
   assets: { id: string; name: string; size: number; download_count: number }[];
+}
+
+// Push `objects` as a chain on refs/heads/main (or a tag ref), building
+// parent links as we go. Returns each commit's oid in push order.
+async function pushChain(
+  repo: SetupRepoForTestsResult,
+  specs: { name: string; text: string; message: string }[],
+  ref = "refs/heads/main"
+): Promise<string[]> {
+  const objects: { type: "blob" | "tree" | "commit"; payload: Uint8Array }[] = [];
+  const commitOids: string[] = [];
+  let parent = "";
+  for (const spec of specs) {
+    const blob = await encodeGitObject("blob", te.encode(spec.text));
+    const treePayload = buildTreePayload([{ mode: "100644", name: spec.name, oid: blob.oid }]);
+    const tree = await encodeGitObject("tree", treePayload);
+    const commitPayload = te.encode(
+      `tree ${tree.oid}\n${parent ? `parent ${parent}\n` : ""}` +
+        `author You <you@example.com> 1000000000 +0000\n` +
+        `committer You <you@example.com> 1000000000 +0000\n\n${spec.message}\n`
+    );
+    const commit = await encodeGitObject("commit", commitPayload);
+    objects.push(
+      { type: "blob", payload: te.encode(spec.text) },
+      { type: "tree", payload: treePayload },
+      { type: "commit", payload: commitPayload }
+    );
+    commitOids.push(commit.oid);
+    parent = commit.oid;
+  }
+  const pack = await buildPack(objects);
+  const body = concatChunks([
+    pktLine(
+      `0000000000000000000000000000000000000000 ${commitOids[commitOids.length - 1]} ${ref}\0 report-status ofs-delta\n`
+    ),
+    flushPkt(),
+    pack,
+  ]);
+  const res = await workerExports.default.fetch(
+    `https://example.com/${repo.namespaceSlug}/${repo.repoSlug}/git-receive-pack`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-git-receive-pack-request",
+        Authorization: repo.pushAuthHeader,
+      },
+      body,
+    }
+  );
+  expect(res.status).toBe(200);
+  return commitOids;
 }
 
 let seeded: SetupRepoForTestsResult;
@@ -182,6 +239,57 @@ describe("releases: /api/v1 session facade", () => {
       cookie: seeded.cookieHeader,
     });
     expect(del.status).toBe(404);
+  });
+});
+
+describe("releases: generate-notes", () => {
+  it("categorizes conventional commits between tags", async () => {
+    const repo = await setupRepoForTests(env, uniq("notes-ns"), "notesrepo");
+    const rbase = `/api/v1/repos/${repo.namespaceSlug}/notesrepo/+`;
+    const oids = await pushChain(
+      repo,
+      [
+        { name: "a.txt", text: "a", message: "feat: seed the project" },
+        { name: "b.txt", text: "b", message: "fix: crash on empty config" },
+        { name: "c.txt", text: "c", message: "feat!: drop the legacy API" },
+      ],
+      "refs/heads/main"
+    );
+
+    // v0.1.0 at the first commit; v1.0.0 at the tip.
+    for (const [tag, target] of [
+      ["v0.1.0", oids[0]],
+      ["v1.0.0", oids[2]],
+    ] as const) {
+      const t = await call("POST", `${rbase}/tags`, {
+        cookie: repo.cookieHeader,
+        body: { name: tag, target },
+      });
+      expect(t.status, JSON.stringify(t.body)).toBe(200);
+    }
+
+    const notes = await call("POST", `${rbase}/releases/generate-notes`, {
+      cookie: repo.cookieHeader,
+      body: { tag_name: "v1.0.0", previous_tag_name: "v0.1.0" },
+    });
+    expect(notes.status, JSON.stringify(notes.body)).toBe(200);
+    const md = (notes.body as { body: string }).body;
+    expect(md).toContain("## What's Changed");
+    expect(md).toContain("### Breaking Changes");
+    expect(md).toContain("drop the legacy API");
+    expect(md).toContain("### Bug Fixes");
+    expect(md).toContain("crash on empty config");
+    // The commit at the previous tag is excluded from the range.
+    expect(md).not.toContain("seed the project");
+    expect(md).toContain("v0.1.0...v1.0.0");
+
+    // generate_release_notes on create fills an empty body.
+    const rel = await call("POST", `${rbase}/releases`, {
+      cookie: repo.cookieHeader,
+      body: { tag_name: "v1.0.0", generate_release_notes: true },
+    });
+    expect(rel.status, JSON.stringify(rel.body)).toBe(201);
+    expect((rel.body as { body: string }).body).toContain("crash on empty config");
   });
 });
 

@@ -3,7 +3,9 @@ import type { ReleaseAssetRow, ReleaseRow } from "@/worker/do/repo/db/schema";
 
 import { createLogger } from "@/worker/common/logger";
 import { getRepoStub } from "@/worker/common";
-import { resolveRef } from "@/worker/git/operations/read";
+import { readCommitInfo, readLooseObjectRaw, resolveRef } from "@/worker/git/operations/read";
+import type { CommitInfo } from "@/worker/git/operations/read/types";
+import type { CacheContext } from "@/worker/cache";
 import {
   emitRepoEvent,
   gErr,
@@ -20,9 +22,117 @@ import {
 // directly (single hop), the DO only indexes the keys.
 
 const MAX_ASSET_BYTES = 64 * 1024 * 1024;
+// Cap on commits scanned for auto notes — GitHub caps its generated
+// changelog around a similar bound; deeper history still links the
+// "Full Changelog" compare range.
+const NOTES_COMMIT_CAP = 250;
 
 const assetKey = (doName: string, name: string) =>
   `release-asset/${doName}/${crypto.randomUUID()}-${name.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+
+// Conventional-commit prefix → section heading. `null` catches subjects
+// without a parseable prefix. Order defines section order in the body.
+const NOTE_SECTIONS: ReadonlyArray<{ kind: string | null; heading: string }> = [
+  { kind: "breaking", heading: "Breaking Changes" },
+  { kind: "feat", heading: "New Features" },
+  { kind: "fix", heading: "Bug Fixes" },
+  { kind: "perf", heading: "Performance" },
+  { kind: "docs", heading: "Documentation" },
+  { kind: "refactor", heading: "Maintenance" },
+  { kind: "test", heading: "Maintenance" },
+  { kind: "build", heading: "Maintenance" },
+  { kind: "ci", heading: "Maintenance" },
+  { kind: "chore", heading: "Maintenance" },
+  { kind: null, heading: "Other Changes" },
+];
+
+function classifySubject(subject: string): { kind: string; title: string } {
+  const m = subject.match(/^([a-zA-Z]+)(\([^)]*\))?(!)?:\s*(.+)$/);
+  if (!m) return { kind: "other", title: subject };
+  const type = m[1].toLowerCase();
+  const breaking = m[3] === "!";
+  if (breaking) return { kind: "breaking", title: m[4].trim() };
+  const known = NOTE_SECTIONS.some((s) => s.kind === type);
+  return { kind: known ? type : "other", title: m[4].trim() };
+}
+
+// GitHub generate-notes: walk first-parent from the new tag's commit back
+// to the previous tag's commit (exclusive), bucket subjects by
+// conventional-commit prefix, and render the "What's Changed" body.
+async function generateReleaseNotesBody(
+  env: Env,
+  doName: string,
+  tagName: string,
+  previousTagName: string | undefined,
+  targetCommitish: string | undefined,
+  cacheCtx?: CacheContext
+): Promise<{ body: string; prevTag: string | null } | undefined> {
+  const headOid =
+    (await resolveRef(env, doName, `refs/tags/${tagName}`, cacheCtx).catch(() => undefined)) ??
+    (targetCommitish
+      ? await resolveRef(env, doName, targetCommitish, cacheCtx).catch(() => undefined)
+      : undefined);
+  if (!headOid) return undefined;
+  // A tag ref may point at an annotated-tag object — peel to the commit.
+  let tip = headOid;
+  const tipObj = await readLooseObjectRaw(env, doName, tip, cacheCtx).catch(() => null);
+  if (tipObj?.type === "tag") {
+    const m = new TextDecoder().decode(tipObj.payload).match(/^object ([0-9a-f]{40})/m);
+    if (m) tip = m[1];
+  } else if (!tipObj) {
+    return undefined;
+  }
+
+  let prevTag: string | null = previousTagName ?? null;
+  let prevOid: string | undefined;
+  if (!prevTag) {
+    const stub = getRepoStub(env, doName);
+    const releases = await stub.listReleases({ includeDrafts: false });
+    const prior = releases.find((r) => r.tagName !== tagName);
+    prevTag = prior?.tagName ?? null;
+  }
+  if (prevTag) {
+    prevOid = await resolveRef(env, doName, `refs/tags/${prevTag}`, cacheCtx).catch(
+      () => undefined
+    );
+  }
+
+  const buckets = new Map<string, string[]>();
+  const contributors = new Set<string>();
+  let oid: string | undefined = tip;
+  let scanned = 0;
+  while (oid && scanned < NOTES_COMMIT_CAP && oid !== prevOid) {
+    const commit: CommitInfo | null = await readCommitInfo(env, doName, oid, cacheCtx).catch(
+      () => null
+    );
+    if (!commit) break;
+    scanned++;
+    const subject = commit.message.split("\n", 1)[0].trim();
+    if (subject && !subject.startsWith("Merge ")) {
+      const { kind, title } = classifySubject(subject);
+      const authorName = commit.author?.name?.trim() ?? "";
+      const line = `* ${title} by @${authorName || "unknown"} in \`${oid.slice(0, 7)}\``;
+      const list = buckets.get(kind) ?? [];
+      list.push(line);
+      buckets.set(kind, list);
+      if (authorName) contributors.add(authorName);
+    }
+    oid = commit.parents[0];
+  }
+
+  const parts: string[] = ["## What's Changed", ""];
+  for (const section of NOTE_SECTIONS) {
+    const lines = section.kind === null ? buckets.get("other") : buckets.get(section.kind);
+    if (!lines?.length) continue;
+    parts.push(`### ${section.heading}`, ...lines, "");
+  }
+  if (contributors.size) {
+    parts.push(`## Contributors`, ...Array.from(contributors).map((n) => `* @${n}`), "");
+  }
+  const base = prevOid ? prevTag : tip.slice(0, 7);
+  parts.push(`**Full Changelog**: ${base}...${tagName}`);
+  return { body: parts.join("\n").trimEnd() + "\n", prevTag };
+}
 
 function releaseJson(r: ReleaseRow, assets: ReleaseAssetRow[] = []) {
   return {
@@ -78,6 +188,7 @@ export function registerGitnessReleases(router: AppRouter) {
       body?: string;
       draft?: boolean;
       prerelease?: boolean;
+      generate_release_notes?: boolean;
     } | null;
     if (!body?.tag_name?.trim()) return gErr(c, 422, "tag_name required");
     // Record the oid the tag currently points at, if the ref exists — a
@@ -93,10 +204,25 @@ export function registerGitnessReleases(router: AppRouter) {
           gate.cacheCtx
         ).catch(() => undefined)) ?? null);
     const stub = getRepoStub(c.env, gate.route.doName);
+    // GitHub parity: generate_release_notes fills body when the caller
+    // didn't supply one — categorized conventional-commit notes between
+    // this tag and the prior release.
+    let releaseBody = body.body ?? null;
+    if (releaseBody === null && body.generate_release_notes) {
+      const notes = await generateReleaseNotesBody(
+        c.env,
+        gate.route.doName,
+        body.tag_name,
+        undefined,
+        body.target_commitish,
+        gate.cacheCtx
+      );
+      releaseBody = notes?.body ?? null;
+    }
     const result = await stub.createRelease({
       tagName: body.tag_name,
       name: body.name,
-      body: body.body ?? null,
+      body: releaseBody,
       draft: body.draft,
       prerelease: body.prerelease,
       targetOid,
@@ -111,6 +237,29 @@ export function registerGitnessReleases(router: AppRouter) {
       actor: gate.actor,
     });
     return c.json(releaseJson(result.release), 201);
+  });
+
+  // GitHub's POST /releases/generate-notes — categorized conventional-commit
+  // changelog between this tag and the previous release's tag.
+  router.post("/api/v1/repos/:repo_ref{.+}/releases/generate-notes", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const body = (await c.req.json().catch(() => null)) as {
+      tag_name?: string;
+      previous_tag_name?: string;
+      target_commitish?: string;
+    } | null;
+    if (!body?.tag_name?.trim()) return gErr(c, 422, "tag_name required");
+    const notes = await generateReleaseNotesBody(
+      c.env,
+      gate.route.doName,
+      body.tag_name,
+      body.previous_tag_name,
+      body.target_commitish,
+      gate.cacheCtx
+    );
+    if (!notes) return gNotFound(c, "tag");
+    return c.json({ name: body.tag_name, body: notes.body });
   });
 
   router.get("/api/v1/repos/:repo_ref{.+}/releases/latest", async (c) => {
