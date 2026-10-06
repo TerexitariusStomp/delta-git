@@ -1779,3 +1779,49 @@ describe("community profile", () => {
     expect(body.health_percentage).toBe(Math.round((4 / 7) * 100));
   });
 });
+
+describe("webhook event fan-out", () => {
+  it("star + ref create enqueue GitHub-named events to matching subs", async () => {
+    const repo = await setupRepoForTests(env, uniq("wh-ns"), "whrepo");
+    await env.REPO_DO.get(env.REPO_DO.idFromName(repo.doName)).seedMinimalRepo();
+    const base = `/api/v1/repos/${repo.namespaceSlug}/whrepo/+`;
+
+    const sub = await workerExports.default.fetch(`https://example.com${base}/webhooks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+      body: JSON.stringify({
+        url: "https://hooks.example/x",
+        triggers: ["star", "create", "delete"],
+      }),
+    });
+    expect(sub.status, await sub.text()).toBe(200);
+
+    // Spy on the queue producer — emitRepoEvent runs inside waitUntil, so
+    // poll briefly for the sends to land.
+    const sent: { kind: string }[] = [];
+    const orig = env.REPO_TASKS_QUEUE.send.bind(env.REPO_TASKS_QUEUE);
+    env.REPO_TASKS_QUEUE.send = (async (m: { event: { kind: string } }) => {
+      sent.push({ kind: m.event.kind });
+    }) as typeof env.REPO_TASKS_QUEUE.send;
+    try {
+      const star = await workerExports.default.fetch(`https://example.com${base}/star`, {
+        method: "PUT",
+        headers: { Cookie: repo.cookieHeader },
+      });
+      expect(star.status).toBe(200);
+      const branch = await workerExports.default.fetch(`https://example.com${base}/branches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+        body: JSON.stringify({ name: "hooked", target: "main" }),
+      });
+      expect(branch.status).toBe(200);
+      for (let i = 0; i < 20 && sent.length < 2; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    } finally {
+      env.REPO_TASKS_QUEUE.send = orig;
+    }
+    const kinds = sent.map((s) => s.kind).sort();
+    expect(kinds).toEqual(["create", "star"]);
+  });
+});

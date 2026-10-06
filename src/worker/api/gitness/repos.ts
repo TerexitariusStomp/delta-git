@@ -75,6 +75,7 @@ import {
 } from "./stores";
 import type { RepoLabel, RepoRule, RepoPipeline, RepoTemplate, SecretRecord } from "./stores";
 import {
+  emitRepoEvent,
   gErr,
   gNotFound,
   numericId,
@@ -516,6 +517,11 @@ export function registerGitnessRepos(router: AppRouter) {
       log.error("fork:ingest-failed", { sourceDoName: access.route.doName, targetDoName });
       return gErr(c, 500, "fork ingest failed");
     }
+    // GitHub's `fork` webhook fires on the SOURCE repo — the forkee is the payload.
+    emitRepoEvent(c, access, "fork", {
+      forkee: `${nsSlug}/${result.row.slug}`,
+      actor: access.viewer.userId,
+    });
     await writeRepoLink(c.env, targetDoName, {
       remote_url: `internal:${access.route.doName}`,
       type: "fork",

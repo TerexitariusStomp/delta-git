@@ -39,6 +39,7 @@ import { readRepoRules, ruleBlocksRef } from "./stores";
 import { readCommitMeta, writeCommitMeta } from "./commitmeta";
 import type { PrComment } from "./prmeta";
 import {
+  emitRepoEvent,
   gErr,
   gNotFound,
   numericId,
@@ -889,6 +890,9 @@ export function registerGitnessGitdata(router: AppRouter) {
   // (push/merge/adjudication rather than per-object events) — gitness
   // triggers map onto those kinds best-effort, stored verbatim in `events`.
 
+  // Gitness trigger names → internal event kinds. GitHub-named kinds
+  // (issues/pull_request/release/star/fork/create/delete/…) are accepted
+  // verbatim — emitted events already use that vocabulary.
   const GWH_TO_DG: Record<string, string> = {
     branch_created: "push",
     branch_updated: "push",
@@ -900,6 +904,15 @@ export function registerGitnessGitdata(router: AppRouter) {
     pullreq_merged: "merge",
     pullreq_updated: "adjudication",
     pullreq_review_submitted: "adjudication",
+    issues: "issues",
+    issue_comment: "issue_comment",
+    pull_request: "pull_request",
+    pull_request_review: "pull_request_review",
+    release: "release",
+    star: "star",
+    fork: "fork",
+    create: "create",
+    delete: "delete",
   };
   const DG_TO_GWH: Record<string, string> = {
     push: "branch_updated",
@@ -907,6 +920,15 @@ export function registerGitnessGitdata(router: AppRouter) {
     "push.web": "branch_updated",
     merge: "pullreq_merged",
     adjudication: "pullreq_updated",
+    issues: "issues",
+    issue_comment: "issue_comment",
+    pull_request: "pull_request",
+    pull_request_review: "pull_request_review",
+    release: "release",
+    star: "star",
+    fork: "fork",
+    create: "create",
+    delete: "delete",
   };
 
   router.get("/api/v1/repos/:repo_ref{.+}/webhooks", async (c) => {
@@ -1133,6 +1155,11 @@ export function registerGitnessGitdata(router: AppRouter) {
     if (!oid) return gErr(c, 400, `target not found: ${body.target ?? "main"}`);
     const result = await addRefViaStub(c.env, gate.route.doName, fullName, oid);
     if (result === "exists") return gErr(c, 409, `branch ${body.name} already exists`);
+    emitRepoEvent(c, gate, "create", {
+      ref: body.name,
+      ref_type: "branch",
+      actor: gate.actor,
+    });
     return c.json({ name: body.name, sha: oid, is_default: false });
   });
 
@@ -1144,6 +1171,11 @@ export function registerGitnessGitdata(router: AppRouter) {
     const removed = await removeRefViaStub(c.env, gate.route.doName, `refs/heads/${name}`);
     if (removed === "protected") return gErr(c, 403, `branch ${name} is protected`);
     if (removed === "missing") return gNotFound(c, "branch");
+    emitRepoEvent(c, gate, "delete", {
+      ref: name,
+      ref_type: "branch",
+      actor: gate.actor,
+    });
     return c.json({ deleted: true });
   });
 
@@ -1161,6 +1193,7 @@ export function registerGitnessGitdata(router: AppRouter) {
     if (!oid) return gErr(c, 400, `target not found: ${body.target ?? "main"}`);
     const result = await addRefViaStub(c.env, gate.route.doName, `refs/tags/${body.name}`, oid);
     if (result === "exists") return gErr(c, 409, `tag ${body.name} already exists`);
+    emitRepoEvent(c, gate, "create", { ref: body.name, ref_type: "tag", actor: gate.actor });
     return c.json({ name: body.name, sha: oid, is_annotated: false });
   });
 
@@ -1174,6 +1207,11 @@ export function registerGitnessGitdata(router: AppRouter) {
     );
     if (removed === "protected") return gErr(c, 403, "tag is protected");
     if (removed === "missing") return gNotFound(c, "tag");
+    emitRepoEvent(c, gate, "delete", {
+      ref: c.req.param("tag_name"),
+      ref_type: "tag",
+      actor: gate.actor,
+    });
     return c.json({ deleted: true });
   });
 

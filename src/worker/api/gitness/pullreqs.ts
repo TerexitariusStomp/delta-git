@@ -850,6 +850,12 @@ export function registerGitnessPullreqs(router: AppRouter) {
     meta.reviews = (meta.reviews ?? []).filter((r) => r.author !== gate.actor);
     meta.reviews.push(review);
     await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    emitRepoEvent(c, gate, "pull_request_review", {
+      action: "submitted",
+      number: parseInt(c.req.param("n"), 10),
+      review: { author: review.author, decision: review.decision, sha: review.sha },
+      actor: gate.actor,
+    });
     return c.json({
       id: meta.reviews.length,
       decision: review.decision,

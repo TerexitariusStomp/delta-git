@@ -22,7 +22,7 @@ import {
 } from "@/worker/db/d1/dal";
 import { findNamespaceBySlug } from "@/worker/db/d1/dal/namespaces";
 import { loadViewer } from "@/worker/auth/session";
-import { gErr, gNotFound, resolveGitnessRepo } from "./shared";
+import { emitRepoEvent, gErr, gNotFound, resolveGitnessRepo } from "./shared";
 
 // Cross-repo social graph — stars, topics, follows, explore. Session-authed
 // for writes (same viewer convention as every /api/v1 route); reads are
@@ -66,6 +66,7 @@ export function registerGitnessSocial(router: AppRouter) {
     const row = await findRepositoryByDoName(c.var.db, access.route.doName);
     if (!row) return gNotFound(c, "repository");
     await starRepository(c.var.db, access.viewer.userId, row.id);
+    emitRepoEvent(c, access, "star", { action: "created", actor: access.viewer.userId });
     return c.json({ starred: true, stargazers_count: await starCount(c.var.db, row.id) });
   });
 
@@ -76,6 +77,7 @@ export function registerGitnessSocial(router: AppRouter) {
     const row = await findRepositoryByDoName(c.var.db, access.route.doName);
     if (!row) return gNotFound(c, "repository");
     await unstarRepository(c.var.db, access.viewer.userId, row.id);
+    emitRepoEvent(c, access, "star", { action: "deleted", actor: access.viewer.userId });
     return c.json({ starred: false, stargazers_count: await starCount(c.var.db, row.id) });
   });
 
