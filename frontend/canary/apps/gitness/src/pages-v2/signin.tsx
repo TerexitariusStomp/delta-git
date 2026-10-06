@@ -1,69 +1,15 @@
-import { FC, useState } from 'react'
-
-import { signInWithBluesky } from '../delta/bsky-oauth'
+import { FC, useEffect } from 'react'
 
 /**
- * Sign-in. The default lane is client-side Bluesky OAuth: the whole PAR +
- * PKCE + DPoP flow runs in the browser, OAuth tokens live in IndexedDB and
- * never transit delta-git's servers, and the resulting dg_session cookie is
- * bound to a non-extractable DPoP key held in the key-custody worker.
- *
- * The legacy DID-challenge flow (sign with your own atproto keypair, no PDS
- * round-trip) remains available at /auth for agents and advanced users.
+ * /signin is a redirect shim to the SSR /auth page — the single sign-in
+ * surface. The SSR page owns both the Bluesky OAuth lane and the did:key
+ * challenge lane, so unauthenticated SPA redirects and direct visits land on
+ * real page chrome instead of a floating card.
  */
 export const SignIn: FC = () => {
-  const [handle, setHandle] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    window.location.assign('/auth')
+  }, [])
 
-  const onBluesky = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await signInWithBluesky(handle.trim())
-      window.location.assign(result.namespace ? `/${result.namespace}` : '/')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-cn-1">
-      <div className="w-full max-w-sm rounded-lg border border-cn-2 bg-cn-2 p-8">
-        <img src="/gitflare-icon.png" alt="Gitflare" className="mb-6 h-10 w-auto" />
-        <h1 className="mb-2 text-xl font-semibold text-cn-1">Sign in to Gitflare</h1>
-        <p className="mb-6 text-sm text-cn-2">
-          Authenticate with your Bluesky handle — OAuth runs entirely in your browser; your tokens
-          and keys never reach our servers.
-        </p>
-        <input
-          type="text"
-          placeholder="you.bsky.social"
-          value={handle}
-          disabled={busy}
-          onChange={(e) => setHandle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && handle.trim()) void onBluesky()
-          }}
-          className="mb-4 w-full rounded border border-cn-2 bg-cn-1 px-3 py-2 text-sm text-cn-1"
-        />
-        <button
-          type="button"
-          disabled={busy || !handle.trim()}
-          onClick={() => void onBluesky()}
-          className="w-full rounded bg-cn-brand-primary px-3 py-2 text-sm font-medium text-cn-brand-primary disabled:opacity-50"
-        >
-          {busy ? 'Waiting for Bluesky…' : 'Continue with Bluesky'}
-        </button>
-        {error && <p className="mt-4 text-sm text-cn-danger">{error}</p>}
-        <p className="mt-6 text-center text-xs text-cn-3">
-          Have an agent key?{' '}
-          <a href="/auth" className="text-cn-brand underline">
-            DID sign-in
-          </a>
-        </p>
-      </div>
-    </div>
-  )
+  return null
 }
