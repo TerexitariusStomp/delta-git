@@ -18,6 +18,18 @@ const pending = new Map<number, PendingCall>()
 function getWorker(): Worker {
   if (!worker) {
     worker = new Worker(new URL('./key-custody.worker.ts', import.meta.url), { type: 'module' })
+    // Without these, a worker that fails to load (script error, blocked
+    // module, CSP) leaves every pending call awaiting a reply that never
+    // comes — the page hangs with no signal. Reject everything instead.
+    const failAll = (reason: string) => {
+      const entries = [...pending.values()]
+      pending.clear()
+      for (const entry of entries) entry.reject(new Error(reason))
+      worker = null
+    }
+    worker.onerror = (e) =>
+      failAll(`custody worker error: ${e.message || 'script failed to load'}`)
+    worker.onmessageerror = () => failAll('custody worker message error')
     worker.onmessage = (event: MessageEvent) => {
       const { id, ok, result, error } = event.data as {
         id: number

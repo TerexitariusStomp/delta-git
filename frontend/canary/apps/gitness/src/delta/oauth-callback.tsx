@@ -1,6 +1,6 @@
 import { FC, useEffect, useState } from 'react'
 
-import { authLog, completeBskySignIn } from './bsky-oauth'
+import { authLog, completeBskySignIn, getAuthLog } from './bsky-oauth'
 
 /**
  * /oauth/callback — the client-side atproto OAuth redirect target.
@@ -50,9 +50,20 @@ export const OAuthCallback: FC = () => {
       {error ? (
         <div style={{ textAlign: 'center', maxWidth: '28rem' }}>
           <p>Sign-in failed: {error}</p>
-          <p style={{ fontSize: '0.85em', opacity: 0.7 }}>
-            Debug log is in sessionStorage key <code>dg-auth-log</code>
-          </p>
+          <pre
+            style={{
+              textAlign: 'left',
+              fontSize: '0.75em',
+              opacity: 0.7,
+              maxHeight: '12rem',
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              margin: '1em 0'
+            }}
+          >
+            {getAuthLog().slice(-20).join('\n')}
+          </pre>
           <a href="/signin" style={{ color: '#7c8cff' }}>
             Back to sign in
           </a>

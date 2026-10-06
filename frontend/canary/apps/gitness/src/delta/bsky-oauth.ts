@@ -91,11 +91,16 @@ export async function signInBlueskyRedirect(handle: string): Promise<never> {
   authLog('redirect:start', { handle: normalized })
   const client = await getBskyClient()
   try {
-    return await client.signInRedirect(normalized, { state: 'deltagit' })
+    // Inline of client.signInRedirect so we can log where the browser is
+    // actually heading (PAR endpoint, AS origin) before the page unloads.
+    const url = await client.authorize(normalized, { state: 'deltagit' })
+    authLog('redirect:authorize', { host: url.host, path: url.pathname })
+    window.location.href = url.href
+    // Never resolves — same contract as signInRedirect.
+    return new Promise<never>(() => {})
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     authLog('redirect:error', { handle: normalized, error: msg })
-    if (msg === 'User navigated back') throw err
     throw new Error(`Bluesky sign-in failed (${normalized}): ${msg}`)
   }
 }
@@ -159,10 +164,29 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
   // Service-audience refs must be absolute did#serviceId — the PDS's rpc:
   // scope aud param rejects bare DIDs.
   const aud = `did:web:${window.location.hostname}#delta_git`
+  const url = `/xrpc/com.atproto.server.getServiceAuth?aud=${encodeURIComponent(aud)}`
   authLog('verify:service-auth', { aud })
-  const res = await session.fetchHandler(
-    `/xrpc/com.atproto.server.getServiceAuth?aud=${encodeURIComponent(aud)}`
-  )
+  // fetchHandler runs getTokenSet + a DPoP-signed fetch to the user's PDS.
+  // A pending-forever promise leaves the callback page stuck on
+  // "Completing sign-in…" with no signal — race it against a timeout and
+  // retry once (the first call can stall on a stale IndexedDB nonce read).
+  const callServiceAuth = async (attempt: number): Promise<Response> => {
+    try {
+      const res = await Promise.race([
+        session.fetchHandler(url),
+        new Promise<Response>((_, reject) =>
+          setTimeout(() => reject(new Error(`getServiceAuth timed out (attempt ${attempt})`)), 15_000)
+        ),
+      ])
+      authLog('verify:service-auth-res', { status: res.status, attempt })
+      return res
+    } catch (err) {
+      authLog('verify:service-auth-throw', { attempt, error: String(err) })
+      if (attempt >= 2) throw err
+      return callServiceAuth(attempt + 1)
+    }
+  }
+  const res = await callServiceAuth(1)
   if (!res.ok) {
     // The PDS returns the exact missing scope in the body/WWW-Authenticate.
     let detail = ''
@@ -177,10 +201,20 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
       `getServiceAuth failed: ${res.status} ${detail}${wwwAuth ? ` | ${wwwAuth}` : ''}`
     )
   }
+  authLog('verify:service-auth-parse')
   const { token } = (await res.json()) as { token?: string }
   if (!token) throw new Error('No serviceAuth token returned')
+  authLog('verify:service-auth-token', { ok: true })
 
-  const dpopJwk = await getDpopJwk()
+  // The custody worker has no built-in timeout — a worker that fails to
+  // boot (script error, blocked module) would leave this pending forever.
+  authLog('verify:dpop-jwk')
+  const dpopJwk = await Promise.race([
+    getDpopJwk(),
+    new Promise<JsonWebKey>((_, reject) =>
+      setTimeout(() => reject(new Error('custody worker timed out')), 15_000)
+    ),
+  ])
   authLog('verify:atp-verify', { did: session.did })
   const verifyRes = await fetch('/auth/atp/verify', {
     method: 'POST',

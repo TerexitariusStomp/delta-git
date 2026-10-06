@@ -1,6 +1,6 @@
 import { FC, useState } from 'react'
 
-import { authLog, signInWithBluesky } from '../delta/bsky-oauth'
+import { authLog, getAuthLog, signInWithBluesky } from '../delta/bsky-oauth'
 
 /**
  * Sign-in — the primary auth surface, styled after the SSR /auth page layout
@@ -92,6 +92,12 @@ export const SignIn: FC = () => {
             {busy ? 'Waiting for Bluesky…' : 'Continue with Bluesky'}
           </button>
           {error && <p className="mt-4 text-sm text-cn-danger">{error}</p>}
+          <details className="mt-4 text-xs text-cn-3">
+            <summary className="cursor-pointer select-none">Debug log</summary>
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-cn-2 border border-cn-2 bg-cn-1 p-2">
+              {getAuthLog().slice(-20).join('\n') || 'no auth events yet'}
+            </pre>
+          </details>
           <div className="mt-4 text-center">
             <a href="/auth" className="text-xs text-cn-3 underline underline-offset-2 hover:text-cn-2">
               Sign with an atproto key instead
