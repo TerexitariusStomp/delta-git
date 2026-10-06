@@ -11,7 +11,13 @@ import { getRepoStub } from "@/worker/common";
 import { parseIssueQuery } from "@/worker/do/repo/catalog/issueQuery";
 import { readPath } from "@/worker/git/operations/read/tree";
 import { gErr, gNotFound, pageParams, paginate, requireWriter, resolveGitnessRepo } from "./shared";
-import { MAX_PINNED_ISSUES, readPinnedIssues, writePinnedIssues } from "./stores";
+import {
+  MAX_PINNED_ISSUES,
+  readIssueLocks,
+  readPinnedIssues,
+  writeIssueLocks,
+  writePinnedIssues,
+} from "./stores";
 
 // GitHub-shaped issues surface for the SPA — session-authed like every
 // /api/v1 route. The same model is re-exposed as REST v3 for gh/agent
@@ -94,9 +100,18 @@ export function registerGitnessIssues(router: AppRouter) {
     // Pinned issues float to the top in pin order (GitHub behavior), then
     // everything else keeps the catalog's default ordering.
     const pins = await readPinnedIssues(c.env, access.route.doName);
+    const locks = await readIssueLocks(c.env, access.route.doName);
     const pinRank = new Map(pins.map((n, i) => [n, i]));
     const ranked = issues
-      .map((i) => ({ view: { ...issueView(i), pinned: pinRank.has(i.number) }, num: i.number }))
+      .map((i) => ({
+        view: {
+          ...issueView(i),
+          pinned: pinRank.has(i.number),
+          locked: locks[i.number] !== undefined,
+          active_lock_reason: locks[i.number]?.reason ?? null,
+        },
+        num: i.number,
+      }))
       .sort(
         (a, b) =>
           (pinRank.get(a.num) ?? Number.MAX_SAFE_INTEGER) -
@@ -152,7 +167,12 @@ export function registerGitnessIssues(router: AppRouter) {
     const stub = getRepoStub(c.env, access.route.doName);
     const result = await stub.getIssue(number);
     if (result.status !== "ok") return gNotFound(c, "issue");
-    return c.json(issueView(result.issue));
+    const lock = (await readIssueLocks(c.env, access.route.doName))[number];
+    return c.json({
+      ...issueView(result.issue),
+      locked: lock !== undefined,
+      active_lock_reason: lock?.reason ?? null,
+    });
   });
 
   router.patch("/api/v1/repos/:repo_ref{.+}/issues/:number", async (c) => {
@@ -241,6 +261,35 @@ export function registerGitnessIssues(router: AppRouter) {
     return c.json({ pinned: false, pins: next });
   });
 
+  // Lock/unlock — a full conversation freeze (see the store comment for why
+  // collaborators aren't exempt here).
+  router.put("/api/v1/repos/:repo_ref{.+}/issues/:number/lock", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const issue = await stub.getIssue(number);
+    if (issue.status !== "ok") return gNotFound(c, "issue");
+    const body = (await c.req.json().catch(() => null)) as { lock_reason?: string } | null;
+    const locks = await readIssueLocks(c.env, access.route.doName);
+    locks[number] = { reason: body?.lock_reason, by: access.actor, at: Date.now() };
+    await writeIssueLocks(c.env, access.route.doName, locks);
+    return c.json({ locked: true });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/issues/:number/lock", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = c.req.param("number");
+    const locks = await readIssueLocks(c.env, access.route.doName);
+    if (locks[number] !== undefined) {
+      delete locks[number];
+      await writeIssueLocks(c.env, access.route.doName, locks);
+    }
+    return c.json({ locked: false });
+  });
+
   router.get("/api/v1/repos/:repo_ref{.+}/issues/:number/comments", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
@@ -259,6 +308,8 @@ export function registerGitnessIssues(router: AppRouter) {
     if (Number.isNaN(number)) return gNotFound(c, "issue");
     const body = (await c.req.json().catch(() => null)) as { body?: string } | null;
     if (!body?.body?.trim()) return gErr(c, 422, "body required");
+    const locks = await readIssueLocks(c.env, access.route.doName);
+    if (locks[number] !== undefined) return gErr(c, 403, "conversation is locked");
     const stub = getRepoStub(c.env, access.route.doName);
     const result = await stub.addIssueComment({ number, body: body.body, actor: access.actor });
     if (result.status === "not-found") return gNotFound(c, "issue");

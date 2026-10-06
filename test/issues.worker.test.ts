@@ -326,6 +326,50 @@ describe("issues: qualifier search (q=)", () => {
     const anon = await call("PUT", `${base}/issues/1/pin`, {});
     expect(anon.status).toBe(401);
   });
+
+  it("locks a conversation and blocks comments until unlocked", async () => {
+    const issue = await call("POST", `${base}/issues`, {
+      cookie: seeded.cookieHeader,
+      body: { title: "Lockable thread" },
+    });
+    const n = (issue.body as IssueJson).number;
+
+    // Comment works while unlocked.
+    const ok = await call("POST", `${base}/issues/${n}/comments`, {
+      cookie: seeded.cookieHeader,
+      body: { body: "before lock" },
+    });
+    expect(ok.status).toBe(201);
+
+    const lock = await call("PUT", `${base}/issues/${n}/lock`, {
+      cookie: seeded.cookieHeader,
+      body: { lock_reason: "too heated" },
+    });
+    expect(lock.status).toBe(200);
+
+    // Locked state is visible on the issue view.
+    const detail = await call("GET", `${base}/issues/${n}`, {
+      cookie: seeded.cookieHeader,
+    });
+    const view = detail.body as IssueJson & { locked: boolean; active_lock_reason: string | null };
+    expect(view.locked).toBe(true);
+    expect(view.active_lock_reason).toBe("too heated");
+
+    // Comments are rejected while locked.
+    const blocked = await call("POST", `${base}/issues/${n}/comments`, {
+      cookie: seeded.cookieHeader,
+      body: { body: "during lock" },
+    });
+    expect(blocked.status).toBe(403);
+
+    // Unlock restores commenting.
+    await call("DELETE", `${base}/issues/${n}/lock`, { cookie: seeded.cookieHeader });
+    const after = await call("POST", `${base}/issues/${n}/comments`, {
+      cookie: seeded.cookieHeader,
+      body: { body: "after unlock" },
+    });
+    expect(after.status).toBe(201);
+  });
 });
 
 describe("issues: .github issue templates", () => {

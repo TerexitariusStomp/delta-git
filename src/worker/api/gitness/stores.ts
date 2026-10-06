@@ -310,6 +310,29 @@ export async function writePinnedIssues(env: Env, doName: string, pins: number[]
 }
 
 // ---------------------------------------------------------------------------
+// Locked conversations — every commenter here is a namespace member (the
+// forge's collaborator equivalent), so GitHub's "collaborators exempt" lock
+// would never bite. Our lock is a full freeze: no new comments until a
+// writer unlocks. One repo-scoped map keeps list rendering to a single read.
+// ---------------------------------------------------------------------------
+
+export interface IssueLock {
+  /** GitHub's lock vocabulary: off-topic | too heated | spam | resolved. */
+  reason?: string;
+  by: string;
+  at: number;
+}
+
+export async function readIssueLocks(env: Env, doName: string): Promise<Record<string, IssueLock>> {
+  const raw = await env.ROUTES.get(`glocks:${doName}`, "json").catch(() => null);
+  return (raw as Record<string, IssueLock> | null) ?? {};
+}
+
+export async function writeIssueLocks(env: Env, doName: string, locks: Record<string, IssueLock>) {
+  await env.ROUTES.put(`glocks:${doName}`, JSON.stringify(locks));
+}
+
+// ---------------------------------------------------------------------------
 // PR file-view marks — per (repo, intent, viewer): which diff files the
 // viewer marked as reviewed, and at which blob checksum. The SPA stores the
 // whole map; we persist it verbatim so "viewed" survives reloads.
