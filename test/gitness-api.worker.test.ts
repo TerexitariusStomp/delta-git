@@ -297,6 +297,56 @@ describe("gitness /api/v1 write paths", () => {
     expect((closed.body as { state: string }).state).toBe("closed");
   });
 
+  it("merge auto-closes issues referenced by 'fixes #N' in the PR text", async () => {
+    const issue = await post(
+      `/api/v1/repos/${ref}/issues`,
+      { title: "crash on empty input" },
+      w.cookieHeader
+    );
+    expect(issue.status).toBe(201);
+    const issueNumber = (issue.body as { number: number }).number;
+
+    await post(
+      `/api/v1/repos/${ref}/branches`,
+      { name: "fix-branch", target: "main" },
+      w.cookieHeader
+    );
+    const cm = await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "fix-branch",
+        message: "guard empty input",
+        actions: [{ action: "CREATE", path: "fix.txt", encoding: "text", payload: "fixed\n" }],
+      },
+      w.cookieHeader
+    );
+    expect(cm.status).toBe(200);
+
+    const pr = await post(
+      `/api/v1/repos/${ref}/pullreq`,
+      {
+        source_branch: "fix-branch",
+        target_branch: "main",
+        title: "guard empty input",
+        description: `fixes #${issueNumber}`,
+      },
+      w.cookieHeader
+    );
+    expect(pr.status).toBe(200);
+    const prNumber = (pr.body as { number: number }).number;
+
+    const merge = await post(`/api/v1/repos/${ref}/pullreq/${prNumber}/merge`, {}, w.cookieHeader);
+    expect(merge.status).toBe(200);
+    const merged = merge.body as { mergeable: boolean; closed_issues?: number[] };
+    expect(merged.mergeable).toBe(true);
+    expect(merged.closed_issues).toContain(issueNumber);
+
+    const after = await get(`/api/v1/repos/${ref}/issues/${issueNumber}`);
+    const afterIssue = after.body as { state: string; state_reason: string | null };
+    expect(afterIssue.state).toBe("closed");
+    expect(afterIssue.state_reason).toBe("completed");
+  });
+
   it("tag create + delete", async () => {
     const tag = await post(
       `/api/v1/repos/${ref}/tags`,

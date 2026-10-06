@@ -11,6 +11,8 @@ import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 import { listNamespacesForUser } from "@/worker/db/d1/dal/namespaces";
+import { attemptMerge } from "@/worker/merge/engine";
+import { closeIssuesLinkedFromText, readPrMeta, writePrMeta } from "@/worker/api/gitness/prmeta";
 import type { IssueView } from "@/worker/do/repo/catalog/issues";
 
 // GitHub REST v3 compatibility shim — the high-traffic subset that lets
@@ -219,26 +221,305 @@ export function registerApiV3Routes(router: AppRouter): void {
     });
   });
 
-  // GET /api/v3/repos/:owner/:repo/pulls — merge intents exposed as PRs
+  // --- pull requests: `gh pr` verbs over merge intents ---------------------
+  // Numbering is positional in the createdAt-ordered intent list — the same
+  // convention the /api/v1 pullreq facade uses, so PR #s agree across both
+  // surfaces. Human title/body/comments live in the shared KV meta record.
+
+  const OPEN_INTENT_STATUSES = ["open", "merging", "adjudicating", "conflict"];
+  const ALL_INTENT_STATUSES = [...OPEN_INTENT_STATUSES, "merged", "rejected", "expired"];
+
+  const intentsOrdered = async (env: Env, doName: string) => {
+    const intents = await getRepoStub(env, doName).listMergeIntents(ALL_INTENT_STATUSES);
+    return intents.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  };
+
+  const pullJson = async (
+    env: Env,
+    route: RepositoryRoute,
+    intent: Awaited<ReturnType<typeof intentsOrdered>>[number],
+    number: number,
+    origin: string,
+    owner: string,
+    repo: string
+  ) => {
+    const meta = await readPrMeta(env, route.doName, intent.id);
+    const merged = intent.status === "merged";
+    const closed = merged || intent.status === "rejected" || intent.status === "expired";
+    return {
+      number,
+      id: intent.id,
+      state: closed ? "closed" : "open",
+      title: meta.title ?? `merge ${intent.deltaRef} → ${intent.targetRef}`,
+      body: meta.description ?? null,
+      user: { login: intent.actor },
+      head: { ref: intent.deltaRef.replace(/^refs\/heads\//, ""), sha: intent.deltaOid },
+      base: { ref: intent.targetRef.replace(/^refs\/heads\//, ""), sha: intent.baseOid },
+      merged,
+      merged_at: merged && intent.resolvedAt ? new Date(intent.resolvedAt).toISOString() : null,
+      closed_at: closed && intent.resolvedAt ? new Date(intent.resolvedAt).toISOString() : null,
+      html_url: `${origin}/${owner}/${repo}/intents/${intent.id}`,
+      mergeable_state: intent.status === "adjudicating" ? "blocked" : "unstable",
+      created_at: new Date(intent.createdAt).toISOString(),
+      updated_at: new Date(intent.resolvedAt ?? intent.createdAt).toISOString(),
+    };
+  };
+
+  // GET /api/v3/repos/:owner/:repo/pulls?state= — gh pr list
   router.get("/api/v3/repos/:owner/:repo/pulls", async (c) => {
     const route = await resolveRoute(c);
     if (!route) return c.json({ message: "Not Found" }, 404);
-    const stub = getRepoStub(c.env, route.doName);
-    const intents = await stub.listMergeIntents(["open", "merging", "adjudicating", "conflict"]);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const all = await intentsOrdered(c.env, route.doName);
+    const state = c.req.query("state") ?? "open";
+    const wantOpen = state !== "closed";
+    const filtered = all
+      .map((intent, idx) => ({ intent, number: idx + 1 }))
+      .filter(({ intent }) =>
+        state === "all"
+          ? true
+          : wantOpen
+            ? OPEN_INTENT_STATUSES.includes(intent.status)
+            : !OPEN_INTENT_STATUSES.includes(intent.status)
+      );
     const origin = new URL(c.req.url).origin;
     return c.json(
-      intents.map((intent, idx) => ({
-        number: idx + 1,
-        id: intent.id,
-        state: "open",
-        title: `merge ${intent.deltaRef} → ${intent.targetRef}`,
-        user: { login: intent.actor },
-        head: { ref: intent.deltaRef, sha: intent.deltaOid },
-        base: { ref: intent.targetRef, sha: intent.baseOid },
-        html_url: `${origin}/${c.req.param("owner")}/${c.req.param("repo")}/intents/${intent.id}`,
-        mergeable_state: intent.status === "adjudicating" ? "blocked" : "unstable",
-        created_at: new Date(intent.createdAt).toISOString(),
+      await Promise.all(
+        filtered.map(({ intent, number }) =>
+          pullJson(c.env, route, intent, number, origin, c.req.param("owner"), c.req.param("repo"))
+        )
+      )
+    );
+  });
+
+  // POST /api/v3/repos/:owner/:repo/pulls — gh pr create
+  router.post("/api/v3/repos/:owner/:repo/pulls", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const body = await c.req
+      .json<{ title?: string; body?: string; head?: string; base?: string }>()
+      .catch(() => null);
+    if (!body?.head || !body?.base) {
+      return c.json({ message: "head and base required" }, 422);
+    }
+    const targetRef = `refs/heads/${body.base.replace(/^refs\/heads\//, "")}`;
+    const sourceRef = `refs/heads/${body.head.replace(/^refs\/heads\//, "")}`;
+    if (targetRef === sourceRef) return c.json({ message: "head and base match" }, 422);
+    const stub = getRepoStub(c.env, route.doName);
+    const { refs } = await stub.getHeadAndRefs();
+    const source = refs.find((r) => r.name === sourceRef);
+    if (!source) return c.json({ message: `head ref not found: ${body.head}` }, 422);
+    if (!refs.some((r) => r.name === targetRef)) {
+      return c.json({ message: `base ref not found: ${body.base}` }, 422);
+    }
+    const actor = await actorSlug(c, auth);
+    const accepted = await stub.acceptPatchCommit({
+      targetRef,
+      newOid: source.oid,
+      actor,
+      kind: "pullreq.create",
+    });
+    if (body.title || body.body) {
+      await writePrMeta(c.env, route.doName, accepted.intent.id, {
+        title: body.title,
+        description: body.body,
+        comments: [],
+      });
+    }
+    const all = await intentsOrdered(c.env, route.doName);
+    const number = all.findIndex((i) => i.id === accepted.intent.id) + 1;
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      await pullJson(
+        c.env,
+        route,
+        accepted.intent,
+        number > 0 ? number : all.length,
+        origin,
+        c.req.param("owner"),
+        c.req.param("repo")
+      ),
+      201
+    );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/pulls/:number — gh pr view
+  router.get("/api/v3/repos/:owner/:repo/pulls/:number", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const all = await intentsOrdered(c.env, route.doName);
+    const intent = all[number - 1];
+    if (!intent) return c.json({ message: "Not Found" }, 404);
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      await pullJson(
+        c.env,
+        route,
+        intent,
+        number,
+        origin,
+        c.req.param("owner"),
+        c.req.param("repo")
+      )
+    );
+  });
+
+  // PATCH /api/v3/repos/:owner/:repo/pulls/:number — gh pr close/edit
+  router.patch("/api/v3/repos/:owner/:repo/pulls/:number", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const all = await intentsOrdered(c.env, route.doName);
+    const intent = all[number - 1];
+    if (!intent) return c.json({ message: "Not Found" }, 404);
+    const actor = await actorSlug(c, auth);
+    const body = await c.req
+      .json<{ title?: string; body?: string; state?: string }>()
+      .catch(() => null);
+    const stub = getRepoStub(c.env, route.doName);
+    if (body?.state === "closed") {
+      const result = await stub.rejectMergeIntent({ id: intent.id, actor });
+      if (result.status === "not_found") return c.json({ message: "Not Found" }, 404);
+      if (result.status === "not_rejectable") {
+        return c.json({ message: `pull request is ${result.state}` }, 409);
+      }
+    }
+    if (body?.title !== undefined || body?.body !== undefined) {
+      const meta = await readPrMeta(c.env, route.doName, intent.id);
+      if (body.title !== undefined) meta.title = body.title;
+      if (body.body !== undefined) meta.description = body.body;
+      await writePrMeta(c.env, route.doName, intent.id, meta);
+    }
+    const refreshed = await stub.getMergeIntent(intent.id);
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      await pullJson(
+        c.env,
+        route,
+        refreshed ?? intent,
+        number,
+        origin,
+        c.req.param("owner"),
+        c.req.param("repo")
+      )
+    );
+  });
+
+  // PUT /api/v3/repos/:owner/:repo/pulls/:number/merge — gh pr merge
+  router.put("/api/v3/repos/:owner/:repo/pulls/:number/merge", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const all = await intentsOrdered(c.env, route.doName);
+    const intent = all[number - 1];
+    if (!intent) return c.json({ message: "Not Found" }, 404);
+    const actor = await actorSlug(c, auth);
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await attemptMerge({
+      env: c.env,
+      repoId: route.doName,
+      stub,
+      intentId: intent.id,
+      actor,
+      cacheCtx: c.var.cacheCtx,
+    });
+    switch (result.kind) {
+      case "merged": {
+        const meta = await readPrMeta(c.env, route.doName, intent.id);
+        const closedIssues = await closeIssuesLinkedFromText({
+          stub,
+          text: `${meta.title ?? ""}\n${meta.description ?? ""}`,
+          actor,
+        });
+        return c.json({ merged: true, sha: result.mergeOid, closed_issues: closedIssues });
+      }
+      case "conflict":
+        return c.json(
+          { merged: false, message: "Merge conflict", conflicts: result.conflicts },
+          409
+        );
+      case "up_to_date":
+        return c.json({ merged: true, message: "already up to date" });
+      case "base_moved":
+        return c.json({ merged: false, message: `base moved to ${result.currentOid}` }, 409);
+      default:
+        return c.json({ merged: false, message: `merge failed: ${result.kind}` }, 422);
+    }
+  });
+
+  // GET/POST /api/v3/repos/:owner/:repo/pulls/:number/comments — gh pr comment
+  router.get("/api/v3/repos/:owner/:repo/pulls/:number/comments", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const all = await intentsOrdered(c.env, route.doName);
+    const intent = all[number - 1];
+    if (!intent) return c.json({ message: "Not Found" }, 404);
+    const meta = await readPrMeta(c.env, route.doName, intent.id);
+    return c.json(
+      meta.comments.map((cm) => ({
+        id: cm.id,
+        body: cm.text,
+        user: { login: cm.author },
+        path: cm.codeComment?.path ?? null,
+        line: cm.codeComment?.line_end ?? cm.codeComment?.line_start ?? null,
+        created_at: new Date(cm.created).toISOString(),
+        updated_at: new Date(cm.edited).toISOString(),
       }))
+    );
+  });
+
+  router.post("/api/v3/repos/:owner/:repo/pulls/:number/comments", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    const all = await intentsOrdered(c.env, route.doName);
+    const intent = all[number - 1];
+    if (!intent) return c.json({ message: "Not Found" }, 404);
+    const body = await c.req.json<{ body?: string }>().catch(() => null);
+    if (!body?.body?.trim()) return c.json({ message: "body required" }, 422);
+    const actor = await actorSlug(c, auth);
+    const meta = await readPrMeta(c.env, route.doName, intent.id);
+    const comment = {
+      id: (meta.comments.at(-1)?.id ?? 0) + 1,
+      author: actor,
+      text: body.body,
+      created: Date.now(),
+      edited: Date.now(),
+    };
+    meta.comments.push(comment);
+    await writePrMeta(c.env, route.doName, intent.id, meta);
+    return c.json(
+      {
+        id: comment.id,
+        body: comment.text,
+        user: { login: actor },
+        created_at: new Date(comment.created).toISOString(),
+      },
+      201
     );
   });
 

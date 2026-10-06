@@ -32,6 +32,13 @@ import { diffCommitsText } from "./gitdata";
 import { readRepoLabels } from "./stores";
 import { mergeIntentToPullReq } from "./pullreq";
 import {
+  closeIssuesLinkedFromText,
+  readPrMeta,
+  writePrMeta,
+  type PrComment,
+  type PrReview,
+} from "./prmeta";
+import {
   gErr,
   gNotFound,
   numericId,
@@ -62,63 +69,7 @@ const STATUS_BY_GITNESS: Record<string, string[]> = {
   closed: ["rejected", "expired"],
 };
 const FILE_VIEW_TTL_S = 60 * 60 * 24 * 30;
-const PR_META_TTL_S = 60 * 60 * 24 * 365;
 const MAX_PR_COMMENTS = 500;
-
-// PR metadata merge intents do not carry — human-authored title,
-// description, conversation, reviewers, and review decisions. Stored as one
-// KV record per intent; the intents themselves remain the canonical merge
-// state.
-interface PrComment {
-  id: number;
-  author: string;
-  text: string;
-  created: number;
-  edited: number;
-  resolvedAt?: number;
-  /** Code-review anchor the SPA sends on file comments. */
-  codeComment?: { path?: string; line_start?: number; line_end?: number; side?: string };
-  reactions?: Record<string, string[]>;
-}
-interface PrReview {
-  author: string;
-  decision: string;
-  sha?: string;
-  created: number;
-}
-interface PrMeta {
-  title?: string;
-  description?: string;
-  comments: PrComment[];
-  reviewers?: string[];
-  reviews?: PrReview[];
-  labels?: string[];
-  automerge?: { method?: string; setBy: string; at: number };
-}
-
-function prMetaKey(doName: string, intentId: string): string {
-  return `gpr:${doName}:${intentId}`;
-}
-
-async function readPrMeta(env: Env, doName: string, intentId: string): Promise<PrMeta> {
-  const raw = await env.ROUTES.get(prMetaKey(doName, intentId), "json").catch(() => null);
-  const meta = raw as Partial<PrMeta> | null;
-  return {
-    title: meta?.title,
-    description: meta?.description,
-    comments: meta?.comments ?? [],
-    reviewers: meta?.reviewers ?? [],
-    reviews: meta?.reviews ?? [],
-    labels: meta?.labels ?? [],
-    automerge: meta?.automerge,
-  };
-}
-
-async function writePrMeta(env: Env, doName: string, intentId: string, meta: PrMeta) {
-  await env.ROUTES.put(prMetaKey(doName, intentId), JSON.stringify(meta), {
-    expirationTtl: PR_META_TTL_S,
-  });
-}
 
 type ResolvedRepo = Extract<GitnessRepoAccess, { kind: "ok" }>;
 
@@ -364,8 +315,18 @@ export function registerGitnessPullreqs(router: AppRouter) {
       cacheCtx: access.cacheCtx,
     });
     switch (result.kind) {
-      case "merged":
-        return c.json({ mergeable: true, sha: result.mergeOid });
+      case "merged": {
+        // GitHub parity: "closes #N" / "fixes #N" in the PR text auto-closes
+        // the linked issues. PR text lives in the KV meta record, so this
+        // runs Worker-side after the DO commits the merge.
+        const meta = await readPrMeta(c.env, access.route.doName, intent.id);
+        const closedIssues = await closeIssuesLinkedFromText({
+          stub,
+          text: `${meta.title ?? ""}\n${meta.description ?? ""}`,
+          actor: access.viewer.primaryNamespaceSlug ?? access.viewer.userId,
+        });
+        return c.json({ mergeable: true, sha: result.mergeOid, closed_issues: closedIssues });
+      }
       case "conflict":
         return c.json({ mergeable: false, conflict_files: result.conflicts });
       case "up_to_date":
