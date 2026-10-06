@@ -40,6 +40,7 @@ import { registerGitnessInsights } from "./insights";
 import { registerGitnessProjects } from "./projects";
 import { registerGitnessCodeScan } from "./codescan";
 import { registerGitnessModeration } from "./moderation";
+import { registerGitnessDepGraph } from "./depgraph";
 import { registerGitnessWorkflows } from "./workflows";
 import { registerGitnessGists } from "./gists";
 import { registerGitnessGhImport } from "./ghimport";
@@ -125,6 +126,8 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessCodeScan(router);
   // Moderation — reports, admin triage, space blocks; literal tails.
   registerGitnessModeration(router);
+  // Dependency graph — snapshot submission + OSV vulnerabilities.
+  registerGitnessDepGraph(router);
   // Actions — .github/workflows → pipeline materialization.
   registerGitnessWorkflows(router);
   registerGitnessGists(router);

@@ -1604,3 +1604,90 @@ describe("mirror-out targets", () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe("dependency graph", () => {
+  it("snapshot submission flattens resolved deps; OSV maps ecosystems", async () => {
+    const repo = await setupRepoForTests(env, uniq("dep-ns"), "deprepo");
+    const base = `/api/v1/repos/${repo.namespaceSlug}/deprepo/+`;
+
+    const submit = await workerExports.default.fetch(
+      `https://example.com${base}/dependency-graph/snapshots`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+        body: JSON.stringify({
+          sha: "a".repeat(40),
+          ref: "refs/heads/main",
+          detector: { name: "test-detector" },
+          manifests: {
+            "package-lock.json": {
+              resolved: {
+                "pkg:npm/lodash@4.17.21": { relationship: "direct", scope: "runtime" },
+                "pkg:npm/minimist@1.2.5": { relationship: "indirect", scope: "runtime" },
+                "pkg:cargo/serde@1.0.0": { relationship: "direct" },
+                "pkg:unknown/thing@1.0": {},
+              },
+            },
+          },
+        }),
+      }
+    );
+    const submitText = await submit.text();
+    expect(submit.status, submitText).toBe(201);
+
+    const graph = await get(`${base}/dependency-graph`, repo.cookieHeader);
+    expect(graph.status).toBe(200);
+    const g = graph.body as {
+      dependencies: { package_url: string; ecosystem: string; relationship: string }[];
+      detector: string;
+    };
+    // The unknown purl type is skipped; the other 3 survive.
+    expect(g.dependencies.length).toBe(3);
+    expect(g.detector).toBe("test-detector");
+    const cargo = g.dependencies.find((d) => d.package_url === "pkg:cargo/serde@1.0.0");
+    expect(cargo?.ecosystem).toBe("crates.io");
+
+    // OSV mapping via the injectable fetcher — asserts the request shape.
+    const { queryOsvBatch } = await import("@/worker/api/gitness/depgraph");
+    let captured: { url: string; body: string } | null = null;
+    const vulns = await queryOsvBatch(
+      g.dependencies.map((d) => {
+        const [purl, rest] = [d.package_url, ""];
+        const m = /^pkg:[a-z]+\/(.+?)@([^@]+)$/.exec(purl);
+        return {
+          purl: d.package_url,
+          name: m?.[1] ?? "",
+          version: m?.[2] ?? "",
+          ecosystem: d.ecosystem,
+          relationship: d.relationship,
+          scope: "runtime",
+          manifest: "package-lock.json",
+        };
+      }),
+      async (url, init) => {
+        captured = { url, body: String(init?.body) };
+        return new Response(
+          JSON.stringify({
+            results: [
+              { vulns: [{ id: "GHSA-xxxx", aliases: ["CVE-2021-23337"] }] },
+              { vulns: null },
+              { vulns: [] },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+    );
+    expect(captured!.url).toBe("https://api.osv.dev/v1/querybatch");
+    const queries = JSON.parse(captured!.body).queries as {
+      package: { name: string; ecosystem: string };
+      version: string;
+    }[];
+    expect(queries[0]).toEqual({
+      package: { name: "lodash", ecosystem: "npm" },
+      version: "4.17.21",
+    });
+    expect(vulns["pkg:npm/lodash@4.17.21"]?.[0]?.id).toBe("GHSA-xxxx");
+    expect(vulns["pkg:npm/minimist@1.2.5"]).toBeUndefined();
+  });
+});
