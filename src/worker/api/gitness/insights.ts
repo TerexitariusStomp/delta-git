@@ -4,6 +4,7 @@ import type { CommitInfo } from "@/worker/git/operations/read/types";
 import { getRepoStub } from "@/worker/common";
 import { listCommitsFirstParentRange } from "@/worker/git/operations/read";
 import { gErr, resolveGitnessRepo } from "./shared";
+import { readCloneTraffic } from "@/worker/traffic";
 
 // Insights: pulse/activity/contributors computed on demand from the
 // first-parent commit walk — no stored aggregates, so numbers always
@@ -126,6 +127,22 @@ export function registerGitnessInsights(router: AppRouter) {
     }
     const contributors = [...byAuthor.values()].sort((a, b) => b.commits - a.commits).slice(0, 100);
     return c.json(contributors);
+  });
+
+  // Clone traffic — GitHub Traffic tab shape. Counts accumulate in KV
+  // from the git-upload-pack/bundle routes (recordClone); read gate is
+  // repo-level (public clone stats are public, matching GitHub).
+  router.get("/api/v1/repos/:repo_ref{.+}/traffic/clones", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const clones = await readCloneTraffic(c.env, access.route.doName);
+    return c.json({
+      count: clones.reduce((sum, d) => sum + d.count, 0),
+      // Unique-cloner tracking would need visitor identity — we report
+      // request counts honestly rather than approximating.
+      uniques: null,
+      clones,
+    });
   });
 
   // 405 on write attempts keeps the surface honest (GET-only for now).

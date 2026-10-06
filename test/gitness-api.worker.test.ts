@@ -1691,3 +1691,28 @@ describe("dependency graph", () => {
     expect(vulns["pkg:npm/minimist@1.2.5"]).toBeUndefined();
   });
 });
+
+describe("clone traffic", () => {
+  it("records clones per day and reports a GitHub-shaped series", async () => {
+    const repo = await setupRepoForTests(env, uniq("trf-ns"), "trfrepo");
+    const { recordClone } = await import("@/worker/traffic");
+    await recordClone(env, repo.doName);
+    await recordClone(env, repo.doName);
+    await recordClone(env, repo.doName);
+
+    const res = await get(
+      `/api/v1/repos/${repo.namespaceSlug}/trfrepo/+/traffic/clones`,
+      repo.cookieHeader
+    );
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      count: number;
+      uniques: null;
+      clones: { timestamp: string; count: number }[];
+    };
+    expect(body.clones.length).toBe(14);
+    expect(body.count).toBe(3);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(body.clones.find((d) => d.timestamp.startsWith(today))?.count).toBe(3);
+  });
+});

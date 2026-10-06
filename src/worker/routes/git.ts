@@ -35,6 +35,7 @@ import {
 import type { Db } from "@/worker/db/d1/client";
 import type { Logger } from "@/worker/common/logger";
 import { touchRepositoryUpdatedAt } from "@/worker/db/d1/dal/repositories";
+import { recordClone } from "@/worker/traffic";
 import { workerExecutionContext, type AppContext, type AppRouter } from "./hono";
 import { gitCorsPreflight, withGitCors } from "./cors";
 
@@ -594,6 +595,9 @@ export function registerGitRoutes(router: AppRouter) {
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
     const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
     if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
+    // Traffic accounting — every authorized upload-pack counts as a clone
+    // (same rollup GitHub uses: fetches count toward clone traffic).
+    c.executionCtx.waitUntil(recordClone(c.env, route.doName));
     return withGitCors(
       c.req.raw,
       await handleUploadPackPOST(c.env, route, c.req.raw, authorized.cacheCtx)
@@ -621,6 +625,7 @@ export function registerGitRoutes(router: AppRouter) {
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
     const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
     if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
+    c.executionCtx.waitUntil(recordClone(c.env, route.doName));
     return withGitCors(
       c.req.raw,
       await handleBundleGet(
