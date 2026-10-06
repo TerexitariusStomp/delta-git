@@ -66,6 +66,29 @@ export const follows = sqliteTable(
   ]
 );
 
+// Per-repo watch subscriptions (GitHub "watch"). Namespace membership already
+// implies notifications; watchers extend the fan-out to non-members watching
+// public repos. Level is reserved for a future ignore/releases-only mode —
+// today every row means "all activity".
+export const repoWatchers = sqliteTable(
+  "repo_watchers",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    repositoryId: text("repository_id")
+      .notNull()
+      .references(() => repositories.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_watchers_user_repo").on(table.userId, table.repositoryId),
+    index("idx_watchers_repo").on(table.repositoryId, table.createdAt),
+  ]
+);
+
 export type StarRow = typeof stars.$inferSelect;
 export type RepoTopicRow = typeof repoTopics.$inferSelect;
 export type FollowRow = typeof follows.$inferSelect;
+export type RepoWatcherRow = typeof repoWatchers.$inferSelect;

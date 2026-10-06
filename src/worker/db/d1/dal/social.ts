@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "@/worker/db/d1/client";
 import { namespaces } from "@/worker/db/d1/schema/namespaces";
 import { repositories, type RepositoryRow } from "@/worker/db/d1/schema/repositories";
-import { follows, repoTopics, stars } from "@/worker/db/d1/schema/social";
+import { follows, repoTopics, repoWatchers, stars } from "@/worker/db/d1/schema/social";
 
 // Stars, topics, follows — the cross-repo social graph. All reads scope to
 // public repositories for anonymous viewers; membership-scoped private
@@ -244,4 +244,75 @@ export async function isFollowing(db: Db, userId: string, namespaceId: string): 
     .where(and(eq(follows.userId, userId), eq(follows.namespaceId, namespaceId)))
     .limit(1);
   return rows.length > 0;
+}
+
+// --- watchers (per-repo notification subscriptions) -------------------------
+
+export async function watchRepository(
+  db: Db,
+  userId: string,
+  repositoryId: string
+): Promise<"watching" | "exists"> {
+  const existing = await db
+    .select({ id: repoWatchers.id })
+    .from(repoWatchers)
+    .where(and(eq(repoWatchers.userId, userId), eq(repoWatchers.repositoryId, repositoryId)))
+    .limit(1);
+  if (existing.length > 0) return "exists";
+  await db
+    .insert(repoWatchers)
+    .values({ id: crypto.randomUUID(), userId, repositoryId, createdAt: Date.now() });
+  return "watching";
+}
+
+export async function unwatchRepository(
+  db: Db,
+  userId: string,
+  repositoryId: string
+): Promise<"unwatched" | "not-watching"> {
+  const deleted = await db
+    .delete(repoWatchers)
+    .where(and(eq(repoWatchers.userId, userId), eq(repoWatchers.repositoryId, repositoryId)))
+    .returning({ id: repoWatchers.id });
+  return deleted.length > 0 ? "unwatched" : "not-watching";
+}
+
+export async function isWatching(db: Db, userId: string, repositoryId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: repoWatchers.id })
+    .from(repoWatchers)
+    .where(and(eq(repoWatchers.userId, userId), eq(repoWatchers.repositoryId, repositoryId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function listWatchers(
+  db: Db,
+  repositoryId: string
+): Promise<{ userId: string; createdAt: number }[]> {
+  return await db
+    .select({ userId: repoWatchers.userId, createdAt: repoWatchers.createdAt })
+    .from(repoWatchers)
+    .where(eq(repoWatchers.repositoryId, repositoryId))
+    .orderBy(desc(repoWatchers.createdAt));
+}
+
+export type WatchedRepo = {
+  repository: RepositoryRow;
+  namespaceSlug: string;
+  watchedAt: number;
+};
+
+export async function listWatchedRepos(db: Db, userId: string): Promise<WatchedRepo[]> {
+  return await db
+    .select({
+      repository: repositories,
+      namespaceSlug: namespaces.slug,
+      watchedAt: repoWatchers.createdAt,
+    })
+    .from(repoWatchers)
+    .innerJoin(repositories, eq(repoWatchers.repositoryId, repositories.id))
+    .innerJoin(namespaces, eq(repositories.namespaceId, namespaces.id))
+    .where(eq(repoWatchers.userId, userId))
+    .orderBy(desc(repoWatchers.createdAt));
 }

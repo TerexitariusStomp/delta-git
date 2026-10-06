@@ -10,10 +10,15 @@ import {
   listStarredRepos,
   listTopStarredPublicRepos,
   listTopTopics,
+  isWatching,
+  listWatchedRepos,
+  listWatchers,
   starCount,
   starRepository,
   unfollowNamespace,
   unstarRepository,
+  unwatchRepository,
+  watchRepository,
 } from "@/worker/db/d1/dal";
 import { findNamespaceBySlug } from "@/worker/db/d1/dal/namespaces";
 import { loadViewer } from "@/worker/auth/session";
@@ -86,6 +91,58 @@ export function registerGitnessSocial(router: AppRouter) {
         full_name: `${r.namespaceSlug}/${r.repository.slug}`,
         description: r.repository.description ?? null,
         starred_at: new Date(r.starredAt).toISOString(),
+      }))
+    );
+  });
+
+  // --- watchers (GitHub "watch" → notification subscription) ----------------
+
+  router.get("/api/v1/repos/:repo_ref{.+}/watch", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+    if (!row) return gNotFound(c, "repository");
+    const [watchers, watching] = await Promise.all([
+      listWatchers(c.var.db, row.id),
+      access.viewer ? isWatching(c.var.db, access.viewer.userId, row.id) : false,
+    ]);
+    return c.json({ watching, watchers_count: watchers.length });
+  });
+
+  router.put("/api/v1/repos/:repo_ref{.+}/watch", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    if (!access.viewer) return gErr(c, 401, "unauthorized");
+    const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+    if (!row) return gNotFound(c, "repository");
+    await watchRepository(c.var.db, access.viewer.userId, row.id);
+    const watchers = await listWatchers(c.var.db, row.id);
+    return c.json({ watching: true, watchers_count: watchers.length });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/watch", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    if (!access.viewer) return gErr(c, 401, "unauthorized");
+    const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+    if (!row) return gNotFound(c, "repository");
+    await unwatchRepository(c.var.db, access.viewer.userId, row.id);
+    const watchers = await listWatchers(c.var.db, row.id);
+    return c.json({ watching: false, watchers_count: watchers.length });
+  });
+
+  // Viewer's watched repos — powers the "Watching" profile lane.
+  router.get("/api/v1/watching", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const rows = await listWatchedRepos(c.var.db, viewer.userId);
+    return c.json(
+      rows.map((r) => ({
+        owner: r.namespaceSlug,
+        name: r.repository.slug,
+        full_name: `${r.namespaceSlug}/${r.repository.slug}`,
+        description: r.repository.description ?? null,
+        watched_at: new Date(r.watchedAt).toISOString(),
       }))
     );
   });

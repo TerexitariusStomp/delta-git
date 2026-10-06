@@ -26,6 +26,7 @@ import { getRepoStub, newPrefixedId } from "@/worker/common";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { insertNotification } from "@/worker/db/d1/dal/modules";
 import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
+import { listWatchers } from "@/worker/db/d1/dal/social";
 import { readUserFavorites } from "./stores";
 
 export type GitnessContext = AppContext;
@@ -354,11 +355,16 @@ export function notifyMembers(
   c.executionCtx.waitUntil(
     (async () => {
       const members = await listMembershipsForNamespace(c.var.db, access.route.namespaceId);
-      for (const member of members) {
-        if (member.userId === args.excludeUserId) continue;
+      // Watchers opt into repo activity even without membership; a member
+      // who also watches gets exactly one row.
+      const repoRow = await findRepositoryByDoName(c.var.db, access.route.doName);
+      const watchers = repoRow ? await listWatchers(c.var.db, repoRow.id) : [];
+      const userIds = new Set([...members.map((m) => m.userId), ...watchers.map((w) => w.userId)]);
+      for (const userId of userIds) {
+        if (userId === args.excludeUserId) continue;
         await insertNotification(c.var.db, {
           id: newPrefixedId("ntf"),
-          userId: member.userId,
+          userId,
           kind: args.kind,
           title: args.title,
           body: args.body,

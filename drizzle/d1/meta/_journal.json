@@ -134,6 +134,13 @@
       "when": 1791312174214,
       "tag": "0018_curvy_cardiac",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1791320385721,
+      "tag": "0019_square_vector",
+      "breakpoints": true
     }
   ]
 }

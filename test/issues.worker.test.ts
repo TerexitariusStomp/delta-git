@@ -457,6 +457,41 @@ describe("issues: qualifier search (q=)", () => {
     expect(found).toBe(true);
   });
 
+  it("non-member watchers get repo notifications", async () => {
+    // A signed-in non-member watches the public repo, then gets the issue
+    // notification even without namespace membership.
+    const db = createDb(env.DB);
+    const watcherId = newPrefixedId("user");
+    await insertUserIfNew(db, {
+      id: watcherId,
+      tesseraSub: `seed-${watcherId}`,
+      createdAt: Date.now(),
+    });
+    const watcherCookie = await mintSessionCookie(env, watcherId);
+
+    const watch = await call("PUT", `${base}/watch`, { cookie: watcherCookie });
+    expect(watch.status).toBe(200);
+    expect((watch.body as { watching: boolean }).watching).toBe(true);
+
+    const issue = await call("POST", `${base}/issues`, {
+      cookie: seeded.cookieHeader,
+      body: { title: "Watcher-visible issue" },
+    });
+    expect(issue.status).toBe(201);
+    const n = (issue.body as IssueJson).number;
+
+    const deadline = Date.now() + 5000;
+    let found = false;
+    while (Date.now() < deadline && !found) {
+      const inbox = await call("GET", "/api/v1/notifications", { cookie: watcherCookie });
+      const rows = (inbox.body as { notifications?: { kind: string; title: string }[] })
+        .notifications;
+      found = !!rows?.some((r) => r.kind === "issue" && r.title.includes(`#${n}`));
+      if (!found) await new Promise((r) => setTimeout(r, 150));
+    }
+    expect(found).toBe(true);
+  });
+
   it("saved views CRUD — repo-shared named filters", async () => {
     const created = await call("POST", `${base}/issues/views`, {
       cookie: seeded.cookieHeader,
