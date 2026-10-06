@@ -20,6 +20,12 @@ import {
   updateRepositoryNamespace,
   updateRepositorySlug,
   updateRepositoryVisibility,
+  updateRepositoryWebsite,
+  listRepoTopics,
+  normalizeTopics,
+  setRepoTopics,
+  isStarred,
+  starCount,
 } from "@/worker/db/d1/dal";
 import { loadViewer, generateUserId } from "@/worker/auth/session";
 import { viewerIsNamespaceMember, generatePatPlaintext, hashPatPlaintext } from "@/worker/auth/pat";
@@ -142,6 +148,10 @@ export function toGitnessRepo(
     closedPulls?: number;
     /** Numeric repo ids the viewer starred — powers `is_favorite`. */
     favorites?: Set<number>;
+    stargazersCount?: number;
+    topics?: string[];
+    /** True when the viewer starred this repo (D1 stars, not KV favorites). */
+    viewerStarred?: boolean;
   }
 ) {
   const path = `${nsSlug}/${row.slug}`;
@@ -166,6 +176,10 @@ export function toGitnessRepo(
         : undefined,
     num_forks: 0,
     is_favorite: extra?.favorites?.has(numericId(row.id)) ?? false,
+    website: row.website ?? null,
+    topics: extra?.topics ?? [],
+    stargazers_count: extra?.stargazersCount ?? 0,
+    viewer_starred: extra?.viewerStarred ?? false,
     created: row.createdAt,
     updated: row.updatedAt,
     // EnumRepoState is `number | null` upstream; gitness emits 0 for active.
@@ -731,6 +745,8 @@ export function registerGitnessRepos(router: AppRouter) {
     return c.json({
       identifier: parsed.repo,
       description: row?.description ?? "",
+      website: row?.website ?? null,
+      topics: row ? await listRepoTopics(c.var.db, row.id) : [],
       is_public: access.route.visibility === "public",
       default_branch: head?.target?.replace(/^refs\/heads\//, "") ?? "main",
     });
@@ -742,6 +758,8 @@ export function registerGitnessRepos(router: AppRouter) {
     const body = (await c.req.json().catch(() => null)) as {
       identifier?: string;
       description?: string;
+      website?: string | null;
+      topics?: string[];
       is_public?: boolean;
       default_branch?: string;
     } | null;
@@ -749,6 +767,14 @@ export function registerGitnessRepos(router: AppRouter) {
     if (!row) return gNotFound(c, "repository");
     if (body?.description !== undefined) {
       await updateRepositoryDescription(c.var.db, row.id, body.description, Date.now());
+    }
+    if (body?.website !== undefined) {
+      await updateRepositoryWebsite(c.var.db, row.id, body.website, Date.now());
+    }
+    if (body?.topics !== undefined) {
+      const topics = normalizeTopics(body.topics);
+      if (!topics) return gErr(c, 422, "invalid topics — lowercase slug shape, ≤20");
+      await setRepoTopics(c.var.db, row.id, topics);
     }
     if (body?.is_public !== undefined) {
       await updateRepositoryVisibility(
@@ -1553,7 +1579,12 @@ export function registerGitnessRepos(router: AppRouter) {
     ]);
     if (!row) return gNotFound(c, "repository");
     const merged = done.filter((i) => i.status === "merged").length;
-    const favorites = await favoriteRepoIds(c.env, access.viewer?.userId);
+    const [favorites, stars, topics, viewerStarred] = await Promise.all([
+      favoriteRepoIds(c.env, access.viewer?.userId),
+      starCount(c.var.db, row.id),
+      listRepoTopics(c.var.db, row.id),
+      access.viewer ? isStarred(c.var.db, access.viewer.userId, row.id) : false,
+    ]);
     return c.json(
       toGitnessRepo(row, ref.split("/")[0], {
         isEmpty: refs.length === 0,
@@ -1561,6 +1592,9 @@ export function registerGitnessRepos(router: AppRouter) {
         mergedPulls: merged,
         closedPulls: done.length - merged,
         favorites,
+        stargazersCount: stars,
+        topics,
+        viewerStarred,
       })
     );
   });

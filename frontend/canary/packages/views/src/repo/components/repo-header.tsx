@@ -14,6 +14,8 @@ interface RepoHeaderProps {
   className?: string
   isFavorite?: boolean
   onFavoriteToggle: (isFavorite: boolean) => void
+  /** GitHub-style star count shown beside the favorite toggle. */
+  starCount?: number
   onSyncLinked?: () => void
   isSyncing?: boolean
   archivedDate?: number
@@ -30,6 +32,7 @@ export const RepoHeader = ({
   className,
   isFavorite,
   onFavoriteToggle,
+  starCount,
   onSyncLinked,
   isSyncing,
   archivedDate,
@@ -71,6 +74,11 @@ export const RepoHeader = ({
               </Layout.Flex>
 
               <Favorite isFavorite={isFavorite} onFavoriteToggle={onFavoriteToggle} />
+              {starCount !== undefined && (
+                <Text variant="body-normal" color="foreground-3">
+                  {starCount} {starCount === 1 ? 'star' : 'stars'}
+                </Text>
+              )}
             </>
           )}
         </Layout.Flex>

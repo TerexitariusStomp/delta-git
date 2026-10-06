@@ -276,6 +276,10 @@ export default function RepoSummaryPage() {
     return match?.name && match?.path ? { name: match.name, path: match.path } : undefined
   }, [repoDetails?.content?.entries])
 
+  // Social fields the /api/v1 repo-detail route emits beyond the generated
+  // OpenAPI type — see toGitnessRepo in src/worker/api/gitness/repos.ts.
+  const repoSocial = repoData as { topics?: string[]; website?: string | null } | undefined
+
   const toRepoFilePath = useCallback(
     ({ path }: { path: string }) =>
       routes.toRepoFiles({ spaceId, repoId, '*': `${fullGitRef}/~/${encodeResourcePath(path)}` }),
@@ -465,6 +469,8 @@ export default function RepoSummaryPage() {
         zipUrl={apiPath(`/api/v1/repos/${repoRef}/archive/${fullGitRef || 'HEAD'}.zip`)}
         dgitRepoRef={spaceId && repoId ? `${spaceId}/${repoId}` : undefined}
         dgitHost={typeof window !== 'undefined' ? window.location.origin : undefined}
+        topics={repoSocial?.topics}
+        website={repoSocial?.website}
       />
       <CreateBranchDialog
         open={isCreateBranchDialogOpen}

@@ -31,6 +31,10 @@ interface SummaryPanelProps {
   timestamp?: string
   description?: string
   tags?: Record<string, string>
+  /** GitHub-style topic chips (lowercase slug names). */
+  topics?: string[]
+  /** Project homepage URL shown under the description (GitHub "website"). */
+  website?: string | null
   /** Route path to the repo's license file, if one exists at the root. */
   licensePath?: string
   /** Display name of the detected license file (e.g. `LICENSE`, `COPYING`). */
@@ -47,6 +51,8 @@ const SummaryPanel: FC<SummaryPanelProps> = ({
   timestamp,
   description = '',
   tags,
+  topics,
+  website,
   licensePath,
   licenseName,
   saveDescription,
@@ -118,6 +124,23 @@ const SummaryPanel: FC<SummaryPanelProps> = ({
               {description}
             </Text>
           </Layout.Grid>
+        )}
+
+        {!!website && (
+          <Layout.Flex align="center" gap="2xs" className="min-w-0">
+            <IconV2 name="link" size="xs" className="shrink-0 text-cn-2" />
+            <Link variant="secondary" href={website} external className="truncate">
+              {website}
+            </Link>
+          </Layout.Flex>
+        )}
+
+        {!!topics?.length && (
+          <Layout.Flex wrap="wrap" gap="3xs">
+            {topics.map(topic => (
+              <Tag key={topic} label={topic} value={topic} variant="outline" size="sm" theme="blue" />
+            ))}
+          </Layout.Flex>
         )}
 
         {!!tags && !!Object.keys(tags).length && (

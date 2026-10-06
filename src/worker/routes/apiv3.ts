@@ -11,6 +11,17 @@ import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 import { listNamespacesForUser } from "@/worker/db/d1/dal/namespaces";
+import {
+  findRepositoryById,
+  isStarred,
+  listRepoTopics,
+  listStargazers,
+  normalizeTopics,
+  setRepoTopics,
+  starCount,
+  starRepository,
+  unstarRepository,
+} from "@/worker/db/d1/dal";
 import { attemptMerge } from "@/worker/merge/engine";
 import { closeIssuesLinkedFromText, readPrMeta, writePrMeta } from "@/worker/api/gitness/prmeta";
 import type { IssueView } from "@/worker/do/repo/catalog/issues";
@@ -73,6 +84,11 @@ export function registerApiV3Routes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     const { head, refs } = await stub.getHeadAndRefs();
     const defaultBranch = head.target.replace(/^refs\/heads\//, "");
+    const [repoRow, stars, topics] = await Promise.all([
+      findRepositoryById(c.var.db, route.repositoryId),
+      starCount(c.var.db, route.repositoryId),
+      listRepoTopics(c.var.db, route.repositoryId),
+    ]);
     const body = {
       id: route.repositoryId,
       name: c.req.param("repo"),
@@ -84,6 +100,10 @@ export function registerApiV3Routes(router: AppRouter): void {
       default_branch: defaultBranch,
       visibility: route.visibility,
       refs_count: refs.length,
+      description: repoRow?.description ?? null,
+      homepage: repoRow?.website ?? null,
+      stargazers_count: stars,
+      topics,
     };
     return c.json(body);
   });
@@ -802,5 +822,76 @@ export function registerApiV3Routes(router: AppRouter): void {
       },
       201
     );
+  });
+
+  // --- social: stars + topics (gh api / integrations) ----------------------
+
+  // PUT/DELETE /api/v3/user/starred/:owner/:repo — gh api -X PUT user/starred/o/r
+  router.put("/api/v3/user/starred/:owner/:repo", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    await starRepository(c.var.db, auth, route.repositoryId);
+    return c.body(null, 204);
+  });
+
+  router.delete("/api/v3/user/starred/:owner/:repo", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    await unstarRepository(c.var.db, auth, route.repositoryId);
+    return c.body(null, 204);
+  });
+
+  // GET /api/v3/user/starred/:owner/:repo — 204 starred / 404 not
+  router.get("/api/v3/user/starred/:owner/:repo", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    return (await isStarred(c.var.db, auth, route.repositoryId))
+      ? c.body(null, 204)
+      : c.json({ message: "Not Found" }, 404);
+  });
+
+  // GET /api/v3/repos/:owner/:repo/stargazers — GitHub returns user objects;
+  // our stars table stores user ids, so the row shape is login-only.
+  router.get("/api/v3/repos/:owner/:repo/stargazers", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const rows = await listStargazers(c.var.db, route.repositoryId);
+    return c.json(
+      rows.map((r) => ({ login: r.userId, starred_at: new Date(r.createdAt).toISOString() }))
+    );
+  });
+
+  // GET/PUT /api/v3/repos/:owner/:repo/topics — gh repo edit --add-topic
+  router.get("/api/v3/repos/:owner/:repo/topics", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    return c.json({ names: await listRepoTopics(c.var.db, route.repositoryId) });
+  });
+
+  router.put("/api/v3/repos/:owner/:repo/topics", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const body = await c.req.json<{ names?: string[] }>().catch(() => null);
+    if (!body?.names) return c.json({ message: "names required" }, 422);
+    const topics = normalizeTopics(body.names);
+    if (!topics) return c.json({ message: "invalid topic names" }, 422);
+    await setRepoTopics(c.var.db, route.repositoryId, topics);
+    return c.json({ names: topics });
   });
 }

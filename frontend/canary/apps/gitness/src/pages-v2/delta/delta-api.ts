@@ -406,3 +406,39 @@ export const useMilestones = (spaceId: string, repoId: string) =>
     () => dgFetch<RepoMilestone[]>(`${v1Path(spaceId, repoId)}/milestones`),
     { select: data => data ?? [] }
   )
+
+// --- social: stars + topics + explore ---------------------------------------
+
+export interface RepoStar {
+  starred: boolean
+  stargazers_count: number
+}
+
+export interface ExploreRepo {
+  owner: string
+  name: string
+  full_name: string
+  description: string | null
+  stargazers_count: number
+  updated_at: string
+}
+
+export interface ExploreResult {
+  repos: ExploreRepo[]
+  topics: { topic: string; repos: number }[]
+}
+
+export const useRepoStar = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'star', spaceId, repoId], () =>
+    dgFetch<RepoStar>(`${v1Path(spaceId, repoId)}/+/star`)
+  )
+
+export const useToggleStar = (spaceId: string, repoId: string) =>
+  useMutation((star: boolean) =>
+    dgFetch<RepoStar>(`${v1Path(spaceId, repoId)}/+/star`, { method: star ? 'PUT' : 'DELETE' })
+  )
+
+export const useExplore = (topic?: string) =>
+  useQuery(['delta', 'explore', topic ?? ''], () =>
+    dgFetch<ExploreResult>(`/api/v1/explore${topic ? `?topic=${encodeURIComponent(topic)}` : ''}`)
+  )

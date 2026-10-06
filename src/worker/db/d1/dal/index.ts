@@ -7,3 +7,4 @@ export * from "./tokens";
 export * from "./reputation";
 export * from "./scanRuns";
 export * from "./modules";
+export * from "./social";

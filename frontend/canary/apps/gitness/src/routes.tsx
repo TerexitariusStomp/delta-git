@@ -29,6 +29,7 @@ import {
 } from "./pages-v2/delta/admin-rbac-pages";
 import { RepoDeltaKnowledgePage } from "./pages-v2/delta/knowledge-page";
 import { ArtifactsPage, EnvironmentsPage, NotificationsPage } from "./pages-v2/delta/module-pages";
+import { ExplorePage } from "./pages-v2/explore-page";
 import {
   ConnectorsPage,
   DelegatesPage,
@@ -1064,6 +1065,15 @@ export const routes: CustomRouteObject[] = [
         handle: {
           breadcrumb: () => <span>Import project</span>,
           routeName: RouteConstants.toImportProject,
+        },
+      },
+      {
+        path: "explore",
+        element: <ExplorePage />,
+        handle: {
+          breadcrumb: () => <span>Explore</span>,
+          pageTitle: "Explore",
+          publicAccess: true,
         },
       },
       {

@@ -46,6 +46,8 @@ export const repositories = sqliteTable(
     // One-line GitHub-style repository description shown in the repo header
     // and About sidebar. NULL until the owner sets one on the admin page.
     description: text("description"),
+    // Project homepage/URL shown in the About sidebar (GitHub "website").
+    website: text("website"),
     // "do" (default) = native DO+R2 engine. "artifacts" = canonical objects
     // live in a Cloudflare Artifacts repository; `artifacts_name` holds the
     // repo name inside the bound namespace (`dg-<uuid>`).

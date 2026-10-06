@@ -1,16 +1,12 @@
 import { Outlet, useMatches, useParams } from 'react-router-dom'
 
-import {
-  createFavorite,
-  deleteFavorite,
-  EnumResourceType,
-  useLinkedSyncRepositoryMutation
-} from '@harnessio/code-service-client'
+import { useLinkedSyncRepositoryMutation } from '@harnessio/code-service-client'
 import { toast } from '@harnessio/ui/components'
 import { NotFoundPage, RepoHeader, RepoSubheader, SubHeaderWrapper } from '@harnessio/views'
 
 import { PublicAccessGuard } from '../../components-v2/public-access'
 import { useRepoHotkeys } from '../../delta/use-repo-hotkeys'
+import { useRepoStar, useToggleStar } from '../delta/delta-api'
 import { useRoutes } from '../../framework/context/NavigationContext'
 import { useGetRepoRef } from '../../framework/hooks/useGetRepoPath'
 import { useIsMFE } from '../../framework/hooks/useIsMFE'
@@ -26,13 +22,18 @@ const RepoLayout = () => {
   const routes = useRoutes()
   const { spaceId, repoId } = useParams<PathParams>()
   const { toRepoCommits } = useRepoCommits()
-  const { isLoading, gitRefName, gitRefPath, repoData, fullGitRef, refetchRepo, defaultBranch, repoFetchError } =
+  const { isLoading, gitRefName, gitRefPath, repoData, fullGitRef, defaultBranch, repoFetchError } =
     useGitRef()
   const toUpstreamRepo = useUpstreamRepoUrl()
   // GitHub-flavoured repo hotkeys (t/y/./g */?) — returns the ? cheatsheet element.
   const repoHotkeys = useRepoHotkeys()
 
   const repoRef = useGetRepoRef()
+
+  // GitHub-style repo stars — the Favorite icon now drives the real
+  // cross-repo social graph, not the legacy KV favorites lane.
+  const { data: star, refetch: refetchStar } = useRepoStar(spaceId ?? '', repoId ?? '')
+  const toggleStar = useToggleStar(spaceId ?? '', repoId ?? '')
 
   const { mutate: syncLinkedRepo, isLoading: isSyncing } = useLinkedSyncRepositoryMutation(
     { repo_ref: repoRef },
@@ -54,18 +55,10 @@ const RepoLayout = () => {
 
   const onFavoriteToggle = async (isFavorite: boolean) => {
     try {
-      const body: { resource_id: number; resource_type: EnumResourceType } = {
-        resource_id: Number(repoData?.id),
-        resource_type: 'REPOSITORY'
-      }
-      if (isFavorite) {
-        await createFavorite({ body })
-      } else {
-        await deleteFavorite({ queryParams: { resource_type: 'REPOSITORY' }, resource_id: Number(repoData?.id) })
-      }
-      refetchRepo()
+      await toggleStar.mutateAsync(isFavorite)
+      refetchStar()
     } catch {
-      // TODO: Add error handling
+      toast.danger({ title: 'Sign in to star repositories' })
     }
   }
 
@@ -92,7 +85,8 @@ const RepoLayout = () => {
             isArchived={repoData?.archived}
             isLinked={repoData?.repo_type === 'linked'}
             isLoading={isLoading}
-            isFavorite={repoData?.is_favorite}
+            isFavorite={star?.starred ?? repoData?.is_favorite}
+            starCount={star?.stargazers_count}
             onFavoriteToggle={onFavoriteToggle}
             onSyncLinked={isOnBranch ? onSyncLinked : undefined}
             isSyncing={isSyncing}

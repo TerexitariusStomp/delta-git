@@ -15,3 +15,4 @@ export * from "./notifications";
 export * from "./delivery";
 export * from "./reliability";
 export * from "./devx";
+export * from "./social";

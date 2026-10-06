@@ -121,6 +121,10 @@ export interface RepoSummaryViewProps extends Partial<RoutingProps> {
   dgitRepoRef?: string
   /** Host origin for `dgit login --host` in the clone dialog. */
   dgitHost?: string
+  /** GitHub-style topic chips for the About sidebar. */
+  topics?: string[]
+  /** Project homepage URL for the About sidebar. */
+  website?: string | null
 }
 
 export function RepoSummaryView({
@@ -166,6 +170,8 @@ export function RepoSummaryView({
   zipUrl,
   dgitRepoRef,
   dgitHost,
+  topics,
+  website,
   ...props
 }: RepoSummaryViewProps) {
   const { t } = useTranslation()
@@ -433,6 +439,8 @@ export function RepoSummaryView({
               timestamp={repository?.created ? new Date(repository.created).toISOString() : ''}
               description={repository?.description}
               tags={repository?.tags}
+              topics={topics}
+              website={website}
               licensePath={licenseFile && toRepoFilePath ? toRepoFilePath({ path: licenseFile.path }) : undefined}
               licenseName={licenseFile?.name}
               saveDescription={saveDescription}

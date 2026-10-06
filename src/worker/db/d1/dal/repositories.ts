@@ -155,6 +155,22 @@ export async function updateRepositoryDescription(
     .where(eq(repositories.id, repositoryId));
 }
 
+// About-sidebar website link; only http(s) URLs are stored — anything else
+// is dropped to null rather than persisted for the renderer to trip over.
+export async function updateRepositoryWebsite(
+  db: Db,
+  repositoryId: string,
+  website: string | null,
+  now: number
+): Promise<void> {
+  const trimmed = website?.trim() ?? "";
+  const normalized = /^https?:\/\/\S+$/i.test(trimmed) ? trimmed : null;
+  await db
+    .update(repositories)
+    .set({ website: normalized, updatedAt: now })
+    .where(eq(repositories.id, repositoryId));
+}
+
 export type UpdateRepositoryVisibilityResult =
   | { ok: true; previous: RepositoryVisibility; current: RepositoryVisibility }
   | { ok: false; reason: "not-found" };
