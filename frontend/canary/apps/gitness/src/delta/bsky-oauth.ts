@@ -86,6 +86,13 @@ export async function signInBlueskyPopup(handle: string): Promise<OAuthSession> 
   }
 
   const startedAt = Date.now()
+  const closePopup = () => {
+    try {
+      popup?.close()
+    } catch {
+      /* popup may already be gone or opener-severed */
+    }
+  }
   const params = await new Promise<URLSearchParams>((resolve, reject) => {
     const cleanup = () => {
       clearTimeout(timer)
@@ -129,15 +136,15 @@ export async function signInBlueskyPopup(handle: string): Promise<OAuthSession> 
     }
   })
 
+  // The callback page self-closes when opened as a real popup; when the
+  // browser opened it as a tab (self-close blocked), close it from here —
+  // the opener handle survives the cross-origin round trip.
+  closePopup()
+
   try {
     const { session } = await client.callback(params, {
       redirect_uri: `${window.location.origin}/oauth/callback` as `https://${string}`,
     })
-    try {
-      popup?.close()
-    } catch {
-      /* popup may already be gone */
-    }
     currentSession = session
     return session
   } catch (err) {
