@@ -36,6 +36,7 @@ import {
   updateWorkIntent,
 } from "../db";
 import { appendOpLogEntry } from "./oplog";
+import { issueMatchesQuery, sortIssues, type IssueQuery } from "./issueQuery";
 
 // Issue state operations — every mutation writes an op-log entry, and
 // create/close keep the materialized work_intents row in lockstep so the
@@ -132,11 +133,14 @@ export async function createIssueState(args: {
 
 export async function listIssuesState(
   ctx: DurableObjectState,
-  args: { state?: "open" | "closed"; limit?: number }
+  args: { state?: "open" | "closed"; limit?: number; query?: IssueQuery }
 ): Promise<IssueView[]> {
   const db = getDb(ctx.storage);
-  const rows = await listIssues(db, args);
-  return await Promise.all(rows.map((row) => toIssueView(ctx, row, { withComments: true })));
+  const rows = await listIssues(db, { state: args.state, limit: args.limit });
+  const views = await Promise.all(rows.map((row) => toIssueView(ctx, row, { withComments: true })));
+  if (!args.query) return views;
+  const matched = views.filter((view) => issueMatchesQuery(view, args.query!));
+  return sortIssues(matched, args.query);
 }
 
 export async function getIssueState(

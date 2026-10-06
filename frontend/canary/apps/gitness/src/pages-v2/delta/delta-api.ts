@@ -337,10 +337,16 @@ export interface RepoMilestone {
 
 const v1Path = (spaceId: string, repoId: string) => `/api/v1/repos/${repoRef(spaceId, repoId)}`
 
-export const useIssues = (spaceId: string, repoId: string, state?: 'open' | 'closed') =>
+export const useIssues = (spaceId: string, repoId: string, state?: 'open' | 'closed', q?: string) =>
   useQuery(
-    ['delta', 'issues', spaceId, repoId, state ?? 'all'],
-    () => dgFetch<RepoIssue[]>(`${v1Path(spaceId, repoId)}/issues${state ? `?state=${state}` : ''}`),
+    ['delta', 'issues', spaceId, repoId, state ?? 'all', q ?? ''],
+    () => {
+      const params = new URLSearchParams()
+      if (q?.trim()) params.set('q', q.trim())
+      else if (state) params.set('state', state)
+      const suffix = params.size ? `?${params.toString()}` : ''
+      return dgFetch<RepoIssue[]>(`${v1Path(spaceId, repoId)}/issues${suffix}`)
+    },
     { select: data => data ?? [] }
   )
 

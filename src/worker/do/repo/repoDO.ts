@@ -76,6 +76,7 @@ import {
   updateMilestoneState,
   type IssuePatch,
 } from "./catalog/issues";
+import type { IssueQuery } from "./catalog/issueQuery";
 import {
   addProjectCardState,
   addProjectColumnState,
@@ -724,7 +725,7 @@ export class RepoDurableObject extends DurableObject {
     return await createIssueState({ ctx: this.ctx, ...args });
   }
 
-  public async listIssues(args: { state?: "open" | "closed"; limit?: number }) {
+  public async listIssues(args: { state?: "open" | "closed"; limit?: number; query?: IssueQuery }) {
     await this.ensureAccessAndAlarm();
     return await listIssuesState(this.ctx, args);
   }

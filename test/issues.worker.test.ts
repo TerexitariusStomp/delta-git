@@ -217,6 +217,61 @@ describe("issues: /api/v1 session facade", () => {
   });
 });
 
+describe("issues: qualifier search (q=)", () => {
+  const search = async (q: string) => {
+    const { status, body } = await call("GET", `${base}/issues?q=${encodeURIComponent(q)}`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(status).toBe(200);
+    return body as IssueJson[];
+  };
+
+  it("filters by is:, label:, and free text", async () => {
+    expect((await search("is:open")).some((i) => i.number === 1)).toBe(true);
+    expect((await search("is:closed")).some((i) => i.number === 1)).toBe(false);
+    expect((await search("label:bug")).some((i) => i.number === 1)).toBe(true);
+    expect((await search("label:no-such-label")).length).toBe(0);
+    // Free text matches title and body.
+    expect((await search("world")).some((i) => i.number === 1)).toBe(true);
+    expect((await search("unmatched-gibberish")).length).toBe(0);
+  });
+
+  it("filters by author: and milestone:/no:milestone", async () => {
+    const all = await call("GET", `${base}/issues`, { cookie: seeded.cookieHeader });
+    const login = (all.body as IssueJson[]).find((i) => i.number === 1)!.user.login;
+    expect((await search(`author:${login}`)).some((i) => i.number === 1)).toBe(true);
+    expect((await search("author:nobody")).length).toBe(0);
+    expect((await search("milestone:v1")).some((i) => i.number === 1)).toBe(true);
+    expect((await search("no:milestone")).some((i) => i.number === 1)).toBe(false);
+  });
+
+  it("exposes the REST filter params and /search/issues on v3", async () => {
+    const byLabel = await call(
+      "GET",
+      `/api/v3/repos/${seeded.namespaceSlug}/issrepo/issues?labels=bug&state=all`
+    );
+    expect(byLabel.status).toBe(200);
+    expect((byLabel.body as IssueJson[]).some((i) => i.number === 1)).toBe(true);
+
+    const byWrongLabel = await call(
+      "GET",
+      `/api/v3/repos/${seeded.namespaceSlug}/issrepo/issues?labels=nope&state=all`
+    );
+    expect((byWrongLabel.body as IssueJson[]).length).toBe(0);
+
+    const found = await call(
+      "GET",
+      `/api/v3/search/issues?q=${encodeURIComponent(`repo:${seeded.namespaceSlug}/issrepo is:open`)}`
+    );
+    expect(found.status).toBe(200);
+    const result = found.body as { total_count: number; items: IssueJson[] };
+    expect(result.items.some((i) => i.number === 1)).toBe(true);
+
+    const noRepo = await call("GET", `/api/v3/search/issues?q=${encodeURIComponent("is:open")}`);
+    expect(noRepo.status).toBe(422);
+  });
+});
+
 describe("issues: /api/v3 github-compat surface", () => {
   it("allows anonymous reads on a public repo", async () => {
     const { status, body } = await call(

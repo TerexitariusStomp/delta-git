@@ -49,7 +49,15 @@ function useRepoParams() {
 export function RepoIssuesPage() {
   const { spaceId, repoId, base } = useRepoParams()
   const [state, setState] = useState<'open' | 'closed'>('open')
-  const { data: issues, isLoading } = useIssues(spaceId, repoId, state)
+  const [input, setInput] = useState('')
+  // `applied` holds the qualifier string sent to the API — updated on submit,
+  // keeping list rendering stable while the user edits the search box.
+  const [applied, setApplied] = useState('')
+  // When searching, the open/closed tab folds into the query (GitHub does the
+  // same) unless the user already named an is: qualifier explicitly.
+  const effectiveQuery =
+    applied && !/\bis:\s*(open|closed)/i.test(applied) ? `${applied} is:${state}` : applied
+  const { data: issues, isLoading } = useIssues(spaceId, repoId, state, effectiveQuery)
   const navigate = useNavigate()
 
   return (
@@ -61,6 +69,20 @@ export function RepoIssuesPage() {
           </Text>
           <Button onClick={() => navigate(`${base}/issues/new`)}>New issue</Button>
         </Layout.Flex>
+
+        <form
+          className="mb-cn-md"
+          onSubmit={e => {
+            e.preventDefault()
+            setApplied(input)
+          }}>
+          <TextInput
+            id="issueSearch"
+            placeholder="Search issues — is:open label:bug author:octocat"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+          />
+        </form>
 
         <Tabs.Root value={state} onValueChange={v => setState(v as 'open' | 'closed')} className="mb-cn-md">
           <Tabs.List>

@@ -28,6 +28,7 @@ import { attemptMerge } from "@/worker/merge/engine";
 import { closeIssuesLinkedFromText, readPrMeta, writePrMeta } from "@/worker/api/gitness/prmeta";
 import type { DiscussionView } from "@/worker/do/repo/catalog/discussions";
 import type { IssueView } from "@/worker/do/repo/catalog/issues";
+import { parseIssueQuery, type IssueQuery } from "@/worker/do/repo/catalog/issueQuery";
 
 // GitHub REST v3 compatibility shim — the high-traffic subset that lets
 // `GH_HOST=<this host> gh repo view`, IDE git integrations, status bots, and
@@ -593,6 +594,66 @@ export function registerApiV3Routes(router: AppRouter): void {
     closed_at: issue.closedAt ? new Date(issue.closedAt).toISOString() : null,
   });
 
+  // Map GitHub REST issue-list params onto the shared IssueQuery filter.
+  // `q` (qualifier grammar) merges with the discrete params when both are
+  // present.
+  function v3IssueQuery(c: AppContext): IssueQuery | undefined {
+    const query: IssueQuery = c.req.query("q")?.trim()
+      ? parseIssueQuery(c.req.query("q")!)
+      : {
+          assignees: [],
+          labels: [],
+          noLabels: false,
+          noAssignee: false,
+          noMilestone: false,
+          terms: [],
+          order: "desc",
+        };
+    let touched = query.terms.length > 0;
+
+    const labels = c.req.query("labels");
+    if (labels) {
+      query.labels.push(...labels.split(",").filter(Boolean));
+      touched = true;
+    }
+    const assignee = c.req.query("assignee");
+    if (assignee === "none") {
+      query.noAssignee = true;
+      touched = true;
+    } else if (assignee) {
+      query.assignees.push(assignee);
+      touched = true;
+    }
+    const creator = c.req.query("creator");
+    if (creator) {
+      query.author = creator;
+      touched = true;
+    }
+    const milestone = c.req.query("milestone");
+    if (milestone === "none") {
+      query.noMilestone = true;
+      touched = true;
+    } else if (milestone) {
+      query.milestone = milestone;
+      touched = true;
+    }
+    const sort = c.req.query("sort");
+    if (sort === "created" || sort === "updated" || sort === "comments") {
+      query.sort = sort;
+      query.order = c.req.query("direction") === "asc" ? "asc" : "desc";
+      touched = true;
+    }
+    const since = c.req.query("since");
+    if (since) {
+      const at = Date.parse(since);
+      if (!Number.isNaN(at)) {
+        query.updatedAfter = at;
+        touched = true;
+      }
+    }
+    return touched ? query : undefined;
+  }
+
   // Writes attribute the primary namespace slug (the actor convention the
   // rest of the forge uses) rather than the raw userId.
   async function actorSlug(c: AppContext, userId: string): Promise<string> {
@@ -600,7 +661,9 @@ export function registerApiV3Routes(router: AppRouter): void {
     return namespaces[0]?.slug ?? userId;
   }
 
-  // GET /api/v3/repos/:owner/:repo/issues — gh issue list
+  // GET /api/v3/repos/:owner/:repo/issues — gh issue list. Supports the
+  // standard filter params (labels/assignee/creator/milestone/sort) plus
+  // `q` for full qualifier syntax.
   router.get("/api/v3/repos/:owner/:repo/issues", async (c) => {
     const route = await resolveRoute(c);
     if (!route) return v3Err(c, 404, "Not Found");
@@ -608,13 +671,50 @@ export function registerApiV3Routes(router: AppRouter): void {
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
     const state = c.req.query("state") ?? "open";
+    const query = v3IssueQuery(c);
     const issues = await stub.listIssues({
       state: state === "open" || state === "closed" ? state : undefined,
+      query,
     });
     const origin = new URL(c.req.url).origin;
     const owner = c.req.param("owner");
     const repo = c.req.param("repo");
     return c.json(issues.map((i) => issueJson(i, origin, owner, repo)));
+  });
+
+  // GET /api/v3/search/issues?q=repo:owner/name+is:open — gh search issues.
+  // Requires a repo: qualifier; qualifiers beyond repo: are the standard
+  // issue grammar, plus free-text terms matched against title and body.
+  router.get("/api/v3/search/issues", async (c) => {
+    const q = c.req.query("q")?.trim();
+    if (!q) return v3Err(c, 422, "q required");
+    const repoMatches = [...q.matchAll(/(?:^|\s)repo:([^\s]+)/g)].map((m) => m[1]!);
+    if (repoMatches.length !== 1) {
+      return v3Err(c, 422, "exactly one repo:owner/name qualifier required");
+    }
+    const [owner, repo] = repoMatches[0]!.split("/");
+    if (!owner || !repo || !isValidOwnerRepo(owner) || !isValidOwnerRepo(repo)) {
+      return v3Err(c, 422, "invalid repo: qualifier");
+    }
+    const route = await resolveRepositoryRoute(c.env, owner, repo, {
+      mode: "route-cache-only",
+      db: c.var.db,
+      log: c.var.logFor({ service: "ApiV3" }),
+    });
+    if (!route) return v3Err(c, 404, "Not Found");
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+
+    const remaining = q.replace(/(?:^|\s)repo:[^\s]+/g, " ");
+    const query = parseIssueQuery(remaining);
+    const stub = getRepoStub(c.env, route.doName);
+    const issues = await stub.listIssues({ query });
+    const origin = new URL(c.req.url).origin;
+    return c.json({
+      total_count: issues.length,
+      incomplete_results: false,
+      items: issues.map((i) => issueJson(i, origin, owner, repo)),
+    });
   });
 
   // POST /api/v3/repos/:owner/:repo/issues — gh issue create

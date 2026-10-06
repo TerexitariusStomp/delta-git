@@ -8,6 +8,7 @@ import type {
 } from "@/worker/do/repo/db/schema";
 
 import { getRepoStub } from "@/worker/common";
+import { parseIssueQuery } from "@/worker/do/repo/catalog/issueQuery";
 import { gErr, gNotFound, pageParams, paginate, requireWriter, resolveGitnessRepo } from "./shared";
 
 // GitHub-shaped issues surface for the SPA — session-authed like every
@@ -82,8 +83,11 @@ export function registerGitnessIssues(router: AppRouter) {
     if (access.kind !== "ok") return access.response;
     const stub = getRepoStub(c.env, access.route.doName);
     const state = c.req.query("state");
+    const rawQuery = c.req.query("q");
+    const query = rawQuery?.trim() ? parseIssueQuery(rawQuery) : undefined;
     const issues = await stub.listIssues({
       state: state === "open" || state === "closed" ? state : undefined,
+      query,
     });
     const page = pageParams(c);
     return c.json(
