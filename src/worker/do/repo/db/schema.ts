@@ -597,3 +597,63 @@ export const discussionComments = sqliteTable(
 );
 
 export type DiscussionCommentRow = typeof discussionComments.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// releases + release_assets
+// A release binds a git tag to human-curated notes and downloadable assets.
+// Asset bytes live in R2 (Worker-side, single hop) — the DO row is metadata
+// only; `r2_key` ties the two together.
+// ---------------------------------------------------------------------------
+
+export const releases = sqliteTable(
+  "releases",
+  {
+    id: text("id").notNull(),
+    tagName: text("tag_name").notNull(),
+    // Commit the tag pointed at when the release was made (or last
+    // re-pointed). Informational — tags are movable refs.
+    targetOid: text("target_oid"),
+    name: text("name").notNull(),
+    body: text("body"),
+    draft: integer("draft").notNull().default(0),
+    prerelease: integer("prerelease").notNull().default(0),
+    author: text("author").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "releases_pk" }),
+    uniqueIndex("uq_releases_tag").on(t.tagName),
+    index("idx_releases_created").on(desc(t.createdAt)),
+    check("chk_releases_draft", sql`"draft" IN (0,1)`),
+    check("chk_releases_prerelease", sql`"prerelease" IN (0,1)`),
+  ]
+);
+
+export type ReleaseRow = typeof releases.$inferSelect;
+
+export const releaseAssets = sqliteTable(
+  "release_assets",
+  {
+    id: text("id").notNull(),
+    releaseId: text("release_id")
+      .notNull()
+      .references(() => releases.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    contentType: text("content_type").notNull().default("application/octet-stream"),
+    size: integer("size").notNull(),
+    r2Key: text("r2_key").notNull(),
+    downloadCount: integer("download_count").notNull().default(0),
+    author: text("author").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id], name: "release_assets_pk" }),
+    uniqueIndex("uq_release_assets_name").on(t.releaseId, t.name),
+    index("idx_release_assets_release").on(t.releaseId),
+    check("chk_release_assets_size", sql`"size" >= 0`),
+    check("chk_release_assets_downloads", sql`"download_count" >= 0`),
+  ]
+);
+
+export type ReleaseAssetRow = typeof releaseAssets.$inferSelect;

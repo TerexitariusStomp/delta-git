@@ -27,6 +27,7 @@ import {
 } from '@harnessio/views'
 
 import { BranchSelectorContainer } from '../../components-v2/branch-selector-container'
+import { useReleases } from '../delta/delta-api'
 import { CreateBranchDialog } from '../../components-v2/create-branch-dialog'
 import { useAppContext } from '../../framework/context/AppContext'
 import { useRoutes } from '../../framework/context/NavigationContext'
@@ -55,6 +56,7 @@ export default function RepoSummaryPage() {
   const repoRef = useGetRepoRef()
   const navigate = useNavigate()
   const { spaceId, repoId } = useParams<PathParams>()
+  const { data: releases } = useReleases(spaceId ?? '', repoId ?? '')
   const [currBranchDivergence, setCurrBranchDivergence] = useState<CommitDivergenceType>({ ahead: 0, behind: 0 })
   const [branchTagQuery, setBranchTagQuery] = useState('')
   const [tokenGenerationError, setTokenGenerationError] = useState<string | null>(null)
@@ -471,6 +473,8 @@ export default function RepoSummaryPage() {
         dgitHost={typeof window !== 'undefined' ? window.location.origin : undefined}
         topics={repoSocial?.topics}
         website={repoSocial?.website}
+        toRepoReleases={() => `/${spaceId}/repos/${repoId}/releases`}
+        releasesCount={releases?.length}
       />
       <CreateBranchDialog
         open={isCreateBranchDialogOpen}

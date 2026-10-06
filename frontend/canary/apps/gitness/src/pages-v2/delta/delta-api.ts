@@ -589,3 +589,61 @@ export const useDeleteWikiPage = (spaceId: string, repoId: string) =>
       method: 'DELETE'
     })
   )
+
+// --- releases (tag-bound metadata + R2 assets, session-authed via /api/v1) ---
+
+export interface RepoReleaseAsset {
+  id: string
+  name: string
+  content_type: string
+  size: number
+  download_count: number
+}
+
+export interface RepoRelease {
+  id: string
+  tag_name: string
+  target_commitish: string | null
+  name: string
+  body: string | null
+  draft: boolean
+  prerelease: boolean
+  author: { login: string }
+  assets: RepoReleaseAsset[]
+  created_at: string
+  published_at: string | null
+}
+
+export const useReleases = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'releases', spaceId, repoId],
+    () => dgFetch<RepoRelease[]>(`${v1Path(spaceId, repoId)}/releases`),
+    { select: data => data ?? [] }
+  )
+
+export const useRelease = (spaceId: string, repoId: string, id: string) =>
+  useQuery(['delta', 'release', spaceId, repoId, id], () =>
+    dgFetch<RepoRelease>(`${v1Path(spaceId, repoId)}/releases/${id}`)
+  )
+
+export const useCreateRelease = (spaceId: string, repoId: string) =>
+  useMutation(
+    (body: { tag_name: string; name?: string; body?: string; draft?: boolean; prerelease?: boolean }) =>
+      dgFetch<RepoRelease>(`${v1Path(spaceId, repoId)}/releases`, {
+        method: 'POST',
+        body: JSON.stringify(body)
+      })
+  )
+
+export const useDeleteRelease = (spaceId: string, repoId: string) =>
+  useMutation((id: string) =>
+    dgFetch(`${v1Path(spaceId, repoId)}/releases/${id}`, { method: 'DELETE' })
+  )
+
+export const useUploadReleaseAsset = (spaceId: string, repoId: string, releaseId: string) =>
+  useMutation((vars: { name: string; file: File }) =>
+    dgFetch<RepoReleaseAsset>(
+      `${v1Path(spaceId, repoId)}/releases/${releaseId}/assets?name=${encodeURIComponent(vars.name)}`,
+      { method: 'POST', body: vars.file }
+    )
+  )

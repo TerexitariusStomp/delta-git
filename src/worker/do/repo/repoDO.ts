@@ -77,6 +77,18 @@ import {
   type IssuePatch,
 } from "./catalog/issues";
 import {
+  addReleaseAssetState,
+  createReleaseState,
+  deleteReleaseAssetState,
+  deleteReleaseState,
+  getReleaseByTagState,
+  getReleaseState,
+  latestReleaseState,
+  listReleasesState,
+  releaseAssetForDownloadState,
+  updateReleaseState,
+} from "./catalog/releases";
+import {
   addDiscussionCommentState,
   createDiscussionState,
   deleteDiscussionCommentState,
@@ -837,6 +849,84 @@ export class RepoDurableObject extends DurableObject {
   public async listDiscussionReactions(number: number) {
     await this.ensureAccessAndAlarm();
     return await listDiscussionReactionsState(this.ctx, number);
+  }
+
+  // --- releases -------------------------------------------------------------
+
+  public async createRelease(args: {
+    tagName: string;
+    name?: string;
+    body?: string | null;
+    draft?: boolean;
+    prerelease?: boolean;
+    targetOid?: string | null;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await createReleaseState({ ctx: this.ctx, ...args });
+  }
+
+  public async listReleases(args: { includeDrafts?: boolean; limit?: number }) {
+    await this.ensureAccessAndAlarm();
+    return await listReleasesState(this.ctx, args);
+  }
+
+  public async getRelease(id: string) {
+    await this.ensureAccessAndAlarm();
+    return await getReleaseState(this.ctx, id);
+  }
+
+  public async getReleaseByTag(tag: string) {
+    await this.ensureAccessAndAlarm();
+    return await getReleaseByTagState(this.ctx, tag);
+  }
+
+  public async getLatestRelease() {
+    await this.ensureAccessAndAlarm();
+    return await latestReleaseState(this.ctx);
+  }
+
+  public async updateRelease(args: {
+    id: string;
+    patch: {
+      tagName?: string;
+      name?: string;
+      body?: string | null;
+      draft?: boolean;
+      prerelease?: boolean;
+      targetOid?: string | null;
+    };
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await updateReleaseState({ ctx: this.ctx, ...args });
+  }
+
+  public async deleteRelease(args: { id: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteReleaseState({ ctx: this.ctx, ...args });
+  }
+
+  public async addReleaseAsset(args: {
+    releaseId: string;
+    name: string;
+    contentType: string | null;
+    size: number;
+    r2Key: string;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await addReleaseAssetState({ ctx: this.ctx, ...args });
+  }
+
+  public async releaseAssetForDownload(args: { releaseId: string; assetId: string }) {
+    await this.ensureAccessAndAlarm();
+    return await releaseAssetForDownloadState({ ctx: this.ctx, ...args });
+  }
+
+  public async deleteReleaseAsset(args: { releaseId: string; assetId: string; actor: string }) {
+    await this.ensureAccessAndAlarm();
+    return await deleteReleaseAssetState({ ctx: this.ctx, ...args });
   }
 
   public async updateMilestone(args: {

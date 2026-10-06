@@ -125,6 +125,10 @@ export interface RepoSummaryViewProps extends Partial<RoutingProps> {
   topics?: string[]
   /** Project homepage URL for the About sidebar. */
   website?: string | null
+  /** Route builder for the releases page (About "Releases" row). */
+  toRepoReleases?: () => string
+  /** Published release count for the About "Releases" row. */
+  releasesCount?: number
 }
 
 export function RepoSummaryView({
@@ -434,7 +438,18 @@ export function RepoSummaryView({
                   count: pull_req_summary?.open_count || 0,
                   iconName: 'git-pull-request',
                   to: props.toRepoPullRequests?.() ?? '#'
-                }
+                },
+                ...(props.toRepoReleases
+                  ? [
+                      {
+                        id: '4',
+                        name: t('views:repos.releases', 'Releases'),
+                        count: props.releasesCount ?? 0,
+                        iconName: 'tag' as const,
+                        to: props.toRepoReleases()
+                      }
+                    ]
+                  : [])
               ]}
               timestamp={repository?.created ? new Date(repository.created).toISOString() : ''}
               description={repository?.description}

@@ -8,6 +8,8 @@ import { authenticateGitRequest } from "@/worker/auth/gitAuth";
 import { hasOAuthScope, OAUTH_SCOPES } from "@/worker/auth/oauth";
 import { isValidOwnerRepo } from "@/shared/web";
 import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
+import { resolveRef } from "@/worker/git/operations/read";
+import type { ReleaseAssetRow, ReleaseRow } from "@/worker/do/repo/db/schema";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 import { listNamespacesForUser } from "@/worker/db/d1/dal/namespaces";
@@ -951,6 +953,145 @@ export function registerApiV3Routes(router: AppRouter): void {
       },
       201
     );
+  });
+
+  // --- releases: gh release verbs ------------------------------------------
+
+  const releaseJson = (
+    r: ReleaseRow,
+    assets: ReleaseAssetRow[],
+    origin: string,
+    owner: string,
+    repo: string
+  ) => ({
+    id: r.id,
+    tag_name: r.tagName,
+    target_commitish: r.targetOid ?? null,
+    name: r.name,
+    body: r.body ?? null,
+    draft: r.draft === 1,
+    prerelease: r.prerelease === 1,
+    author: { login: r.author },
+    html_url: `${origin}/${owner}/${repo}/releases/${r.tagName}`,
+    assets: assets.map((a) => ({
+      id: a.id,
+      name: a.name,
+      content_type: a.contentType,
+      size: a.size,
+      download_count: a.downloadCount,
+      browser_download_url: `${origin}/api/v3/repos/${owner}/${repo}/releases/${r.id}/assets/${a.id}`,
+    })),
+    created_at: new Date(r.createdAt).toISOString(),
+    published_at: r.draft ? null : new Date(r.createdAt).toISOString(),
+  });
+
+  // GET /api/v3/repos/:owner/:repo/releases — gh release list
+  router.get("/api/v3/repos/:owner/:repo/releases", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const stub = getRepoStub(c.env, route.doName);
+    const releases = await stub.listReleases({ includeDrafts: auth !== "anonymous" });
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      releases.map((r) => releaseJson(r, [], origin, c.req.param("owner"), c.req.param("repo")))
+    );
+  });
+
+  // POST /api/v3/repos/:owner/:repo/releases — gh release create
+  router.post("/api/v3/repos/:owner/:repo/releases", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    const body = await c.req
+      .json<{
+        tag_name?: string;
+        name?: string;
+        body?: string;
+        draft?: boolean;
+        prerelease?: boolean;
+      }>()
+      .catch(() => null);
+    if (!body?.tag_name?.trim()) return c.json({ message: "tag_name required" }, 422);
+    const targetOid =
+      (await resolveRef(c.env, route.doName, `refs/tags/${body.tag_name}`, c.var.cacheCtx).catch(
+        () => undefined
+      )) ?? null;
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.createRelease({
+      tagName: body.tag_name,
+      name: body.name,
+      body: body.body ?? null,
+      draft: body.draft,
+      prerelease: body.prerelease,
+      targetOid,
+      actor: await actorSlug(c, auth),
+    });
+    if (result.status === "invalid") return c.json({ message: result.reason }, 422);
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      releaseJson(result.release, [], origin, c.req.param("owner"), c.req.param("repo")),
+      result.status === "exists" ? 200 : 201
+    );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/releases/latest — gh release view (latest)
+  router.get("/api/v3/repos/:owner/:repo/releases/latest", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.getLatestRelease();
+    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      releaseJson(result.release, result.assets, origin, c.req.param("owner"), c.req.param("repo"))
+    );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/releases/tags/:tag — gh release view <tag>
+  router.get("/api/v3/repos/:owner/:repo/releases/tags/:tag", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.getReleaseByTag(c.req.param("tag"));
+    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.release.draft === 1 && auth === "anonymous") {
+      return c.json({ message: "Not Found" }, 404);
+    }
+    const origin = new URL(c.req.url).origin;
+    return c.json(
+      releaseJson(result.release, result.assets, origin, c.req.param("owner"), c.req.param("repo"))
+    );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/releases/:id/assets/:asset_id — download
+  router.get("/api/v3/repos/:owner/:repo/releases/:id/assets/:asset_id", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return c.json({ message: "Not Found" }, 404);
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const stub = getRepoStub(c.env, route.doName);
+    const result = await stub.releaseAssetForDownload({
+      releaseId: c.req.param("id"),
+      assetId: c.req.param("asset_id"),
+    });
+    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    const obj = await c.env.REPO_BUCKET.get(result.asset.r2Key);
+    if (!obj) return c.json({ message: "Not Found" }, 404);
+    return new Response(obj.body, {
+      headers: {
+        "content-type": result.asset.contentType,
+        "content-length": String(result.asset.size),
+        "content-disposition": `attachment; filename="${result.asset.name.replace(/"/g, "")}"`,
+      },
+    });
   });
 
   // --- social: stars + topics (gh api / integrations) ----------------------

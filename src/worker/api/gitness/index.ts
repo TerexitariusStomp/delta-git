@@ -33,6 +33,7 @@ import { registerGitnessPullreqs } from "./pullreqs";
 import { registerGitnessDiscussions } from "./discussions";
 import { registerGitnessIssues } from "./issues";
 import { registerGitnessSocial } from "./social";
+import { registerGitnessReleases } from "./releases";
 import { registerGitnessWiki } from "./wiki";
 import { registerGitnessRepos } from "./repos";
 import { registerGitnessSearch } from "./search";
@@ -100,6 +101,8 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessSocial(router);
   // Wiki — `refs/heads/wiki` pages, literal tails before gitdata.
   registerGitnessWiki(router);
+  // Releases — tag-bound metadata + R2 assets, literal tails before gitdata.
+  registerGitnessReleases(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);

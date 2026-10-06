@@ -81,6 +81,11 @@ import {
   RepoDiscussionsPage,
 } from "./pages-v2/repo/repo-discussions-page";
 import { RepoWikiEditPage, RepoWikiPage } from "./pages-v2/repo/repo-wiki-page";
+import {
+  RepoReleaseDetailPage,
+  RepoReleaseNewPage,
+  RepoReleasesPage,
+} from "./pages-v2/repo/repo-releases-page";
 import { LandingPage } from "./pages-v2/landing-page-container";
 import { Logout } from "./pages-v2/logout";
 import { SettingsProfileGeneralPage } from "./pages-v2/profile-settings/profile-settings-general-container";
@@ -795,6 +800,32 @@ export const repoRoutes: CustomRouteObject[] = [
             handle: {
               breadcrumb: () => <span>Edit wiki page</span>,
               pageTitle: "Edit wiki page",
+            },
+          },
+          {
+            path: "releases",
+            element: <RepoReleasesPage />,
+            handle: {
+              breadcrumb: () => <span>Releases</span>,
+              pageTitle: "Releases",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "releases/new",
+            element: <RepoReleaseNewPage />,
+            handle: {
+              breadcrumb: () => <span>New release</span>,
+              pageTitle: "New release",
+            },
+          },
+          {
+            path: "releases/:releaseId",
+            element: <RepoReleaseDetailPage />,
+            handle: {
+              breadcrumb: () => <span>Release</span>,
+              pageTitle: "Release",
+              publicAccess: true,
             },
           },
           {

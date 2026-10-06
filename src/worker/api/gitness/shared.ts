@@ -243,3 +243,23 @@ export async function requireWriter(
     actor: access.viewer.primaryNamespaceSlug ?? access.viewer.userId,
   };
 }
+
+/**
+ * Same bar as `requireWriter` but boolean — used where write-level state
+ * (e.g. draft releases) is *visible* to members but the read itself is open.
+ */
+export async function viewerCanWrite(c: GitnessContext, access: RepoAccessOk): Promise<boolean> {
+  if (!access.viewer) return false;
+  const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+  if (!row) return false;
+  if (!(await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId))) {
+    return false;
+  }
+  return await enforceInNamespace(
+    c.var.db,
+    row.namespaceId,
+    principalForUser(access.viewer.userId),
+    `repo:${row.doName}`,
+    "write"
+  );
+}

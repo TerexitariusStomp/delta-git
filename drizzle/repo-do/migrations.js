@@ -9,6 +9,7 @@ import m0006 from './0006_harsh_mongu.sql';
 import m0007 from './0007_careful_shaman.sql';
 import m0008 from './0008_unknown_spencer_smythe.sql';
 import m0009 from './0009_icy_red_ghost.sql';
+import m0010 from './0010_hard_gauntlet.sql';
 
   export default {
     journal,
@@ -22,7 +23,8 @@ m0005,
 m0006,
 m0007,
 m0008,
-m0009
+m0009,
+m0010
     }
   }
   

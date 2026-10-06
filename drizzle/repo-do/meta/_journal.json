@@ -71,6 +71,13 @@
       "when": 1791312804197,
       "tag": "0009_icy_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791313772132,
+      "tag": "0010_hard_gauntlet",
+      "breakpoints": true
     }
   ]
 }
