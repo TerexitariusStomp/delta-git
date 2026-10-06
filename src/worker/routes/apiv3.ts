@@ -2,6 +2,7 @@ import type { AppContext, AppRouter } from "./hono";
 import type { RepositoryRoute } from "@/worker/repositories/route";
 
 import { getRepoStub } from "@/worker/common";
+import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { readObject } from "@/worker/git/object-store/store";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
@@ -247,6 +248,19 @@ export function registerApiV3Routes(router: AppRouter): void {
       },
       actor: auth,
     });
+    // GitHub's `status` webhook event — fanned out best-effort in waitUntil.
+    c.executionCtx.waitUntil(
+      deliverWebhookEvent(c.env, route.repositoryId, stub, {
+        kind: "status",
+        payload: {
+          repo: `${route.routeNamespaceSlug}/${route.routeRepoSlug}`,
+          sha: c.req.param("sha"),
+          state: parsed.state,
+          context: parsed.context,
+          actor: auth,
+        },
+      }).catch(() => {})
+    );
     return c.json({ state: parsed.state, context: parsed.context }, 201);
   });
 

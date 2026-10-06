@@ -504,6 +504,12 @@ export function registerGitnessGitdata(router: AppRouter) {
     };
     meta.comments.push(comment);
     await writeCommitMeta(c.env, gate.route.doName, sha, meta);
+    emitRepoEvent(c, gate, "commit_comment", {
+      action: "created",
+      sha,
+      comment: { id: comment.id, author: comment.author, text: comment.text },
+      actor: gate.actor,
+    });
     return c.json(
       { id: comment.id, author: comment.author, text: comment.text, created: comment.created },
       201
@@ -913,6 +919,8 @@ export function registerGitnessGitdata(router: AppRouter) {
     fork: "fork",
     create: "create",
     delete: "delete",
+    commit_comment: "commit_comment",
+    status: "status",
   };
   const DG_TO_GWH: Record<string, string> = {
     push: "branch_updated",
@@ -929,6 +937,8 @@ export function registerGitnessGitdata(router: AppRouter) {
     fork: "fork",
     create: "create",
     delete: "delete",
+    commit_comment: "commit_comment",
+    status: "status",
   };
 
   router.get("/api/v1/repos/:repo_ref{.+}/webhooks", async (c) => {
