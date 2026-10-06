@@ -63,6 +63,8 @@ import {
   rateLimit,
 } from "@/worker/agent/abuse";
 import { bytesToHex } from "@/worker/common/hex";
+import { toBase64Url } from "@atcute/multibase";
+import { loadNodeKey } from "@/worker/agent/repCert";
 import { arenaShuffleKey, clampStake, voteGateError } from "@/shared/arena";
 
 // delta-git agent API.
@@ -1906,6 +1908,67 @@ export function registerAgentRoutes(router: AppRouter): void {
         repo: route.routeRepoSlug,
         clone_url: `/${route.routeNamespaceSlug}/${route.routeRepoSlug}`,
       },
+    });
+  });
+
+  // OIDC token — the claimed runner federates to external services. Minted
+  // as an EdDSA JWT under the node key (same issuer as reputation certs, so
+  // any verifier holding node_key validates offline). Only the runner that
+  // claimed the execution may mint for it.
+  router.post("/api/:owner/:repo/dg/runner/oidc", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticate(c, body, route);
+    if (principal instanceof Response) return principal;
+    const parsed = parseJsonBody(
+      body,
+      z.object({
+        exec: z.object({ pipeline_id: z.number().int(), number: z.number().int() }),
+        audience: z.string().optional(),
+        runner: z.string().optional(),
+      })
+    );
+    if (!parsed) return bad(c, "bad-request", 400);
+    const ref = parseExecRef(parsed);
+    const execs = await readRepoExecutions(c.env, route.doName);
+    const exec = ref
+      ? execs.find((e) => e.pipeline_id === ref.pipelineId && e.number === ref.num)
+      : undefined;
+    if (!exec) return bad(c, "not-found", 404);
+    // Same derivation as /claim — an explicit runner name must echo the one
+    // the claim recorded.
+    const runner = parsed.runner ?? principal.agent?.did ?? principal.actor;
+    if (exec.status !== "running" || exec.runner !== runner) {
+      return bad(c, "forbidden", 403);
+    }
+    const node = await loadNodeKey(c.env);
+    if (!node) return bad(c, "oidc-unconfigured", 503);
+    const now = Date.now();
+    const header = { alg: "EdDSA", typ: "JWT", kid: node.did };
+    const payload = {
+      iss: node.did,
+      sub: `repo:${route.routeNamespaceSlug}/${route.routeRepoSlug}:exec:${exec.pipeline_id}:${exec.number}`,
+      aud: parsed.audience ?? `repo:${route.doName}`,
+      iat: Math.floor(now / 1000),
+      exp: Math.floor(now / 1000) + 600,
+      event: exec.event,
+      ref: exec.ref,
+      sha: exec.after ?? null,
+      runner,
+      jti: `oidc-${exec.pipeline_id}-${exec.number}-${now}`,
+    };
+    const enc = new TextEncoder();
+    const signingInput = `${toBase64Url(enc.encode(JSON.stringify(header)))}.${toBase64Url(enc.encode(JSON.stringify(payload)))}`;
+    const sig = await crypto.subtle.sign(
+      "Ed25519",
+      node.privateKey,
+      enc.encode(signingInput) as BufferSource
+    );
+    return json(c, {
+      token: `${signingInput}.${toBase64Url(new Uint8Array(sig))}`,
+      expires_in: 600,
+      node_key: node.publicJwk,
     });
   });
 

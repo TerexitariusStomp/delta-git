@@ -9,6 +9,13 @@ import { toRequestBody } from "./util/test-helpers";
 import { ensureD1Migrations } from "./util/d1Setup";
 import { readCronPipelineRepos, writeRepoPipelines } from "@/worker/api/gitness/stores";
 import { handleScheduled } from "@/worker/scheduled";
+import { fromBase64Url } from "@atcute/multibase";
+import { withEnvOverrides } from "./util/test-helpers";
+
+async function nodeJwk(): Promise<{ jwk: string }> {
+  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  return { jwk: JSON.stringify(await crypto.subtle.exportKey("jwk", pair.privateKey)) };
+}
 import { lookupPushAuth, setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
 
 // Pipeline/execution surface: pipeline CRUD + view, trigger CRUD (the
@@ -362,5 +369,77 @@ describe("actions: cron schedules fire via the scheduled sweep", () => {
     await handleScheduled("*/5 * * * *", env);
     const again = await api("GET", `${pipeBase()}/nightly/executions`, w.cookieHeader);
     expect((again.body as { event: string }[]).filter((e) => e.event === "cron").length).toBe(1);
+  });
+});
+
+describe("actions: runner OIDC token", () => {
+  let w: SetupRepoForTestsResult;
+  let ref: string;
+
+  beforeAll(async () => {
+    await ensureD1Migrations(env);
+    w = await setupRepoForTests(env, uniq("oidc-ns"), "oidcrepo");
+    ref = `${w.namespaceSlug}/oidcrepo/+`;
+    // A pipeline with one pending execution.
+    await writeRepoPipelines(env, w.doName, [
+      { id: 1, identifier: "deploy", config_path: ".harness/deploy.yaml", created: 1, updated: 1 },
+    ]);
+    await api("POST", `/api/v1/repos/${ref}/pipelines/deploy/executions`, w.cookieHeader);
+  });
+
+  it("claimed execution mints a verifiable EdDSA JWT; wrong caller 403s", async () => {
+    const { jwk } = await nodeJwk();
+    const dg = `/api/${w.namespaceSlug}/oidcrepo/dg`;
+
+    const claimed = await workerExports.default.fetch(`https://example.com${dg}/runner/claim`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: w.pushAuthHeader },
+      // No runner name — claim binds to the PAT's actor, matching what the
+      // OIDC endpoint derives from the same credential.
+      body: JSON.stringify({}),
+    });
+    expect(claimed.status).toBe(200);
+    const claim = (await claimed.json()) as { execution: { pipeline_id: number; number: number } };
+    expect(claim.execution).toBeTruthy();
+
+    await withEnvOverrides(env, { DG_NODE_ED25519_JWK: jwk }, async () => {
+      const res = await workerExports.default.fetch(`https://example.com${dg}/runner/oidc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: w.pushAuthHeader },
+        body: JSON.stringify({
+          exec: { pipeline_id: claim.execution.pipeline_id, number: claim.execution.number },
+          audience: "https://cloud.example.com",
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        token: string;
+        expires_in: number;
+        node_key: JsonWebKey;
+      };
+      const [h, p, s] = body.token.split(".");
+      const header = JSON.parse(new TextDecoder().decode(fromBase64Url(h)));
+      const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(p)));
+      expect(header.alg).toBe("EdDSA");
+      expect(payload.aud).toBe("https://cloud.example.com");
+      expect(payload.exp - payload.iat).toBe(600);
+      expect(payload.sub).toContain(`${w.namespaceSlug}/oidcrepo`);
+
+      // Offline verify against the returned node key.
+      const key = await crypto.subtle.importKey(
+        "jwk",
+        { ...body.node_key, key_ops: ["verify"], ext: true },
+        { name: "Ed25519" },
+        false,
+        ["verify"]
+      );
+      const ok = await crypto.subtle.verify(
+        "Ed25519",
+        key,
+        fromBase64Url(s) as BufferSource,
+        new TextEncoder().encode(`${h}.${p}`) as BufferSource
+      );
+      expect(ok).toBe(true);
+    });
   });
 });
