@@ -24,10 +24,12 @@ import {
   MAX_PINNED_ISSUES,
   MAX_SAVED_VIEWS,
   readIssueLocks,
+  readHiddenComments,
   readPinnedIssues,
   readSavedViews,
   readIssueTypes,
   writeIssueLocks,
+  writeHiddenComments,
   writePinnedIssues,
   writeSavedViews,
   writeIssueTypes,
@@ -415,7 +417,14 @@ export function registerGitnessIssues(router: AppRouter) {
     const stub = getRepoStub(c.env, access.route.doName);
     const result = await stub.listIssueComments(number);
     if (result.status !== "ok") return gNotFound(c, "issue");
-    return c.json(result.comments.map(commentView));
+    const hidden = await readHiddenComments(c.env, access.route.doName);
+    return c.json(
+      result.comments.map((row) => ({
+        ...commentView(row),
+        hidden: hidden[row.id] !== undefined,
+        hidden_reason: hidden[row.id]?.reason ?? null,
+      }))
+    );
   });
 
   router.post("/api/v1/repos/:repo_ref{.+}/issues/:number/comments", async (c) => {
@@ -475,6 +484,33 @@ export function registerGitnessIssues(router: AppRouter) {
     if (result.status === "not-found") return gNotFound(c, "comment");
     if (result.status === "forbidden") return gErr(c, 403, "not the comment author");
     return c.json({});
+  });
+
+  // Hide/unhide — moderator "minimize" flag; the comment stays listed but
+  // marked, matching GitHub's minimized-comment behavior.
+  router.put("/api/v1/repos/:repo_ref{.+}/issues/comments/:comment_id/hide", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as { reason?: string } | null;
+    const hidden = await readHiddenComments(c.env, access.route.doName);
+    hidden[c.req.param("comment_id")] = {
+      reason: body?.reason,
+      by: access.actor,
+      at: Date.now(),
+    };
+    await writeHiddenComments(c.env, access.route.doName, hidden);
+    return c.json({ hidden: true });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/issues/comments/:comment_id/hide", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const hidden = await readHiddenComments(c.env, access.route.doName);
+    if (hidden[c.req.param("comment_id")] !== undefined) {
+      delete hidden[c.req.param("comment_id")];
+      await writeHiddenComments(c.env, access.route.doName, hidden);
+    }
+    return c.json({ hidden: false });
   });
 
   router.get("/api/v1/repos/:repo_ref{.+}/issues/:number/reactions", async (c) => {

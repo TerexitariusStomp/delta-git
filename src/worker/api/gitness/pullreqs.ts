@@ -248,6 +248,8 @@ export function registerGitnessPullreqs(router: AppRouter) {
         updated: cm.edited,
         deleted: null,
         resolved: null,
+        hidden: cm.hidden !== undefined,
+        hidden_reason: cm.hidden?.reason ?? null,
         parent_id: null,
         payload: {},
       })),
@@ -668,6 +670,35 @@ export function registerGitnessPullreqs(router: AppRouter) {
     meta.comments.splice(idx, 1);
     await writePrMeta(c.env, gate.route.doName, intent.id, meta);
     return c.json({});
+  });
+
+  // Comment hide/unhide — moderator "minimize" flag on the KV comment
+  // record; any writer can hide (namespace members are the moderators).
+  router.put("/api/v1/repos/:repo_ref{.+}/pullreq/:n/comments/:comment_id/hide", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const intent = await intentByNumber(gate, c.env, parseInt(c.req.param("n"), 10));
+    if (!intent) return gNotFound(c, "pull request");
+    const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
+    const comment = meta.comments.find((cm) => cm.id === parseInt(c.req.param("comment_id"), 10));
+    if (!comment) return gNotFound(c, "comment");
+    const body = (await c.req.json().catch(() => null)) as { reason?: string } | null;
+    comment.hidden = { reason: body?.reason, by: gate.actor, at: Date.now() };
+    await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    return c.json({ hidden: true });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/pullreq/:n/comments/:comment_id/hide", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const intent = await intentByNumber(gate, c.env, parseInt(c.req.param("n"), 10));
+    if (!intent) return gNotFound(c, "pull request");
+    const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
+    const comment = meta.comments.find((cm) => cm.id === parseInt(c.req.param("comment_id"), 10));
+    if (!comment) return gNotFound(c, "comment");
+    delete comment.hidden;
+    await writePrMeta(c.env, gate.route.doName, intent.id, meta);
+    return c.json({ hidden: false });
   });
 
   // Comment resolve/unresolve — a flag on the KV comment, same author gate

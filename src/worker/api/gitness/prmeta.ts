@@ -18,6 +18,8 @@ export interface PrComment {
   /** Code-review anchor the SPA sends on file comments. */
   codeComment?: { path?: string; line_start?: number; line_end?: number; side?: string };
   reactions?: Record<string, string[]>;
+  /** Moderator-hidden ("minimized") flag — the comment stays listed but marked. */
+  hidden?: { reason?: string; by: string; at: number };
 }
 export interface PrReview {
   author: string;

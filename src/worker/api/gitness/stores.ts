@@ -357,6 +357,34 @@ export async function writeSavedViews(env: Env, doName: string, views: SavedView
 }
 
 // ---------------------------------------------------------------------------
+// Hidden comments — moderation flags over DO issue comments (they're DO
+// rows, so the flag is a KV overlay keyed by comment id). PR comments are
+// KV records already and carry the field directly.
+// ---------------------------------------------------------------------------
+
+export interface HiddenComment {
+  reason?: string;
+  by: string;
+  at: number;
+}
+
+export async function readHiddenComments(
+  env: Env,
+  doName: string
+): Promise<Record<string, HiddenComment>> {
+  const raw = await env.ROUTES.get(`ghidden:${doName}`, "json").catch(() => null);
+  return (raw as Record<string, HiddenComment> | null) ?? {};
+}
+
+export async function writeHiddenComments(
+  env: Env,
+  doName: string,
+  hidden: Record<string, HiddenComment>
+) {
+  await env.ROUTES.put(`ghidden:${doName}`, JSON.stringify(hidden));
+}
+
+// ---------------------------------------------------------------------------
 // Issue types — free-form per-issue type names ("Bug", "Feature", "Task")
 // stored as a number → name map, same shape as the locks map. Lives in KV
 // rather than the DO so no schema migration is needed for a display field.

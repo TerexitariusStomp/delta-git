@@ -205,6 +205,40 @@ describe("issues: /api/v1 session facade", () => {
     expect(deleted.status).toBe(200);
   });
 
+  it("hidden comments stay listed but flagged", async () => {
+    const created = await call("POST", `${base}/issues/1/comments`, {
+      cookie: seeded.cookieHeader,
+      body: { body: "hide me" },
+    });
+    const commentId = (created.body as CommentJson).id;
+
+    const hide = await call("PUT", `${base}/issues/comments/${commentId}/hide`, {
+      cookie: seeded.cookieHeader,
+      body: { reason: "spam" },
+    });
+    expect(hide.status).toBe(200);
+
+    const listed = await call("GET", `${base}/issues/1/comments`, {
+      cookie: seeded.cookieHeader,
+    });
+    const rows = listed.body as (CommentJson & { hidden: boolean; hidden_reason: string })[];
+    const row = rows.find((cm) => cm.id === commentId)!;
+    expect(row.hidden).toBe(true);
+    expect(row.hidden_reason).toBe("spam");
+
+    const unhide = await call("DELETE", `${base}/issues/comments/${commentId}/hide`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(unhide.status).toBe(200);
+    const relisted = await call("GET", `${base}/issues/1/comments`, {
+      cookie: seeded.cookieHeader,
+    });
+    const after = (relisted.body as (CommentJson & { hidden: boolean })[]).find(
+      (cm) => cm.id === commentId
+    )!;
+    expect(after.hidden).toBe(false);
+  });
+
   it("tracks reactions per-issue", async () => {
     const put = await call("PUT", `${base}/issues/1/reactions/%2B1`, {
       cookie: seeded.cookieHeader,
