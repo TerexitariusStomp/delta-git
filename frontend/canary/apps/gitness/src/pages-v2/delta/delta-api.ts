@@ -647,3 +647,48 @@ export const useUploadReleaseAsset = (spaceId: string, repoId: string, releaseId
       { method: 'POST', body: vars.file }
     )
   )
+
+// --- insights (computed on demand from the commit walk) ----------------------
+
+export interface RepoPulse {
+  commits_7d: number
+  commits_30d: number
+  authors_7d: number
+  authors_30d: number
+  open_issues: number
+  closed_issues: number
+  open_pull_requests: number
+  history_truncated: boolean
+}
+
+export interface ActivityWeek {
+  week: number
+  commits: number
+}
+
+export interface RepoContributor {
+  name: string
+  email: string
+  commits: number
+  first: number
+  last: number
+}
+
+export const usePulse = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'pulse', spaceId, repoId], () =>
+    dgFetch<RepoPulse>(`${v1Path(spaceId, repoId)}/insights/pulse`)
+  )
+
+export const useActivity = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'activity', spaceId, repoId], () =>
+    dgFetch<{ total_walked: number; weeks: ActivityWeek[] }>(
+      `${v1Path(spaceId, repoId)}/insights/activity`
+    )
+  )
+
+export const useContributors = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'contributors', spaceId, repoId],
+    () => dgFetch<RepoContributor[]>(`${v1Path(spaceId, repoId)}/insights/contributors`),
+    { select: data => data ?? [] }
+  )

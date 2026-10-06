@@ -81,6 +81,7 @@ import {
   RepoDiscussionsPage,
 } from "./pages-v2/repo/repo-discussions-page";
 import { RepoWikiEditPage, RepoWikiPage } from "./pages-v2/repo/repo-wiki-page";
+import { RepoInsightsPage } from "./pages-v2/repo/repo-insights-page";
 import {
   RepoReleaseDetailPage,
   RepoReleaseNewPage,
@@ -839,7 +840,7 @@ export const repoRoutes: CustomRouteObject[] = [
           },
           {
             path: "insights",
-            element: <RepoStubPage surface="insights" />,
+            element: <RepoInsightsPage />,
             handle: {
               breadcrumb: () => <span>Insights</span>,
               pageTitle: "Insights",
