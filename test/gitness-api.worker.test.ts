@@ -1476,3 +1476,42 @@ describe("namespace quotas", () => {
     expect(blocked.headers.get("Retry-After")).toBeTruthy();
   });
 });
+
+describe("DID resolution /1.0/identifiers", () => {
+  it("resolves did:key + legacy did:dg deterministically, rejects malformed", async () => {
+    const { didKeyFromPubkey, pubkeyFromDidKey } = await import("@/worker/agent/atpauth/didkey");
+    const { bytesToHex } = await import("@/worker/common/hex");
+    const pubkey = crypto.getRandomValues(new Uint8Array(32));
+    const did = didKeyFromPubkey(pubkey, "ed25519");
+
+    const res = await get(`/1.0/identifiers/${did}`);
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      didDocument: {
+        id: string;
+        verificationMethod: { publicKeyMultibase: string }[];
+        authentication: string[];
+      };
+      didResolutionMetadata: { contentType: string };
+    };
+    expect(body.didDocument.id).toBe(did);
+    expect(body.didResolutionMetadata.contentType).toBe("application/did+json");
+    // The multibase key in the document decodes back to the same pubkey.
+    const { decodeKeyMultibase } = await import("@/worker/agent/atpauth/didkey");
+    const decoded = decodeKeyMultibase(body.didDocument.verificationMethod[0].publicKeyMultibase);
+    expect(decoded?.pubkey).toEqual(pubkey);
+    expect(pubkeyFromDidKey(did)?.pubkey).toEqual(pubkey);
+
+    // Legacy did:dg resolves and points at its did:key canonical spelling.
+    const legacy = await get(`/1.0/identifiers/did:dg:${bytesToHex(pubkey)}`);
+    expect(legacy.status).toBe(200);
+    const dgDoc = (legacy.body as { didDocument: { id: string; alsoKnownAs: string[] } })
+      .didDocument;
+    expect(dgDoc.alsoKnownAs).toContain(did);
+
+    const bad = await get("/1.0/identifiers/did:key:not-base58!!!");
+    expect(bad.status).toBe(400);
+    const missing = await get("/1.0/identifiers/did:unsupported:abc123");
+    expect([404, 400, 500]).toContain(missing.status);
+  });
+});
