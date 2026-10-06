@@ -1,8 +1,10 @@
 import type { AppRouter } from "@/worker/routes/hono";
 import type { ReleaseAssetRow, ReleaseRow } from "@/worker/do/repo/db/schema";
 
+import { toBase64 } from "@atcute/multibase";
 import { createLogger } from "@/worker/common/logger";
-import { getRepoStub } from "@/worker/common";
+import { bytesToHex, getRepoStub } from "@/worker/common";
+import { loadNodeKey } from "@/worker/agent/repCert";
 import { readCommitInfo, readLooseObjectRaw, resolveRef } from "@/worker/git/operations/read";
 import type { CommitInfo } from "@/worker/git/operations/read/types";
 import type { CacheContext } from "@/worker/cache";
@@ -22,6 +24,7 @@ import {
 // directly (single hop), the DO only indexes the keys.
 
 const MAX_ASSET_BYTES = 64 * 1024 * 1024;
+const te = new TextEncoder();
 // Cap on commits scanned for auto notes — GitHub caps its generated
 // changelog around a similar bound; deeper history still links the
 // "Full Changelog" compare range.
@@ -416,5 +419,87 @@ export function registerGitnessReleases(router: AppRouter) {
     if (result.status !== "deleted") return gNotFound(c, "asset");
     await c.env.REPO_BUCKET.delete(result.r2Key).catch(() => {});
     return c.json({ deleted: true });
+  });
+
+  // --- attestations (GitHub artifact-attestation parity) ---------------------
+  // DSSE envelope over an in-toto Statement: subjects are asset sha256s, the
+  // predicate binds repo/tag/release/actor/time. Signed with the node's
+  // Ed25519 key, published at /.well-known/delta-node — verifiers resolve the
+  // envelope keyid without trusting this endpoint. Envelopes persist in KV;
+  // they survive asset deletion as the record of what was attested.
+
+  const attestKvKey = (doName: string, id: string) => `grelatt:${doName}:${id}`;
+
+  router.post("/api/v1/repos/:repo_ref{.+}/releases/:id/attestations", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const node = await loadNodeKey(c.env);
+    if (!node) return gErr(c, 503, "node key not configured");
+    const stub = getRepoStub(c.env, gate.route.doName);
+    const result = await stub.getRelease(c.req.param("id"));
+    if (result.status !== "ok") return gNotFound(c, "release");
+
+    const subjects: { name: string; digest: { sha256: string } }[] = [];
+    for (const asset of result.assets) {
+      const obj = await c.env.REPO_BUCKET.get(asset.r2Key);
+      if (!obj) continue;
+      const digest = await crypto.subtle.digest("SHA-256", await obj.arrayBuffer());
+      subjects.push({
+        name: asset.name,
+        digest: { sha256: bytesToHex(new Uint8Array(digest)) },
+      });
+    }
+    const statement = {
+      _type: "https://in-toto.io/Statement/v1",
+      subject: subjects,
+      predicateType: "https://delta-git.dev/attestation/release/v1",
+      predicate: {
+        repo: `${gate.route.routeNamespaceSlug}/${gate.route.routeRepoSlug}`,
+        tag: result.release.tagName,
+        release_id: result.release.id,
+        target_commitish: result.release.targetOid,
+        attested_by: gate.actor,
+        timestamp: new Date().toISOString(),
+      },
+    };
+    const payloadType = "application/vnd.in-toto+json";
+    const payload = te.encode(JSON.stringify(statement));
+    // DSSE pre-auth encoding: "DSSEv1" SP len(type) SP type SP len(body) SP body.
+    const header = te.encode(`DSSEv1 ${payloadType.length} ${payloadType} ${payload.length} `);
+    const pae = new Uint8Array(header.length + payload.length);
+    pae.set(header);
+    pae.set(payload, header.length);
+    const sig = await crypto.subtle.sign("Ed25519", node.privateKey, pae);
+    const envelope = {
+      payloadType,
+      payload: toBase64(payload),
+      signatures: [{ keyid: node.did, sig: toBase64(new Uint8Array(sig)) }],
+    };
+
+    const key = attestKvKey(gate.route.doName, c.req.param("id"));
+    const existing =
+      ((await c.env.ROUTES.get(key, "json").catch(() => null)) as
+        | { envelope: unknown; actor: string; created_at: number }[]
+        | null) ?? [];
+    existing.push({ envelope, actor: gate.actor, created_at: Date.now() });
+    await c.env.ROUTES.put(key, JSON.stringify(existing));
+    return c.json(envelope, 201);
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/releases/:id/attestations", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const rows =
+      ((await c.env.ROUTES.get(attestKvKey(access.route.doName, c.req.param("id")), "json").catch(
+        () => null
+      )) as { envelope: unknown; actor: string; created_at: number }[] | null) ?? [];
+    return c.json({
+      attested_count: rows.length,
+      attestations: rows.map((r) => ({
+        bundle: r.envelope,
+        attested_by: r.actor,
+        created_at: new Date(r.created_at).toISOString(),
+      })),
+    });
   });
 }

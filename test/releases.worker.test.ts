@@ -339,3 +339,79 @@ describe("releases: /api/v3 gh surface", () => {
     expect(status).toBe(401);
   });
 });
+
+describe("releases: artifact attestations", () => {
+  it("mints a DSSE envelope over asset digests and verifies offline", async () => {
+    const repo = seeded;
+    const b = `/api/v1/repos/${repo.namespaceSlug}/${repo.repoSlug}/+`;
+    // Own release — the shared v1.0.0 row is deleted by an earlier test.
+    const created = await call("POST", `${b}/releases`, {
+      cookie: repo.cookieHeader,
+      body: { tag_name: "attest-v1", name: "Attested" },
+    });
+    expect(created.status).toBe(201);
+    const release = created.body as { id: string; tag_name: string };
+    const payload = new TextEncoder().encode("attest-me").buffer;
+    const upload = await call("POST", `${b}/releases/${release.id}/assets?name=attested.bin`, {
+      cookie: repo.cookieHeader,
+      rawBody: payload,
+      contentType: "application/octet-stream",
+    });
+    expect(upload.status).toBe(201);
+
+    const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+    const jwk = JSON.stringify(await crypto.subtle.exportKey("jwk", pair.privateKey));
+
+    const { withEnvOverrides } = await import("./util/test-helpers");
+    await withEnvOverrides(env, { DG_NODE_ED25519_JWK: jwk }, async () => {
+      const attest = await call("POST", `${b}/releases/${release.id}/attestations`, {
+        cookie: repo.cookieHeader,
+      });
+      expect(attest.status).toBe(201);
+      const env1 = attest.body as {
+        payloadType: string;
+        payload: string;
+        signatures: { keyid: string; sig: string }[];
+      };
+      expect(env1.payloadType).toBe("application/vnd.in-toto+json");
+      expect(env1.signatures[0].keyid.startsWith("did:key:")).toBe(true);
+
+      // Offline DSSE verify: reconstruct PAE, check the Ed25519 signature
+      // against the node public key (never trusting the response itself).
+      const b64 = (s: string) => Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0));
+      const body = b64(env1.payload);
+      const hdr = new TextEncoder().encode(
+        `DSSEv1 ${env1.payloadType.length} ${env1.payloadType} ${body.length} `
+      );
+      const pae = new Uint8Array(hdr.length + body.length);
+      pae.set(hdr);
+      pae.set(body, hdr.length);
+      const ok = await crypto.subtle.verify(
+        "Ed25519",
+        pair.publicKey,
+        b64(env1.signatures[0].sig) as BufferSource,
+        pae
+      );
+      expect(ok).toBe(true);
+
+      const statement = JSON.parse(new TextDecoder().decode(body)) as {
+        subject: { name: string; digest: { sha256: string } }[];
+        predicate: { tag: string; repo: string };
+      };
+      expect(statement.predicate.tag).toBe("attest-v1");
+      const expected = new Uint8Array(await crypto.subtle.digest("SHA-256", payload));
+      const hex = [...expected].map((x) => x.toString(16).padStart(2, "0")).join("");
+      expect(statement.subject).toContainEqual({
+        name: "attested.bin",
+        digest: { sha256: hex },
+      });
+    });
+
+    const list = await call("GET", `${b}/releases/${release.id}/attestations`, {
+      cookie: repo.cookieHeader,
+    });
+    expect(list.status).toBe(200);
+    const listed = list.body as { attested_count: number; attestations: unknown[] };
+    expect(listed.attested_count).toBe(1);
+  });
+});
