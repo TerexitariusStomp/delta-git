@@ -400,6 +400,49 @@ describe("gitness /api/v1 write paths", () => {
     expect(reviewers).toContain("docs-owner");
   });
 
+  it("commit comments round-trip and Co-authored-by trailers surface", async () => {
+    const cm = await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "main",
+        message: "pair work\n\nCo-authored-by: Pair Partner <pair@example.com>\n",
+        actions: [{ action: "CREATE", path: "pair.txt", encoding: "text", payload: "x\n" }],
+      },
+      w.cookieHeader
+    );
+    expect(cm.status).toBe(200);
+    const sha = (cm.body as { commit_id: string }).commit_id;
+
+    // Web commits land through the merge lane — when a merge commit is
+    // synthesized the authored commit carrying the trailer is its delta-side
+    // parent; on fast-forward `sha` is the authored commit itself.
+    const detail = await get(`/api/v1/repos/${ref}/commits/${sha}`);
+    expect(detail.status).toBe(200);
+    const merge = detail.body as { parent_shas: string[] };
+    const authoredSha = merge.parent_shas.length > 1 ? merge.parent_shas.at(-1)! : sha;
+    const authored = await get(`/api/v1/repos/${ref}/commits/${authoredSha}`);
+    const commit = authored.body as { co_authors?: { name: string; email: string }[] };
+    expect(commit.co_authors).toEqual([{ name: "Pair Partner", email: "pair@example.com" }]);
+
+    const empty = await get(`/api/v1/repos/${ref}/commits/${sha}/comments`);
+    expect(empty.status).toBe(200);
+    expect(empty.body).toEqual([]);
+
+    const cmt = await post(
+      `/api/v1/repos/${ref}/commits/${sha}/comments`,
+      { text: "nice fix" },
+      w.cookieHeader
+    );
+    expect(cmt.status).toBe(201);
+
+    const listed = await get(`/api/v1/repos/${ref}/commits/${sha}/comments`);
+    const texts = (listed.body as { text: string; author: string }[]).map((x) => x.text);
+    expect(texts).toContain("nice fix");
+
+    const unauth = await post(`/api/v1/repos/${ref}/commits/${sha}/comments`, { text: "x" });
+    expect([401, 403]).toContain(unauth.status);
+  });
+
   it("tag create + delete", async () => {
     const tag = await post(
       `/api/v1/repos/${ref}/tags`,

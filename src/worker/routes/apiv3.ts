@@ -26,6 +26,7 @@ import {
 } from "@/worker/db/d1/dal";
 import { attemptMerge } from "@/worker/merge/engine";
 import { closeIssuesLinkedFromText, readPrMeta, writePrMeta } from "@/worker/api/gitness/prmeta";
+import { readCommitMeta, writeCommitMeta } from "@/worker/api/gitness/commitmeta";
 import type { DiscussionView } from "@/worker/do/repo/catalog/discussions";
 import type { IssueView } from "@/worker/do/repo/catalog/issues";
 import { parseIssueQuery, type IssueQuery } from "@/worker/do/repo/catalog/issueQuery";
@@ -263,6 +264,54 @@ export function registerApiV3Routes(router: AppRouter): void {
         target_url: r.targetUrl,
       })),
     });
+  });
+
+  // Commit comments — shares the KV store with the /api/v1 surface so both
+  // faces of the API see one conversation.
+  router.get("/api/v3/repos/:owner/:repo/commits/:sha/comments", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const meta = await readCommitMeta(c.env, route.doName, c.req.param("sha"));
+    return c.json(
+      meta.comments.map((cm) => ({
+        id: cm.id,
+        body: cm.text,
+        user: { login: cm.author },
+        created_at: new Date(cm.created).toISOString(),
+        updated_at: new Date(cm.edited).toISOString(),
+      }))
+    );
+  });
+
+  router.post("/api/v3/repos/:owner/:repo/commits/:sha/comments", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const body = (await c.req.json().catch(() => null)) as { body?: string } | null;
+    const text = body?.body?.trim();
+    if (!text) return v3Err(c, 422, "body is required");
+    const sha = c.req.param("sha");
+    const meta = await readCommitMeta(c.env, route.doName, sha);
+    const comment = {
+      id: (meta.comments.at(-1)?.id ?? 0) + 1,
+      author: auth,
+      text,
+      created: Date.now(),
+      edited: Date.now(),
+    };
+    meta.comments.push(comment);
+    await writeCommitMeta(c.env, route.doName, sha, meta);
+    return c.json(
+      {
+        id: comment.id,
+        body: comment.text,
+        user: { login: comment.author },
+        created_at: new Date(comment.created).toISOString(),
+        updated_at: new Date(comment.edited).toISOString(),
+      },
+      201
+    );
   });
 
   // --- pull requests: `gh pr` verbs over merge intents ---------------------

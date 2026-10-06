@@ -165,6 +165,36 @@ export function toGitnessPrincipal(uid: string) {
   };
 }
 
+// Git trailer block — the `Co-authored-by: Name <email>` tail GitHub uses to
+// render commit co-authors. Only the trailing contiguous trailer lines count;
+// a "Co-authored-by:" mid-message body is just prose.
+const CO_AUTHOR_RE = /^Co-authored-by:\s*(.+?)\s*<([^<>\s]+)>\s*$/i;
+
+export function parseCoAuthors(message: string): { name: string; email: string }[] {
+  const lines = message.split("\n");
+  const out: { name: string; email: string }[] = [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line.trim() === "") {
+      if (out.length === 0) continue; // blank separator before the trailer block
+      break; // blank inside a block → trailers ended
+    }
+    const m = CO_AUTHOR_RE.exec(line);
+    if (!m) {
+      if (out.length === 0) {
+        // Non-trailer tail line: no trailer block at all once we hit prose.
+        if (!/^[A-Za-z-]+:/.test(line)) break;
+        continue; // other trailer keys (Signed-off-by:, …) — keep scanning
+      }
+      // Inside the block: another trailer key is fine, prose ends the block.
+      if (!/^[A-Za-z-]+:/.test(line)) break;
+      continue;
+    }
+    out.unshift({ name: m[1], email: m[2] });
+  }
+  return out;
+}
+
 /**
  * `CommitInfo` → gitness `TypesCommit`. `when` wants RFC3339; our author.time
  * is unix seconds (git format).
@@ -184,6 +214,7 @@ export function toGitnessCommit(info: CommitInfo) {
     author: sig(info.author),
     committer: sig(info.committer),
     parent_shas: info.parents,
+    co_authors: parseCoAuthors(info.message),
   };
 }
 

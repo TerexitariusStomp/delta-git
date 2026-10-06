@@ -35,6 +35,8 @@ import { getRepoStub } from "@/worker/common";
 import { commitFileActions, type CommitFilesRequest } from "./commitFiles";
 import { buildZip, collectArchiveEntries, computeBlame, computeLanguages } from "./archival";
 import { readRepoRules, ruleBlocksRef } from "./stores";
+import { readCommitMeta, writeCommitMeta } from "./commitmeta";
+import type { PrComment } from "./prmeta";
 import {
   gErr,
   gNotFound,
@@ -458,6 +460,52 @@ export function registerGitnessGitdata(router: AppRouter) {
     );
     if (!info) return gNotFound(c, "commit");
     return c.json(toGitnessCommit(info));
+  });
+
+  // Commit comments — GitHub's line-free conversation on a commit. Stored
+  // per-oid in KV; anonymous readers get them on public repos.
+  router.get("/api/v1/repos/:repo_ref{.+}/commits/:commit_sha/comments", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const sha = c.req.param("commit_sha");
+    const meta = await readCommitMeta(c.env, access.route.doName, sha);
+    return c.json(
+      meta.comments.map((cm) => ({
+        id: cm.id,
+        author: cm.author,
+        text: cm.text,
+        created: cm.created,
+        edited: cm.edited,
+        reactions: cm.reactions ?? {},
+      }))
+    );
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/commits/:commit_sha/comments", async (c) => {
+    const gate = await requireWriter(c);
+    if (gate instanceof Response) return gate;
+    const sha = c.req.param("commit_sha");
+    const info = await readCommitInfo(c.env, gate.route.doName, sha, gate.cacheCtx).catch(
+      () => undefined
+    );
+    if (!info) return gNotFound(c, "commit");
+    const body = (await c.req.json().catch(() => null)) as { text?: string } | null;
+    const text = body?.text?.trim();
+    if (!text) return gErr(c, 400, "text is required");
+    const meta = await readCommitMeta(c.env, gate.route.doName, sha);
+    const comment: PrComment = {
+      id: (meta.comments.at(-1)?.id ?? 0) + 1,
+      author: gate.actor,
+      text,
+      created: Date.now(),
+      edited: Date.now(),
+    };
+    meta.comments.push(comment);
+    await writeCommitMeta(c.env, gate.route.doName, sha, meta);
+    return c.json(
+      { id: comment.id, author: comment.author, text: comment.text, created: comment.created },
+      201
+    );
   });
 
   // Unified diff text — the SPA parses it with Diff2Html.
