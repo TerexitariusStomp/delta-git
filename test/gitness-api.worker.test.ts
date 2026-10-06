@@ -833,4 +833,61 @@ describe("gitness /api/v1 write paths", () => {
     );
     expect((closed.body as { state: string }).state).toBe("closed");
   });
+  it("check-runs: create → list → patch mirrors into combined status", async () => {
+    const sha = "a".repeat(40);
+    const v3 = `/api/v3/repos/${w.namespaceSlug}/gwrepo`;
+
+    const created = await workerExports.default.fetch(`https://example.com${v3}/check-runs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: w.pushAuthHeader },
+      body: JSON.stringify({
+        name: "ci/lint",
+        head_sha: sha,
+        status: "in_progress",
+        output: { title: "linting", summary: "running eslint" },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const run = (await created.json()) as { id: string; status: string };
+    expect(run.status).toBe("in_progress");
+
+    const listed = await workerExports.default.fetch(
+      `https://example.com${v3}/commits/${sha}/check-runs`
+    );
+    const runs = (await listed.json()) as {
+      total_count: number;
+      check_runs: { id: string; name: string }[];
+    };
+    expect(runs.total_count).toBe(1);
+    expect(runs.check_runs[0].name).toBe("ci/lint");
+
+    // Complete with success — mirrors into combined status as a success
+    // context named after the check.
+    const patched = await workerExports.default.fetch(
+      `https://example.com${v3}/check-runs/${run.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: w.pushAuthHeader },
+        body: JSON.stringify({ status: "completed", conclusion: "success" }),
+      }
+    );
+    expect(patched.status).toBe(200);
+    expect(((await patched.json()) as { conclusion: string }).conclusion).toBe("success");
+
+    const combined = await workerExports.default.fetch(
+      `https://example.com${v3}/commits/${sha}/status`
+    );
+    const status = (await combined.json()) as {
+      state: string;
+      statuses: { context: string; state: string }[];
+    };
+    expect(status.state).toBe("success");
+    expect(status.statuses.some((s) => s.context === "ci/lint" && s.state === "success")).toBe(
+      true
+    );
+
+    // GET by id resolves through the id→sha index.
+    const byId = await workerExports.default.fetch(`https://example.com${v3}/check-runs/${run.id}`);
+    expect(byId.status).toBe(200);
+  });
 });

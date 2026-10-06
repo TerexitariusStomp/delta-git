@@ -27,6 +27,16 @@ import {
 import { attemptMerge } from "@/worker/merge/engine";
 import { closeIssuesLinkedFromText, readPrMeta, writePrMeta } from "@/worker/api/gitness/prmeta";
 import { readCommitMeta, writeCommitMeta } from "@/worker/api/gitness/commitmeta";
+import {
+  findCheckRunSha,
+  MAX_CHECK_RUNS_PER_SHA,
+  readCheckRuns,
+  writeCheckRunIndex,
+  writeCheckRuns,
+  type CheckRun,
+  type CheckRunConclusion,
+  type CheckRunStatus,
+} from "@/worker/api/gitness/stores";
 import type { DiscussionView } from "@/worker/do/repo/catalog/discussions";
 import type { IssueView } from "@/worker/do/repo/catalog/issues";
 import { parseIssueQuery, type IssueQuery } from "@/worker/do/repo/catalog/issueQuery";
@@ -264,6 +274,179 @@ export function registerApiV3Routes(router: AppRouter): void {
         target_url: r.targetUrl,
       })),
     });
+  });
+
+  // --- check runs -----------------------------------------------------------
+  // GitHub's modern status shape. The conclusion also lands in the commit
+  // statuses (context = check name) so required-status-checks branch rules
+  // and the combined-status endpoint see check-run results uniformly.
+
+  type CheckStatusBody = {
+    name?: string;
+    head_sha?: string;
+    status?: string;
+    conclusion?: string;
+    external_id?: string;
+    details_url?: string;
+    output?: { title?: string; summary?: string };
+  };
+
+  const VALID_CONCLUSIONS = new Set([
+    "success",
+    "failure",
+    "neutral",
+    "cancelled",
+    "skipped",
+    "timed_out",
+    "action_required",
+  ]);
+
+  /** Map a check-run onto the plain status vocabulary the merge gate reads. */
+  function checkRunToStatusState(run: CheckRun): string {
+    if (run.status !== "completed") return "pending";
+    if (run.conclusion === "failure") return "failure";
+    if (
+      run.conclusion === "success" ||
+      run.conclusion === "neutral" ||
+      run.conclusion === "skipped"
+    )
+      return "success";
+    return "error"; // cancelled / timed_out / action_required
+  }
+
+  function toV3CheckRun(run: CheckRun, owner: string, repo: string) {
+    return {
+      id: run.id,
+      name: run.name,
+      head_sha: run.headSha,
+      status: run.status,
+      conclusion: run.conclusion,
+      external_id: run.externalId ?? null,
+      details_url: run.detailsUrl ?? null,
+      output: { title: run.output?.title ?? null, summary: run.output?.summary ?? null },
+      started_at: run.startedAt ? new Date(run.startedAt).toISOString() : null,
+      completed_at: run.completedAt ? new Date(run.completedAt).toISOString() : null,
+      url: `/api/v3/repos/${owner}/${repo}/check-runs/${run.id}`,
+    };
+  }
+
+  router.post("/api/v3/repos/:owner/:repo/check-runs", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const body = await c.req.json<CheckStatusBody>().catch(() => null);
+    if (!body?.name?.trim() || !body?.head_sha) {
+      return v3Err(c, 422, "name + head_sha required");
+    }
+    const status =
+      body.status === "in_progress" || body.status === "completed" ? body.status : "queued";
+    const conclusion =
+      status === "completed" && body.conclusion && VALID_CONCLUSIONS.has(body.conclusion)
+        ? (body.conclusion as CheckRunConclusion)
+        : status === "completed"
+          ? "success"
+          : null;
+    const now = Date.now();
+    const run: CheckRun = {
+      id: `cr-${crypto.randomUUID()}`,
+      name: body.name.trim().slice(0, 128),
+      headSha: body.head_sha.toLowerCase(),
+      status: status as CheckRunStatus,
+      conclusion,
+      externalId: body.external_id,
+      detailsUrl: body.details_url,
+      output: body.output,
+      startedAt: status === "queued" ? null : now,
+      completedAt: status === "completed" ? now : null,
+      createdAt: now,
+    };
+    const runs = await readCheckRuns(c.env, route.doName, run.headSha);
+    if (runs.length >= MAX_CHECK_RUNS_PER_SHA) {
+      return v3Err(c, 422, "check-run limit for this sha");
+    }
+    runs.push(run);
+    await writeCheckRuns(c.env, route.doName, run.headSha, runs);
+    await writeCheckRunIndex(c.env, route.doName, run.id, run.headSha);
+    // Mirror into commit statuses so required-checks rules see it.
+    await getRepoStub(c.env, route.doName).setCommitStatus({
+      row: {
+        sha: run.headSha,
+        context: run.name,
+        state: checkRunToStatusState(run),
+        description: run.output?.title?.slice(0, 512) ?? null,
+        targetUrl: run.detailsUrl ?? null,
+        createdBy: auth,
+        createdAt: now,
+      },
+      actor: auth,
+    });
+    return c.json(toV3CheckRun(run, c.req.param("owner"), c.req.param("repo")), 201);
+  });
+
+  router.get("/api/v3/repos/:owner/:repo/commits/:sha/check-runs", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const runs = await readCheckRuns(c.env, route.doName, c.req.param("sha"));
+    return c.json({
+      total_count: runs.length,
+      check_runs: runs.map((r) => toV3CheckRun(r, c.req.param("owner"), c.req.param("repo"))),
+    });
+  });
+
+  router.get("/api/v3/repos/:owner/:repo/check-runs/:id", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const sha = await findCheckRunSha(c.env, route.doName, c.req.param("id"));
+    if (!sha) return v3Err(c, 404, "Not Found");
+    const run = (await readCheckRuns(c.env, route.doName, sha)).find(
+      (r) => r.id === c.req.param("id")
+    );
+    if (!run) return v3Err(c, 404, "Not Found");
+    return c.json(toV3CheckRun(run, c.req.param("owner"), c.req.param("repo")));
+  });
+
+  router.patch("/api/v3/repos/:owner/:repo/check-runs/:id", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const auth = await authenticated(c, route);
+    if (auth instanceof Response) return auth;
+    const sha = await findCheckRunSha(c.env, route.doName, c.req.param("id"));
+    if (!sha) return v3Err(c, 404, "Not Found");
+    const runs = await readCheckRuns(c.env, route.doName, sha);
+    const run = runs.find((r) => r.id === c.req.param("id"));
+    if (!run) return v3Err(c, 404, "Not Found");
+    const body = await c.req.json<CheckStatusBody>().catch(() => null);
+    if (
+      body?.status === "queued" ||
+      body?.status === "in_progress" ||
+      body?.status === "completed"
+    ) {
+      run.status = body.status;
+      if (run.status === "in_progress" && !run.startedAt) run.startedAt = Date.now();
+      if (run.status === "completed" && !run.completedAt) run.completedAt = Date.now();
+    }
+    if (body?.conclusion && VALID_CONCLUSIONS.has(body.conclusion)) {
+      run.conclusion = body.conclusion as CheckRunConclusion;
+      run.status = "completed";
+      if (!run.completedAt) run.completedAt = Date.now();
+    }
+    if (body?.output !== undefined) run.output = body.output;
+    if (body?.details_url !== undefined) run.detailsUrl = body.details_url;
+    await writeCheckRuns(c.env, route.doName, run.headSha, runs);
+    await getRepoStub(c.env, route.doName).setCommitStatus({
+      row: {
+        sha: run.headSha,
+        context: run.name,
+        state: checkRunToStatusState(run),
+        description: run.output?.title?.slice(0, 512) ?? null,
+        targetUrl: run.detailsUrl ?? null,
+        createdBy: auth,
+        createdAt: Date.now(),
+      },
+      actor: auth,
+    });
+    return c.json(toV3CheckRun(run, c.req.param("owner"), c.req.param("repo")));
   });
 
   // Commit comments — shares the KV store with the /api/v1 surface so both

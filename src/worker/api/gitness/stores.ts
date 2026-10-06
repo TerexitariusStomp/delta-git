@@ -751,3 +751,56 @@ export function branchMatches(scope: string | undefined, branch: string): boolea
     .filter(Boolean)
     .some((p) => (p.endsWith("*") ? branch.startsWith(p.slice(0, -1)) : branch === p));
 }
+
+// ---------------------------------------------------------------------------
+// Check runs — GitHub's modern status shape (queued/in_progress/completed +
+// conclusion + output block). Stored per-sha alongside the plain commit
+// statuses; writers mirror the conclusion into setCommitStatus so the
+// required-status-checks merge gate sees check-run results too.
+// ---------------------------------------------------------------------------
+
+export type CheckRunStatus = "queued" | "in_progress" | "completed";
+export type CheckRunConclusion =
+  | "success"
+  | "failure"
+  | "neutral"
+  | "cancelled"
+  | "skipped"
+  | "timed_out"
+  | "action_required";
+
+export interface CheckRun {
+  id: string;
+  name: string;
+  headSha: string;
+  status: CheckRunStatus;
+  conclusion: CheckRunConclusion | null;
+  externalId?: string;
+  detailsUrl?: string;
+  output?: { title?: string; summary?: string };
+  startedAt: number | null;
+  completedAt: number | null;
+  createdAt: number;
+}
+
+export const MAX_CHECK_RUNS_PER_SHA = 100;
+
+export async function readCheckRuns(env: Env, doName: string, sha: string): Promise<CheckRun[]> {
+  const raw = await env.ROUTES.get(`gchecks:${doName}:${sha.toLowerCase()}`, "json").catch(
+    () => null
+  );
+  return (raw as CheckRun[] | null) ?? [];
+}
+
+export async function writeCheckRuns(env: Env, doName: string, sha: string, runs: CheckRun[]) {
+  await env.ROUTES.put(`gchecks:${doName}:${sha.toLowerCase()}`, JSON.stringify(runs));
+}
+
+/** id→sha index so check-run GET/PATCH don't need the sha in the URL. */
+export async function findCheckRunSha(env: Env, doName: string, runId: string) {
+  return await env.ROUTES.get(`gcheckidx:${doName}:${runId}`).catch(() => null);
+}
+
+export async function writeCheckRunIndex(env: Env, doName: string, runId: string, sha: string) {
+  await env.ROUTES.put(`gcheckidx:${doName}:${runId}`, sha.toLowerCase());
+}
