@@ -43,6 +43,18 @@ describe("SPA cutover routing", () => {
     expect(commits.headers.get("location")).toBe("/acme/repos/widgets/commits/main");
   });
 
+  it("serves the SPA index for the atproto OAuth callback", async () => {
+    // The OAuth redirect_uri lands here with ?code&state&iss — parsed as
+    // `/:owner/:repo` it would 301 to /oauth/repos/callback and drop the
+    // query, so /oauth/callback must reach the SPA index directly.
+    const res = await workerExports.default.fetch(
+      "https://example.com/oauth/callback?iss=https%3A%2F%2Fbsky.social&state=xyz&code=abc",
+      { redirect: "manual" }
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('id="root"');
+  });
+
   it("keeps auth precedence and the SSR 404 for non-SPA namespaces", async () => {
     const auth = await workerExports.default.fetch("https://example.com/auth/");
     expect(auth.status).toBe(200);

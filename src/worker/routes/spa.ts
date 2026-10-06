@@ -85,6 +85,11 @@ export function registerSpaRoutes(router: AppRouter) {
     return c.redirect(rest || "/", 301);
   });
 
+  // The atproto OAuth redirect_uri lands on the SPA route `/oauth/callback`
+  // with ?code&state&iss params. Parsed as `/:owner/:repo` it would 301 to
+  // /oauth/repos/callback — losing the query — so it must be served first.
+  router.get("/oauth/callback", (c) => spaIndex(c));
+
   // `/:owner/:repo` and `/:owner/:repo/<feature>` — the old SSR site map.
   // Skipped when `repo` is a space-level segment so SPA paths pass through.
   router.get("/:owner/:repo", (c) => {
