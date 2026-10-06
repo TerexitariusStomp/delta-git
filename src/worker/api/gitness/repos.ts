@@ -26,6 +26,8 @@ import {
   setRepoTopics,
   isStarred,
   starCount,
+  countForks,
+  listForkNetwork,
 } from "@/worker/db/d1/dal";
 import { loadViewer, generateUserId } from "@/worker/auth/session";
 import { viewerIsNamespaceMember, generatePatPlaintext, hashPatPlaintext } from "@/worker/auth/pat";
@@ -154,6 +156,8 @@ export function toGitnessRepo(
     topics?: string[];
     /** True when the viewer starred this repo (D1 stars, not KV favorites). */
     viewerStarred?: boolean;
+    /** Direct fork count (D1 forked_from_id). */
+    forks?: number;
   }
 ) {
   const path = `${nsSlug}/${row.slug}`;
@@ -176,7 +180,7 @@ export function toGitnessRepo(
       extra?.openPulls !== undefined
         ? extra.openPulls + (extra.mergedPulls ?? 0) + (extra.closedPulls ?? 0)
         : undefined,
-    num_forks: 0,
+    num_forks: extra?.forks ?? 0,
     is_favorite: extra?.favorites?.has(numericId(row.id)) ?? false,
     website: row.website ?? null,
     topics: extra?.topics ?? [],
@@ -243,7 +247,12 @@ export function registerGitnessRepos(router: AppRouter) {
     viewer: { userId: string },
     nsSlug: string,
     slug: string,
-    opts: { description?: string; isPublic?: boolean; encrypted?: boolean }
+    opts: {
+      description?: string;
+      isPublic?: boolean;
+      encrypted?: boolean;
+      forkedFromId?: string;
+    }
   ): Promise<{ row: RepositoryRow } | { error: Response }> {
     const nsValidation = validateSlugForRoute(normalizeIdentifier(nsSlug));
     const slugValidation = validateSlugForRoute(normalizeIdentifier(slug));
@@ -268,6 +277,7 @@ export function registerGitnessRepos(router: AppRouter) {
       // Strict-E2E is only meaningful on private repos.
       encrypted: opts.isPublic === false && opts.encrypted === true ? 1 : 0,
       description: opts.description || null,
+      forkedFromId: opts.forkedFromId ?? null,
       backend: "do",
       artifactsName: null,
       artifactsRemote: null,
@@ -430,6 +440,8 @@ export function registerGitnessRepos(router: AppRouter) {
     } | null;
     const srcSlug = parseRepoRef(c.req.param("repo_ref"))!;
     const nsSlug = (body?.parent_ref ?? "").split("/").filter(Boolean)[0] ?? srcSlug.owner;
+    const srcRow = await findRepositoryByDoName(c.var.db, access.route.doName);
+    if (!srcRow) return gNotFound(c, "repository");
     const result = await insertRepo(
       c,
       access.viewer,
@@ -438,6 +450,7 @@ export function registerGitnessRepos(router: AppRouter) {
       {
         description: body?.description,
         isPublic: access.route.visibility === "public",
+        forkedFromId: srcRow.id,
       }
     );
     if ("error" in result) return result.error;
@@ -535,6 +548,32 @@ export function registerGitnessRepos(router: AppRouter) {
     });
     if (synced.status !== "synced") return gErr(c, 500, "fork sync failed");
     return c.json({ synced: true, refs: synced.refs, packs_added: staged.length });
+  });
+
+  // Fork network — the root's whole descendant tree (forks-of-forks).
+  // Members see the full network; anonymous/other viewers see public forks
+  // only, matching GitHub's private-fork-hides-from-network behavior.
+  router.get("/api/v1/repos/:repo_ref{.+}/network", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const row = await findRepositoryByDoName(c.var.db, access.route.doName);
+    if (!row) return gNotFound(c, "repository");
+    const nodes = await listForkNetwork(c.var.db, row.id);
+    const canSeePrivate = access.viewer
+      ? await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId)
+      : false;
+    const visible = nodes.filter((n) => canSeePrivate || n.repository.visibility === "public");
+    return c.json({
+      count: visible.length,
+      forks: visible.map((n) => ({
+        owner: n.namespaceSlug,
+        name: n.repository.slug,
+        full_name: `${n.namespaceSlug}/${n.repository.slug}`,
+        forked_from_id: n.repository.forkedFromId ? numericId(n.repository.forkedFromId) : null,
+        is_public: n.repository.visibility === "public",
+        created: n.repository.createdAt,
+      })),
+    });
   });
 
   // Linked-sync re-runs the remote fetch path against the stored upstream.
@@ -1611,11 +1650,12 @@ export function registerGitnessRepos(router: AppRouter) {
     ]);
     if (!row) return gNotFound(c, "repository");
     const merged = done.filter((i) => i.status === "merged").length;
-    const [favorites, stars, topics, viewerStarred] = await Promise.all([
+    const [favorites, stars, topics, viewerStarred, forks] = await Promise.all([
       favoriteRepoIds(c.env, access.viewer?.userId),
       starCount(c.var.db, row.id),
       listRepoTopics(c.var.db, row.id),
       access.viewer ? isStarred(c.var.db, access.viewer.userId, row.id) : false,
+      countForks(c.var.db, row.id),
     ]);
     return c.json(
       toGitnessRepo(row, ref.split("/")[0], {
@@ -1627,6 +1667,7 @@ export function registerGitnessRepos(router: AppRouter) {
         stargazersCount: stars,
         topics,
         viewerStarred,
+        forks,
       })
     );
   });

@@ -239,3 +239,57 @@ export async function updateRepositoryNamespace(
     .returning({ id: repositories.id });
   return rows.length === 1;
 }
+
+// --- fork lineage ------------------------------------------------------------
+
+/** Direct fork count for the repo JSON `num_forks` field. */
+export async function countForks(db: Db, repositoryId: string): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(repositories)
+    .where(eq(repositories.forkedFromId, repositoryId));
+  return rows[0]?.count ?? 0;
+}
+
+export type ForkNode = {
+  repository: RepositoryRow;
+  namespaceSlug: string;
+};
+
+/**
+ * Fork network for a repo: walk up to the root, then BFS down collecting
+ * every descendant with its owning namespace slug. Public-only filtering
+ * happens at the route layer (private forks are simply absent from the
+ * response for unauthorized viewers).
+ */
+export async function listForkNetwork(db: Db, repositoryId: string): Promise<ForkNode[]> {
+  // Root = oldest ancestor (bounded — pathological chains stop at 32 hops).
+  let rootId = repositoryId;
+  for (let hops = 0; hops < 32; hops++) {
+    const row = await db
+      .select({ parent: repositories.forkedFromId })
+      .from(repositories)
+      .where(eq(repositories.id, rootId))
+      .limit(1);
+    if (!row[0]?.parent) break;
+    rootId = row[0].parent;
+  }
+  const out: ForkNode[] = [];
+  const queue = [rootId];
+  const seen = new Set<string>();
+  while (queue.length > 0 && seen.size < 512) {
+    const id = queue.shift()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const children = await db
+      .select({ repository: repositories, namespaceSlug: namespaces.slug })
+      .from(repositories)
+      .innerJoin(namespaces, eq(repositories.namespaceId, namespaces.id))
+      .where(eq(repositories.forkedFromId, id));
+    for (const child of children) {
+      out.push(child);
+      queue.push(child.repository.id);
+    }
+  }
+  return out;
+}

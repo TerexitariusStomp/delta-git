@@ -1,0 +1,1 @@
+CREATE INDEX `idx_repositories_forked_from` ON `repositories` (`forked_from_id`);

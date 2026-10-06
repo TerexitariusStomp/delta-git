@@ -707,4 +707,27 @@ describe("gitness /api/v1 write paths", () => {
     const final = await get(`/api/v1/repos/${repoRef}/secrets`, w.cookieHeader);
     expect((final.body as unknown[]).length).toBe(0);
   });
+
+  it("fork records lineage — num_forks + network graph", async () => {
+    const fork = await post(
+      `/api/v1/repos/${ref}/fork`,
+      { identifier: "gwrepo-fork" },
+      w.cookieHeader
+    );
+    expect(fork.status).toBe(200);
+
+    const detail = await get(`/api/v1/repos/${ref}`, w.cookieHeader);
+    expect((detail.body as { num_forks: number }).num_forks).toBe(1);
+
+    const network = await get(`/api/v1/repos/${ref}/network`, w.cookieHeader);
+    expect(network.status).toBe(200);
+    const net = network.body as { count: number; forks: { full_name: string }[] };
+    expect(net.count).toBe(1);
+    expect(net.forks[0].full_name).toBe(`${w.namespaceSlug}/gwrepo-fork`);
+
+    // The fork resolves as its own repo and reports 0 forks of its own.
+    const forkDetail = await get(`/api/v1/repos/${w.namespaceSlug}/gwrepo-fork/+`, w.cookieHeader);
+    expect(forkDetail.status).toBe(200);
+    expect((forkDetail.body as { num_forks: number }).num_forks).toBe(0);
+  });
 });

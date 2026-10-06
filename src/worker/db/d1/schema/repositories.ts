@@ -48,6 +48,9 @@ export const repositories = sqliteTable(
     description: text("description"),
     // Project homepage/URL shown in the About sidebar (GitHub "website").
     website: text("website"),
+    // Fork lineage — repo this was forked from (NULL for roots). Enables
+    // num_forks counts and the fork-network graph; forks-of-forks chain.
+    forkedFromId: text("forked_from_id"),
     // "do" (default) = native DO+R2 engine. "artifacts" = canonical objects
     // live in a Cloudflare Artifacts repository; `artifacts_name` holds the
     // repo name inside the bound namespace (`dg-<uuid>`).
@@ -63,6 +66,8 @@ export const repositories = sqliteTable(
   (table) => [
     uniqueIndex("uq_repositories_namespace_slug").on(table.namespaceId, table.slug),
     uniqueIndex("uq_repositories_do_name").on(table.doName),
+    // Fork counts + network graph walks.
+    index("idx_repositories_forked_from").on(table.forkedFromId),
     // Owner page / namespace listing without scanning the namespace.
     index("idx_repositories_namespace_updated").on(
       table.namespaceId,

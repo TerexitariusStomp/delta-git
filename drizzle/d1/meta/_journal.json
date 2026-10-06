@@ -141,6 +141,20 @@
       "when": 1791320385721,
       "tag": "0019_square_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1791320555574,
+      "tag": "0020_furry_chameleon",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1791320562644,
+      "tag": "0021_moaning_orphan",
+      "breakpoints": true
     }
   ]
 }
