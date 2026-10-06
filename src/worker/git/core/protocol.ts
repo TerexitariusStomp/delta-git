@@ -66,6 +66,9 @@ export async function capabilityAdvertisement(
     "quiet",
     "atomic",
     "ofs-delta",
+    // Clients may append arbitrary key=value push options after the command
+    // list; they land on the op-log entry and `push` webhook payloads.
+    "push-option",
     `agent=git-on-cloudflare/0.1`,
   ].join(" ");
 

@@ -156,6 +156,7 @@ function createSidebandReceiveResponse(args: {
   commands: ParsedReceiveRequest["commands"];
   /** "owner/repo" slug carried into `push` webhook payloads. */
   repoSlug?: string | undefined;
+  pushOptions: string[];
   capabilities: ReceiveNegotiatedCapabilities;
   packStream: ReadableStream<Uint8Array>;
   bytesConsumed: number;
@@ -190,6 +191,7 @@ function createSidebandReceiveResponse(args: {
           leaseToken: args.leaseToken,
           activeCatalog: args.activeCatalog,
           commands: args.commands,
+          pushOptions: args.pushOptions,
           log: args.log,
           cacheCtx: args.cacheCtx,
           limiter: args.limiter,
@@ -341,6 +343,7 @@ export async function handleStreamingReceivePackPOST(
         leaseToken: begin.lease.token,
         activeCatalog: begin.activeCatalog,
         commands: parsedRequest.commands,
+        pushOptions: parsedRequest.options,
         capabilities: parsedRequest.capabilities,
         packStream,
         bytesConsumed,
@@ -363,6 +366,7 @@ export async function handleStreamingReceivePackPOST(
       leaseToken: begin.lease.token,
       activeCatalog: begin.activeCatalog,
       commands: parsedRequest.commands,
+      pushOptions: parsedRequest.options,
       log,
       cacheCtx,
       limiter,

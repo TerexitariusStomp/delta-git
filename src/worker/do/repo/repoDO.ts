@@ -323,6 +323,7 @@ export class RepoDurableObject extends DurableObject {
     token: string;
     commands: Array<{ oldOid: string; newOid: string; ref: string }>;
     actor?: string;
+    pushOptions?: string[];
     stagedPack?:
       | {
           packKey: string;
@@ -339,6 +340,7 @@ export class RepoDurableObject extends DurableObject {
       token: args.token,
       commands: args.commands,
       actor: args.actor,
+      pushOptions: args.pushOptions,
       stagedPack: args.stagedPack,
       logger: this.logger,
     });

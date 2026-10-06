@@ -40,6 +40,8 @@ it("advertises streaming receive-pack capabilities including side-band-64k", asy
   // Streaming capabilities are always advertised
   expect(capsLine).toContain("side-band-64k");
   expect(capsLine).toContain("quiet");
+  // Clients may attach `-o` push options recorded on the op-log entry.
+  expect(capsLine).toContain("push-option");
 });
 
 it("advertises receive-pack over .git info/refs", async () => {

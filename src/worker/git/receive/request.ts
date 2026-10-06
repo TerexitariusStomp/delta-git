@@ -6,12 +6,19 @@ export type ReceiveNegotiatedCapabilities = {
   quiet: boolean;
   atomic: boolean;
   ofsDelta: boolean;
+  pushOption: boolean;
   agent?: string;
 };
 
 export type ParsedReceiveRequest = {
   commands: ReceiveCommand[];
   capabilities: ReceiveNegotiatedCapabilities;
+  /**
+   * `push-option` strings the client sent after its command list — opaque to
+   * the protocol layer; recorded on the `push.received` op-log entry and
+   * fanned out on `push` webhook payloads for downstream consumers.
+   */
+  options: string[];
 };
 
 export type ReceiveCommandList = ReceiveCommand[];
@@ -35,12 +42,16 @@ function parseCapabilities(firstLine: string): ReceiveNegotiatedCapabilities {
     quiet: tokens.includes("quiet"),
     atomic: tokens.includes("atomic"),
     ofsDelta: tokens.includes("ofs-delta"),
+    pushOption: tokens.includes("push-option"),
     agent,
   };
 }
 
+const COMMAND_LINE_SHAPE = /^[0-9a-fA-F]{40}\s+[0-9a-fA-F]{40}\s+\S/;
+
 export function parseReceiveRequest(lines: string[]): ParsedReceiveRequest {
   const commands: ReceiveCommand[] = [];
+  const options: string[] = [];
   const capabilities = parseCapabilities(lines[0] || "");
 
   for (let index = 0; index < lines.length; index++) {
@@ -52,8 +63,16 @@ export function parseReceiveRequest(lines: string[]): ParsedReceiveRequest {
       }
     }
 
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 3) continue;
+    const trimmed = line.trim();
+    // Option lines carry arbitrary text; they only arrive when push-option
+    // was negotiated and are distinguished from commands by shape — a ref
+    // name can itself contain spaces but never the <oid> <oid> prefix.
+    if (!COMMAND_LINE_SHAPE.test(trimmed)) {
+      if (capabilities.pushOption && trimmed.length > 0) options.push(trimmed);
+      continue;
+    }
+
+    const parts = trimmed.split(/\s+/);
     commands.push({
       oldOid: parts[0] || "",
       newOid: parts[1] || "",
@@ -61,5 +80,5 @@ export function parseReceiveRequest(lines: string[]): ParsedReceiveRequest {
     });
   }
 
-  return { commands, capabilities };
+  return { commands, capabilities, options };
 }

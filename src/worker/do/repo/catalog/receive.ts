@@ -67,6 +67,8 @@ export async function finalizeReceiveState(args: {
   commands: ReceiveCommand[];
   /** Pusher identity recorded on divergent intents and the op log. */
   actor?: string;
+  /** `push-option` strings recorded on the `push.received` op-log entry. */
+  pushOptions?: string[];
   stagedPack?:
     | {
         packKey: string;
@@ -197,9 +199,25 @@ export async function finalizeReceiveState(args: {
   await store.put("refsVersion", nextRefsVersion);
   await store.delete("receiveLease");
 
+  const db = getDb(args.ctx.storage);
+  const now = Date.now();
+  // Every committed receive lands in the hash-chained op log — previously
+  // only divergent pushes left a trace, which left direct ref updates
+  // invisible to `/dg/oplog` auditors. Push options ride along opaque.
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "push.received",
+      actor: args.actor ?? "anonymous",
+      payload: {
+        refs: effectiveCommands.map((command) => command.ref),
+        options: args.pushOptions ?? [],
+      },
+    },
+    now
+  );
+
   if (deltaIntents && deltaIntents.length > 0) {
-    const db = getDb(args.ctx.storage);
-    const now = Date.now();
     for (const intent of deltaIntents) {
       await insertMergeIntent(db, intent);
       await appendOpLogEntry(

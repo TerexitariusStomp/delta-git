@@ -425,6 +425,61 @@ describe("streaming receive-pack", () => {
     expect(opLog.some((entry: { kind: string }) => entry.kind === "push.delta")).toBe(true);
   });
 
+  it("records push-option lines on the push.received op-log entry", async () => {
+    const owner = "o";
+    const repo = uniqueRepoId("stream-receive-push-opts");
+    await setupRepoForTests(env, owner, repo);
+    const repoId = `${owner}/${repo}`;
+    const seeded = await seedPackFirstRepo(repoId);
+    await promoteToStreaming(owner, repo);
+
+    const built = await buildStreamingReceiveBody({
+      parentOid: seeded.nextCommit.oid,
+      nextText: "push options\n",
+      commitMessage: "push options",
+      capabilities: "report-status push-option ofs-delta agent=test",
+    });
+    // `built.body` is command-line + flush + pack; git sends each -o value as
+    // its own pkt-line after the commands. Rebuild with two option lines
+    // spliced in — the pack begins at the "PACK" magic.
+    const packMagic = new TextEncoder().encode("PACK");
+    let packStart = -1;
+    for (let i = 0; i + 4 <= built.body.byteLength; i++) {
+      if (built.body.subarray(i, i + 4).every((byte, j) => byte === packMagic[j])) {
+        packStart = i;
+        break;
+      }
+    }
+    expect(packStart).toBeGreaterThan(0);
+    const body = concatChunks([
+      pktLine(
+        `${seeded.nextCommit.oid} ${built.commit.oid} refs/heads/main\0 report-status push-option ofs-delta agent=test\n`
+      ),
+      pktLine("ci.skip\n"),
+      pktLine("reviewer=alice\n"),
+      flushPkt(),
+      built.body.subarray(packStart),
+    ]);
+
+    const response = await pushBody(`https://example.com/${owner}/${repo}/git-receive-pack`, body, {
+      stream: true,
+    });
+    expect(response.status).toBe(200);
+    expect(decodeReportStatus(new Uint8Array(await response.arrayBuffer()))).toContain(
+      "ok refs/heads/main"
+    );
+
+    const opLog = await callStubWithRetry(seeded.getStub, (stub) => stub.listOpLog(-1));
+    const received = opLog.find((entry: { kind: string }) => entry.kind === "push.received");
+    expect(received).toBeTruthy();
+    const payload = JSON.parse(received!.payload) as {
+      refs: string[];
+      options: string[];
+    };
+    expect(payload.refs).toEqual(["refs/heads/main"]);
+    expect(payload.options).toEqual(["ci.skip", "reviewer=alice"]);
+  });
+
   it("accepts thin packs with active external bases, rejects missing ones, and clears the receive lease after failure", async () => {
     const owner = "o";
     const repo = uniqueRepoId("stream-receive-thin");

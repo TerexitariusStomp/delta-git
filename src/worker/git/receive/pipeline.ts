@@ -180,6 +180,8 @@ type ExecuteReceivePipelineArgs = {
   leaseToken: string;
   activeCatalog: PackCatalogRow[];
   commands: ReceiveCommand[];
+  /** `push-option` strings recorded on the op-log entry and webhook payload. */
+  pushOptions?: string[];
   log: Logger;
   /** Pusher identity recorded on divergent merge intents. */
   actor?: string;
@@ -464,6 +466,7 @@ export async function executeReceivePipeline(
       token: args.leaseToken,
       commands: args.commands,
       actor: args.actor,
+      pushOptions: args.pushOptions,
       stagedPack,
     });
 
@@ -585,7 +588,12 @@ export async function executeReceivePipeline(
       args.ctx.waitUntil(
         deliverWebhookEvent(args.env, args.repoId, args.stub, {
           kind: "push",
-          payload: { repo: args.repoSlug, ref: command.ref, oid: command.newOid },
+          payload: {
+            repo: args.repoSlug,
+            ref: command.ref,
+            oid: command.newOid,
+            options: args.pushOptions,
+          },
         }).catch((error) => {
           args.log.warn("receive:webhook-enqueue-failed", {
             repoId: args.repoId,
