@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { Button, Layout, Link, MarkdownViewer, NoData, SandboxLayout, StatusBadge, Tabs, Text, TextInput } from '@harnessio/ui/components'
+import { Button, Layout, Link, MarkdownViewer, NoData, SandboxLayout, Select, StatusBadge, Tabs, Text, TextInput } from '@harnessio/ui/components'
 
 import { PathParams } from '../../RouteDefinitions'
 import {
@@ -12,6 +12,7 @@ import {
   useIssueReaction,
   useIssueReactions,
   useIssues,
+  useIssueTemplates,
   useUpdateIssue
 } from '../delta/delta-api'
 
@@ -150,8 +151,10 @@ export function RepoIssuesPage() {
 export function RepoIssueNewPage() {
   const { spaceId, repoId, base } = useRepoParams()
   const createIssue = useCreateIssue(spaceId, repoId)
+  const { data: templates } = useIssueTemplates(spaceId, repoId)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [labels, setLabels] = useState<string[]>([])
   const navigate = useNavigate()
 
   return (
@@ -166,10 +169,24 @@ export function RepoIssueNewPage() {
             e.preventDefault()
             if (!title.trim()) return
             createIssue.mutate(
-              { title: title.trim(), body: body || undefined },
+              { title: title.trim(), body: body || undefined, labels },
               { onSuccess: issue => navigate(`${base}/issues/${issue.number}`) }
             )
           }}>
+          {templates && templates.length > 0 && (
+            <Select
+              label="Template"
+              placeholder="Open a blank issue"
+              options={templates.map(t => ({ label: `${t.name}${t.about ? ` — ${t.about}` : ''}`, value: t.file }))}
+              onChange={file => {
+                const t = templates.find(x => x.file === file)
+                if (!t) return
+                setTitle(prev => (prev ? prev : t.title))
+                setBody(t.body)
+                setLabels(t.labels)
+              }}
+            />
+          )}
           <TextInput
             id="issueTitle"
             label="Title"

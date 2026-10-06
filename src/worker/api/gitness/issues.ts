@@ -9,6 +9,7 @@ import type {
 
 import { getRepoStub } from "@/worker/common";
 import { parseIssueQuery } from "@/worker/do/repo/catalog/issueQuery";
+import { readPath } from "@/worker/git/operations/read/tree";
 import { gErr, gNotFound, pageParams, paginate, requireWriter, resolveGitnessRepo } from "./shared";
 
 // GitHub-shaped issues surface for the SPA — session-authed like every
@@ -390,4 +391,128 @@ export function registerGitnessIssues(router: AppRouter) {
     if (result.status === "invalid") return gErr(c, 422, "invalid name or color");
     return c.json(labelView(result.label), result.status === "exists" ? 200 : 201);
   });
+
+  // GET /api/v1/repos/{ref}/issue-templates — GitHub's .github convention:
+  // markdown files under ISSUE_TEMPLATE with YAML front matter become
+  // chooser entries for the issue composer. Precedence follows GitHub:
+  // .github/ > docs/ > repo root.
+  router.get("/api/v1/repos/:repo_ref{.+}/issue-templates", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+
+    for (const dir of ISSUE_TEMPLATE_DIRS) {
+      const listing = await readPath(c.env, access.route.doName, "HEAD", dir).catch(() => null);
+      if (!listing || listing.type !== "tree") continue;
+      const files = listing.entries.filter(
+        (e) => !e.mode.startsWith("40000") && /\.md$/i.test(e.name) && e.name !== "README.md"
+      );
+      if (files.length === 0) continue;
+
+      const templates: IssueTemplate[] = [];
+      for (const file of files) {
+        const blob = await readPath(
+          c.env,
+          access.route.doName,
+          "HEAD",
+          `${dir}/${file.name}`,
+          access.cacheCtx
+        ).catch(() => null);
+        if (!blob || blob.type !== "blob" || blob.tooLarge) continue;
+        templates.push(parseIssueTemplate(file.name, td.decode(blob.content)));
+      }
+      if (templates.length > 0) return c.json(templates);
+    }
+    return c.json([]);
+  });
+}
+
+const ISSUE_TEMPLATE_DIRS = [".github/ISSUE_TEMPLATE", "docs/ISSUE_TEMPLATE", "ISSUE_TEMPLATE"];
+const td = new TextDecoder();
+
+type IssueTemplate = {
+  file: string;
+  name: string;
+  about: string;
+  title: string;
+  labels: string[];
+  assignees: string[];
+  body: string;
+};
+
+function stripQuotes(value: string): string {
+  return value.replace(/^["']|["']$/g, "");
+}
+
+/** Front-matter scalar — `[a, b]` and `a, b` both decode to string lists. */
+function parseScalarOrList(value: string): string | string[] {
+  const bare = stripQuotes(value.trim());
+  if (value.trim().startsWith("[") && value.trim().endsWith("]")) {
+    return value
+      .trim()
+      .slice(1, -1)
+      .split(",")
+      .map((s) => stripQuotes(s.trim()))
+      .filter(Boolean);
+  }
+  if (bare.includes(",")) {
+    return bare
+      .split(",")
+      .map((s) => stripQuotes(s.trim()))
+      .filter(Boolean);
+  }
+  return bare;
+}
+
+/**
+ * Subset-YAML front matter: `key: value`, `key: [a, b]`, and indented
+ * `- item` lists — everything GitHub template files use in practice.
+ */
+function parseFrontMatter(source: string): {
+  meta: Record<string, string | string[]>;
+  body: string;
+} {
+  const meta: Record<string, string | string[]> = {};
+  const normalized = source.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---\n")) return { meta, body: normalized };
+  const end = normalized.indexOf("\n---", 4);
+  if (end < 0) return { meta, body: normalized };
+
+  let lastKey: string | undefined;
+  for (const line of normalized.slice(4, end).split("\n")) {
+    const listItem = /^\s+-\s+(.*)$/.exec(line);
+    if (listItem && lastKey) {
+      const existing = meta[lastKey];
+      const arr = Array.isArray(existing) ? existing : existing ? [existing] : [];
+      arr.push(stripQuotes(listItem[1]!.trim()));
+      meta[lastKey] = arr;
+      continue;
+    }
+    const kv = /^([A-Za-z_]+):\s*(.*)$/.exec(line);
+    if (!kv) {
+      lastKey = undefined;
+      continue;
+    }
+    lastKey = kv[1]!.toLowerCase();
+    meta[lastKey] = parseScalarOrList(kv[2]!);
+  }
+  return { meta, body: normalized.slice(end + 4).replace(/^\n/, "") };
+}
+
+function asList(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function parseIssueTemplate(file: string, source: string): IssueTemplate {
+  const { meta, body } = parseFrontMatter(source);
+  const name = asList(meta.name)[0];
+  return {
+    file,
+    name: name || file.replace(/\.md$/i, ""),
+    about: asList(meta.about)[0] ?? "",
+    title: asList(meta.title)[0] ?? "",
+    labels: asList(meta.labels),
+    assignees: asList(meta.assignees),
+    body,
+  };
 }

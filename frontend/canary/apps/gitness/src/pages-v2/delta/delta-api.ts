@@ -350,6 +350,23 @@ export const useIssues = (spaceId: string, repoId: string, state?: 'open' | 'clo
     { select: data => data ?? [] }
   )
 
+export interface RepoIssueTemplate {
+  file: string
+  name: string
+  about: string
+  title: string
+  labels: string[]
+  assignees: string[]
+  body: string
+}
+
+export const useIssueTemplates = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'issue-templates', spaceId, repoId],
+    () => dgFetch<RepoIssueTemplate[]>(`${v1Path(spaceId, repoId)}/issue-templates`),
+    { select: data => data ?? [] }
+  )
+
 export const useIssue = (spaceId: string, repoId: string, number: number) =>
   useQuery(['delta', 'issue', spaceId, repoId, number], () =>
     dgFetch<RepoIssue>(`${v1Path(spaceId, repoId)}/issues/${number}`)

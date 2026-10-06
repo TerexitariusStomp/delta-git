@@ -1,8 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { env, exports as workerExports } from "cloudflare:workers";
 
+import { concatChunks, flushPkt, pktLine } from "@/worker/git/core";
+import { encodeGitObject } from "@/worker/git/core/objects";
+import { buildPack } from "./util/git-pack";
+import { buildTreePayload } from "./util/packed-repo";
 import { ensureD1Migrations } from "./util/d1Setup";
-import { setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
+import { toRequestBody } from "./util/test-helpers";
+import { lookupPushAuth, setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
 
 // Issues surface coverage: the DO-backed tracker exposed twice —
 // session-authed /api/v1 (SPA) and PAT/anonymous /api/v3 (gh/agent clients).
@@ -269,6 +274,104 @@ describe("issues: qualifier search (q=)", () => {
 
     const noRepo = await call("GET", `/api/v3/search/issues?q=${encodeURIComponent("is:open")}`);
     expect(noRepo.status).toBe(422);
+  });
+});
+
+describe("issues: .github issue templates", () => {
+  it("lists templates from .github/ISSUE_TEMPLATE with front matter", async () => {
+    const templatesRepo = uniq("iss-tpl-ns");
+    const seededTpl = await setupRepoForTests(env, templatesRepo, "issrepo");
+    const tplBase = `/api/v1/repos/${seededTpl.namespaceSlug}/issrepo/+`;
+
+    // Push a commit carrying .github/ISSUE_TEMPLATE/bug.md — nested trees,
+    // create-push onto a fresh main.
+    const templateSource = [
+      "---",
+      "name: Bug report",
+      "about: Something broke",
+      'title: "[Bug]: "',
+      'labels: ["bug", "triage"]',
+      "---",
+      "",
+      "Describe what happened.",
+      "",
+    ].join("\n");
+    const tplBlobPayload = new TextEncoder().encode(templateSource);
+    const readmeBlobPayload = new TextEncoder().encode("# repo\n");
+    const tplBlob = await encodeGitObject("blob", tplBlobPayload);
+    const readmeBlob = await encodeGitObject("blob", readmeBlobPayload);
+    const templateDirTreePayload = buildTreePayload([
+      { mode: "100644", name: "bug.md", oid: tplBlob.oid },
+    ]);
+    const templateDirTree = await encodeGitObject("tree", templateDirTreePayload);
+    const dotGithubTreePayload = buildTreePayload([
+      { mode: "40000", name: "ISSUE_TEMPLATE", oid: templateDirTree.oid },
+    ]);
+    const dotGithubTree = await encodeGitObject("tree", dotGithubTreePayload);
+    const rootTreePayload = buildTreePayload([
+      { mode: "40000", name: ".github", oid: dotGithubTree.oid },
+      { mode: "100644", name: "README.md", oid: readmeBlob.oid },
+    ]);
+    const rootTree = await encodeGitObject("tree", rootTreePayload);
+    const author = "You <you@example.com> 0 +0000";
+    const commitPayload = new TextEncoder().encode(
+      `tree ${rootTree.oid}\n` +
+        `author ${author}\n` +
+        `committer ${author}\n\n` +
+        `add issue templates\n`
+    );
+    const commit = await encodeGitObject("commit", commitPayload);
+    const pack = await buildPack([
+      { type: "blob", payload: tplBlobPayload },
+      { type: "blob", payload: readmeBlobPayload },
+      { type: "tree", payload: templateDirTreePayload },
+      { type: "tree", payload: dotGithubTreePayload },
+      { type: "tree", payload: rootTreePayload },
+      { type: "commit", payload: commitPayload },
+    ]);
+
+    const push = await workerExports.default.fetch(
+      `https://example.com/${seededTpl.namespaceSlug}/issrepo/git-receive-pack`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-git-receive-pack-request",
+          Authorization: lookupPushAuth(seededTpl.namespaceSlug, "issrepo")!,
+        },
+        body: toRequestBody(
+          concatChunks([
+            pktLine(
+              `${"0".repeat(40)} ${commit.oid} refs/heads/main\0 report-status ofs-delta agent=test\n`
+            ),
+            flushPkt(),
+            pack,
+          ])
+        ),
+      } as any
+    );
+    expect(push.status).toBe(200);
+
+    const { status, body } = await call("GET", `${tplBase}/issue-templates`, {
+      cookie: seededTpl.cookieHeader,
+    });
+    expect(status).toBe(200);
+    const templates = body as {
+      file: string;
+      name: string;
+      about: string;
+      title: string;
+      labels: string[];
+      body: string;
+    }[];
+    expect(templates.length).toBe(1);
+    expect(templates[0]).toMatchObject({
+      file: "bug.md",
+      name: "Bug report",
+      about: "Something broke",
+      title: "[Bug]: ",
+      labels: ["bug", "triage"],
+    });
+    expect(templates[0].body).toContain("Describe what happened.");
   });
 });
 
