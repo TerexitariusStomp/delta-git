@@ -1,6 +1,6 @@
 import { FC, useState } from 'react'
 
-import { signInWithBluesky } from '../delta/bsky-oauth'
+import { authLog, signInWithBluesky } from '../delta/bsky-oauth'
 
 /**
  * Sign-in — the primary auth surface, styled after the SSR /auth page layout
@@ -27,9 +27,11 @@ export const SignIn: FC = () => {
     setError(null)
     // DIDs aren't OAuth accounts — the did:* challenge lives on /auth.
     if (id.startsWith('did:')) {
+      authLog('signin:did-lane', { did: id })
       window.location.assign(`/auth?did=${encodeURIComponent(id)}`)
       return
     }
+    authLog('signin:submit', { handle: id })
     setBusy(true)
     try {
       // Same-tab redirect: resolves never on success (the page navigates to

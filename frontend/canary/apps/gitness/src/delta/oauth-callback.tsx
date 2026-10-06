@@ -1,6 +1,6 @@
 import { FC, useEffect, useState } from 'react'
 
-import { completeBskySignIn } from './bsky-oauth'
+import { authLog, completeBskySignIn } from './bsky-oauth'
 
 /**
  * /oauth/callback — the client-side atproto OAuth redirect target.
@@ -9,6 +9,9 @@ import { completeBskySignIn } from './bsky-oauth'
  * here via the authorization server, this page runs the token exchange,
  * establishes the bound dg_session via /auth/atp/verify, then forwards the
  * user to their namespace. On failure we render the error with a link back.
+ *
+ * Every step writes to the [dg-auth] console log AND a sessionStorage ring
+ * buffer (dg-auth-log) that survives the redirect — see getAuthLog().
  */
 export const OAuthCallback: FC = () => {
   const [error, setError] = useState<string | null>(null)
@@ -18,10 +21,14 @@ export const OAuthCallback: FC = () => {
     completeBskySignIn()
       .then(result => {
         if (cancelled) return
-        window.location.replace(result.namespace ?? '/')
+        const dest = result.namespace ? `/${result.namespace}` : '/'
+        authLog('callback:redirect', { dest })
+        window.location.replace(dest)
       })
       .catch(err => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        const msg = err instanceof Error ? err.message : String(err)
+        authLog('callback:fatal', { error: msg })
+        if (!cancelled) setError(msg)
       })
     return () => {
       cancelled = true
@@ -43,6 +50,9 @@ export const OAuthCallback: FC = () => {
       {error ? (
         <div style={{ textAlign: 'center', maxWidth: '28rem' }}>
           <p>Sign-in failed: {error}</p>
+          <p style={{ fontSize: '0.85em', opacity: 0.7 }}>
+            Debug log is in sessionStorage key <code>dg-auth-log</code>
+          </p>
           <a href="/signin" style={{ color: '#7c8cff' }}>
             Back to sign in
           </a>

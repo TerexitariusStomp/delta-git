@@ -22,6 +22,32 @@ import { getDpopJwk } from './custody'
 let clientPromise: Promise<BrowserOAuthClient> | null = null
 let currentSession: OAuthSession | null = null
 
+/** sessionStorage ring buffer — console output dies on navigation, and the
+ *  OAuth flow navigates twice (out to the AS, back to /oauth/callback). */
+const AUTH_LOG_KEY = 'dg-auth-log'
+const AUTH_LOG_MAX = 80
+
+export function authLog(event: string, data?: Record<string, unknown>): void {
+  const line = `${new Date().toISOString()} ${event}${data ? ` ${JSON.stringify(data)}` : ''}`
+  console.log(`[dg-auth] ${event}`, data ?? '')
+  try {
+    const prev = JSON.parse(sessionStorage.getItem(AUTH_LOG_KEY) ?? '[]') as string[]
+    prev.push(line)
+    sessionStorage.setItem(AUTH_LOG_KEY, JSON.stringify(prev.slice(-AUTH_LOG_MAX)))
+  } catch {
+    /* storage unavailable — console line still emitted */
+  }
+}
+
+/** Recent auth-flow events for support/debugging — survives redirects. */
+export function getAuthLog(): string[] {
+  try {
+    return JSON.parse(sessionStorage.getItem(AUTH_LOG_KEY) ?? '[]') as string[]
+  } catch {
+    return []
+  }
+}
+
 export function getBskyClient(): Promise<BrowserOAuthClient> {
   if (!clientPromise) {
     clientPromise = BrowserOAuthClient.load({
@@ -62,11 +88,13 @@ function normalizeHandle(handle: string): string {
  */
 export async function signInBlueskyRedirect(handle: string): Promise<never> {
   const normalized = normalizeHandle(handle)
+  authLog('redirect:start', { handle: normalized })
   const client = await getBskyClient()
   try {
     return await client.signInRedirect(normalized, { state: 'deltagit' })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    authLog('redirect:error', { handle: normalized, error: msg })
     if (msg === 'User navigated back') throw err
     throw new Error(`Bluesky sign-in failed (${normalized}): ${msg}`)
   }
@@ -80,12 +108,18 @@ export async function signInBlueskyRedirect(handle: string): Promise<never> {
  */
 export async function completeBskyRedirect(): Promise<OAuthSession> {
   const client = await getBskyClient()
+  authLog('callback:start', {
+    hasCode: new URLSearchParams(window.location.search).has('code'),
+    url: window.location.pathname,
+  })
   try {
     const { session } = await client.initCallback()
     currentSession = session
+    authLog('callback:session', { did: session.did })
     return session
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    authLog('callback:error', { error: msg })
     throw new Error(`Bluesky sign-in failed: ${msg}`)
   }
 }
@@ -125,6 +159,7 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
   // Service-audience refs must be absolute did#serviceId — the PDS's rpc:
   // scope aud param rejects bare DIDs.
   const aud = `did:web:${window.location.hostname}#delta_git`
+  authLog('verify:service-auth', { aud })
   const res = await session.fetchHandler(
     `/xrpc/com.atproto.server.getServiceAuth?aud=${encodeURIComponent(aud)}`
   )
@@ -137,6 +172,7 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
       /* ignore */
     }
     const wwwAuth = res.headers.get('www-authenticate')
+    authLog('verify:service-auth-error', { status: res.status, detail, wwwAuth })
     throw new Error(
       `getServiceAuth failed: ${res.status} ${detail}${wwwAuth ? ` | ${wwwAuth}` : ''}`
     )
@@ -145,6 +181,7 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
   if (!token) throw new Error('No serviceAuth token returned')
 
   const dpopJwk = await getDpopJwk()
+  authLog('verify:atp-verify', { did: session.did })
   const verifyRes = await fetch('/auth/atp/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -153,9 +190,16 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
   })
   if (!verifyRes.ok) {
     const detail = await verifyRes.text().catch(() => '')
+    authLog('verify:atp-verify-error', { status: verifyRes.status, detail })
     throw new Error(`session verify failed: ${verifyRes.status} ${detail}`)
   }
   const result = (await verifyRes.json()) as AtpVerifyResult
+  authLog('verify:done', {
+    did: result.did,
+    handle: result.handle,
+    namespace: result.namespace,
+    dpop_bound: result.dpop_bound,
+  })
   if (result.dpop_bound) {
     try {
       localStorage.setItem(DPOP_BOUND_FLAG, session.did)
