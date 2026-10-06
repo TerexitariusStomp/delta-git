@@ -27,8 +27,12 @@ import {
   isStarred,
   starCount,
   countForks,
+  countRepositoriesForNamespace,
   listForkNetwork,
 } from "@/worker/db/d1/dal";
+import { LIMITS, rateLimit, metric, DEFAULT_REPO_COUNT_QUOTA } from "@/worker/agent/abuse";
+
+const MAX_REPOS_PER_NAMESPACE = DEFAULT_REPO_COUNT_QUOTA;
 import { loadViewer, generateUserId } from "@/worker/auth/session";
 import { viewerIsNamespaceMember, generatePatPlaintext, hashPatPlaintext } from "@/worker/auth/pat";
 import { insertPatWithGrants } from "@/worker/db/d1/dal/tokens";
@@ -270,6 +274,21 @@ export function registerGitnessRepos(router: AppRouter) {
     if (!namespace) return { error: gNotFound(c, "space") };
     if (!(await viewerIsNamespaceMember(c.var.db, viewer.userId, namespace.id))) {
       return { error: gErr(c, 403, "not a member of this space") };
+    }
+    // Per-user create rate limit + per-namespace repo-count quota. Both are
+    // approximate KV/D1 bookkeeping — receive-pack storage charging lives in
+    // the pipeline where the byte size is known.
+    const limited = await rateLimit(c.env, LIMITS.repoCreate, viewer.userId);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      metric(c.env, "rate.limited", { scope: "repo.create", index: viewer.userId });
+      return { error: gErr(c, 429, "repository creation rate limit exceeded") };
+    }
+    if ((await countRepositoriesForNamespace(c.var.db, namespace.id)) >= MAX_REPOS_PER_NAMESPACE) {
+      metric(c.env, "quota.exceeded", { scope: "repo.count", index: namespace.id });
+      return {
+        error: gErr(c, 403, `space repository limit of ${MAX_REPOS_PER_NAMESPACE} reached`),
+      };
     }
     const now = Date.now();
     const repositoryId = newPrefixedId("repo");

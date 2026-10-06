@@ -117,6 +117,9 @@ export const LIMITS = {
 /** Default per-namespace storage quota: 2 GiB. */
 export const DEFAULT_STORAGE_QUOTA_BYTES = 2 * 1024 * 1024 * 1024;
 
+/** Default per-namespace repository count quota (gists included). */
+export const DEFAULT_REPO_COUNT_QUOTA = 500;
+
 export async function getStorageUsed(kv: KVNamespace, namespaceId: string): Promise<number> {
   const raw = await kv.get(`${QUOTA_PREFIX}${namespaceId}`);
   const n = raw ? parseInt(raw, 10) : 0;

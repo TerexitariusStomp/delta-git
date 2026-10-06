@@ -23,6 +23,7 @@ import type { AppRouter } from "@/worker/routes/hono";
 import { findNamespaceBySlug } from "@/worker/db/d1/dal/namespaces";
 import { verifyPat } from "@/worker/auth/pat";
 import { normalizeIdentifier } from "@/worker/api/gitness/shared";
+import { chargeStorageQuota, metric } from "@/worker/agent/abuse";
 
 const MAX_TARBALL_BYTES = 64 * 1024 * 1024;
 const MAX_VERSIONS_PER_PUT = 20;
@@ -185,6 +186,13 @@ export function registerNpmRegistryRoutes(router: AppRouter) {
       if (!bytes) return jsonErr(c, 422, `bad base64 tarball for ${version}`);
       if (bytes.length > MAX_TARBALL_BYTES) {
         return jsonErr(c, 413, `tarball exceeds ${MAX_TARBALL_BYTES / (1024 * 1024)}MiB`);
+      }
+      // Charge the tarball against the namespace storage budget — the same
+      // quota receive-pack pushes are charged against.
+      const charged = await chargeStorageQuota(c.env.ROUTES, namespace.id, bytes.length);
+      if (!charged) {
+        metric(c.env, "quota.exceeded", { scope: "pkg.publish", index: namespace.id });
+        return jsonErr(c, 413, "storage quota exceeded for this namespace");
       }
       // Attachment keys are the canonical filename (`<base>-<ver>.tgz`) —
       // basename for safety, falling back to a synthesized name.

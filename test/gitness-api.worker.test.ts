@@ -1438,3 +1438,41 @@ describe("npm registry /npm", () => {
     expect(missingScope.status).toBe(404);
   });
 });
+
+describe("namespace quotas", () => {
+  it("quota endpoint reports storage + repo accounting; create rate-limit 429s", async () => {
+    const repo = await setupRepoForTests(env, uniq("qta-ns"), "qtarepo");
+
+    const quota = await get(`/api/v1/spaces/${repo.namespaceSlug}/quota`, repo.cookieHeader);
+    expect(quota.status).toBe(200);
+    const q = quota.body as {
+      storage: { used_bytes: number; limit_bytes: number };
+      repos: { count: number; limit: number };
+      rate_limits: { repo_create_per_hour: number };
+    };
+    expect(q.storage.limit_bytes).toBe(2 * 1024 * 1024 * 1024);
+    expect(q.repos.count).toBeGreaterThanOrEqual(1);
+    expect(q.repos.limit).toBe(500);
+    expect(q.rate_limits.repo_create_per_hour).toBe(10);
+
+    // Anonymous + non-member reads are gated.
+    expect((await get(`/api/v1/spaces/${repo.namespaceSlug}/quota`)).status).toBe(401);
+
+    // Drain the hourly create bucket against the same KV counter the route
+    // consults, then the next create must 429 with Retry-After.
+    const { rateLimit, LIMITS } = await import("@/worker/agent/abuse");
+    for (let i = 0; i < LIMITS.repoCreate.limit; i++) {
+      await rateLimit(env, LIMITS.repoCreate, repo.userId);
+    }
+    const blocked = await workerExports.default.fetch("https://example.com/api/v1/repos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+      body: JSON.stringify({
+        identifier: "quota-blocked",
+        parent_ref: repo.namespaceSlug,
+      }),
+    });
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("Retry-After")).toBeTruthy();
+  });
+});

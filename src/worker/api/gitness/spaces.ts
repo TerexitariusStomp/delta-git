@@ -36,7 +36,16 @@ import {
 } from "@/worker/db/d1/dal/namespaces";
 import { insertUserIfNew } from "@/worker/db/d1/dal/users";
 import { enforceInNamespace, principalForUser } from "@/worker/rbac";
-import { listRepositoriesForNamespace } from "@/worker/db/d1/dal/repositories";
+import {
+  listRepositoriesForNamespace,
+  countRepositoriesForNamespace,
+} from "@/worker/db/d1/dal/repositories";
+import {
+  getStorageUsed,
+  DEFAULT_STORAGE_QUOTA_BYTES,
+  DEFAULT_REPO_COUNT_QUOTA,
+  LIMITS,
+} from "@/worker/agent/abuse";
 import type { NamespaceRow } from "@/worker/db/d1/schema/namespaces";
 import type { RepositoryRow } from "@/worker/db/d1/schema/repositories";
 import { isValidOwnerRepo } from "@/shared/web";
@@ -826,6 +835,29 @@ export function registerGitnessSpaceDetail(router: AppRouter) {
     const removed = await deleteNamespaceRow(c.var.db, ns.id);
     if (!removed) return gNotFound(c, "space");
     return c.json({});
+  });
+
+  // Quota visibility — members only; reports the approximate KV/D1
+  // accounting used by the repo-create and receive-pack gates.
+  router.get("/api/v1/spaces/:space_ref{.+}/quota", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const ns = await resolveSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    const [storageUsed, repoCount] = await Promise.all([
+      getStorageUsed(c.env.ROUTES, ns.id),
+      countRepositoriesForNamespace(c.var.db, ns.id),
+    ]);
+    return c.json({
+      storage: { used_bytes: storageUsed, limit_bytes: DEFAULT_STORAGE_QUOTA_BYTES },
+      repos: { count: repoCount, limit: DEFAULT_REPO_COUNT_QUOTA },
+      rate_limits: {
+        repo_create_per_hour: LIMITS.repoCreate.limit,
+      },
+    });
   });
 
   // Bare space GET is registered last: `:space_ref{.+}` is greedy and would

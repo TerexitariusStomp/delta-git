@@ -256,6 +256,15 @@ export type ForkNode = {
   namespaceSlug: string;
 };
 
+/** Total repos owned by a namespace (gists included) — quota accounting. */
+export async function countRepositoriesForNamespace(db: Db, namespaceId: string): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(repositories)
+    .where(eq(repositories.namespaceId, namespaceId));
+  return rows[0]?.count ?? 0;
+}
+
 /**
  * Fork network for a repo: walk up to the root, then BFS down collecting
  * every descendant with its owning namespace slug. Public-only filtering
