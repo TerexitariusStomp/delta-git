@@ -6,6 +6,7 @@ import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { getHeadAndRefs, readPath } from "@/worker/git/operations/read";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { loadNodeKey } from "@/worker/agent/repCert";
+import openapiSpec from "@/worker/api/openapi.json";
 
 // Agent-readable surface — the "agents that ask get markdown" contract.
 // Humans get the SPA; agents that send `Accept: text/markdown` get a
@@ -87,6 +88,7 @@ const LLMS_TXT = `# delta-git
 
 - [/skill.md](/skill.md): how to authenticate, push, file intents, and use the API
 - [/.well-known/delta-node](/.well-known/delta-node): machine-readable node descriptor
+- [/api/openapi.json](/api/openapi.json): OpenAPI 3 spec for the stable agent surface
 - [/api/v3](/api/v3): GitHub REST-compatible surface (issues, pulls, releases, discussions)
 - [/mcp](/mcp): MCP server endpoint
 - [/xrpc](/xrpc): atproto XRPC surface
@@ -262,6 +264,9 @@ export function registerAgentSurfaceRoutes(router: AppRouter) {
   router.get("/skill.md", (c) =>
     c.text(SKILL_MD, 200, { "content-type": "text/markdown; charset=utf-8" })
   );
+  // Machine-consumable API contract — the stable agent-facing subset of the
+  // v3/v1 surface, served for codegen + agent discovery.
+  router.get("/api/openapi.json", (c) => c.json(openapiSpec));
 
   // Repo card on content negotiation — runs before the UI/SPA fallbacks so
   // `Accept: text/markdown` returns markdown while everything else falls

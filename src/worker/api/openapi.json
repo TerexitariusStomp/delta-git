@@ -1,0 +1,241 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "delta-git API",
+    "version": "1.0.0",
+    "description": "Agent-native git forge on Cloudflare. GitHub-compatible REST subset under /api/v3 plus the forge-native /api/v1 and /dg surfaces. Auth: session cookie (browser), HTTP Basic PAT (git + /api/v3), OAuth bearer, or RFC 9421 HTTP message signatures for did:key agents on receive-pack."
+  },
+  "servers": [{ "url": "/" }],
+  "tags": [
+    { "name": "git" },
+    { "name": "repos" },
+    { "name": "issues" },
+    { "name": "pulls" },
+    { "name": "discussions" },
+    { "name": "releases" },
+    { "name": "security" },
+    { "name": "notifications" },
+    { "name": "search" },
+    { "name": "agent" }
+  ],
+  "paths": {
+    "/.well-known/delta-node": {
+      "get": {
+        "tags": ["agent"],
+        "summary": "Node descriptor — capabilities, federation keys, agent surfaces",
+        "responses": { "200": { "description": "delta-node JSON descriptor" } }
+      }
+    },
+    "/{owner}/{repo}.git/info/refs": {
+      "get": {
+        "tags": ["git"],
+        "summary": "Smart HTTP ref advertisement (v0/v2)",
+        "parameters": [
+          { "name": "owner", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "repo", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "service", "in": "query", "required": true, "schema": { "type": "string", "enum": ["git-upload-pack", "git-receive-pack"] } }
+        ],
+        "responses": { "200": { "description": "pkt-line ref advertisement" } }
+      }
+    },
+    "/{owner}/{repo}.git/git-upload-pack": {
+      "post": {
+        "tags": ["git"],
+        "summary": "Fetch — protocol v2 (shallow, filter, object-info, bundle-uri)",
+        "responses": { "200": { "description": "pack stream (sideband)" } }
+      }
+    },
+    "/{owner}/{repo}.git/git-receive-pack": {
+      "post": {
+        "tags": ["git"],
+        "summary": "Push — accepts Basic PAT or RFC 9421 did:key signatures",
+        "responses": { "200": { "description": "ref update report" } }
+      }
+    },
+    "/api/v3/repos/{owner}/{repo}": {
+      "get": {
+        "tags": ["repos"],
+        "summary": "Repository detail (GitHub shape)",
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" }
+        ],
+        "responses": { "200": { "description": "Repository object" }, "404": { "description": "Not found (or private)" } }
+      }
+    },
+    "/api/v3/repos/{owner}/{repo}/contents/{path}": {
+      "get": {
+        "tags": ["repos"],
+        "summary": "File/dir contents at ref (base64, GitHub shape)",
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "ref", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Contents entry or list" } }
+      }
+    },
+    "/api/v3/repos/{owner}/{repo}/commits": {
+      "get": {
+        "tags": ["repos"],
+        "summary": "Commit log (first-parent)",
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "name": "sha", "in": "query", "schema": { "type": "string" } },
+          { "name": "path", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Commit list" } }
+      }
+    },
+    "/api/v3/repos/{owner}/{repo}/statuses/{sha}": {
+      "post": {
+        "tags": ["repos"],
+        "summary": "Post a commit status (check writeback)",
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "name": "sha", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } }
+        },
+        "responses": { "201": { "description": "Status recorded" } }
+      }
+    },
+    "/api/v3/repos/{owner}/{repo}/commits/{sha}/status": {
+      "get": {
+        "tags": ["repos"],
+        "summary": "Combined status for a commit",
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "name": "sha", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Combined status + status list" } }
+      }
+    },
+    "/api/v3/repos/{owner}/{repo}/issues": {
+      "get": {
+        "tags": ["issues"],
+        "summary": "List issues (state/labels/assignee filters)",
+        "parameters": [
+          { "$ref": "#/components/parameters/owner" },
+          { "$ref": "#/components/parameters/repo" },
+          { "name": "state", "in": "query", "schema": { "type": "string", "enum": ["open", "closed", "all"] } }
+        ],
+        "responses": { "200": { "description": "Issue list" } }
+      },
+      "post": {
+        "tags": ["issues"],
+        "summary": "Create an issue",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssueInput" } } }
+        },
+        "responses": { "201": { "description": "Issue created" } }
+      }
+    },
+    "/api/v3/repos/{owner}/{repo}/issues/{number}": {
+      "get": { "tags": ["issues"], "summary": "Issue detail", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/number" }], "responses": { "200": { "description": "Issue" } } },
+      "patch": { "tags": ["issues"], "summary": "Update state/title/body/labels/type", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/number" }], "responses": { "200": { "description": "Issue" } } }
+    },
+    "/api/v3/repos/{owner}/{repo}/issues/{number}/comments": {
+      "get": { "tags": ["issues"], "summary": "Issue comments", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/number" }], "responses": { "200": { "description": "Comment list" } } },
+      "post": { "tags": ["issues"], "summary": "Comment on an issue", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/number" }], "responses": { "201": { "description": "Comment created" } } }
+    },
+    "/api/v3/repos/{owner}/{repo}/pulls": {
+      "get": { "tags": ["pulls"], "summary": "List pull requests (merge intents)", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }], "responses": { "200": { "description": "PR list" } } },
+      "post": { "tags": ["pulls"], "summary": "Open a pull request", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PullInput" } } } }, "responses": { "200": { "description": "PR opened" } } }
+    },
+    "/api/v3/repos/{owner}/{repo}/pulls/{number}": {
+      "get": { "tags": ["pulls"], "summary": "PR detail", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/number" }], "responses": { "200": { "description": "PR" } } }
+    },
+    "/api/v3/repos/{owner}/{repo}/pulls/{number}/merge": {
+      "put": { "tags": ["pulls"], "summary": "Merge a PR — 409 on drafts, failing required checks, or conflicts", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/number" }], "responses": { "200": { "description": "Merged" }, "409": { "description": "Draft/required-checks/conflict" } } }
+    },
+    "/api/v3/repos/{owner}/{repo}/releases": {
+      "get": { "tags": ["releases"], "summary": "List releases", "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }], "responses": { "200": { "description": "Release list" } } }
+    },
+    "/api/v3/search/issues": {
+      "get": {
+        "tags": ["search"],
+        "summary": "GitHub qualifier search (is:open author:x label:y)",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "repo", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Search results" } }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": { "tags": ["notifications"], "summary": "Viewer inbox (session)", "responses": { "200": { "description": "Notifications + unread count" } } }
+    },
+    "/api/v1/repos/{ref}/+/code-scanning/sarifs": {
+      "post": {
+        "tags": ["security"],
+        "summary": "Upload a SARIF 2.1.0 analysis (raw object or base64 string)",
+        "parameters": [{ "name": "ref", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "202": { "description": "Analysis accepted" } }
+      }
+    },
+    "/api/v1/repos/{ref}/+/code-scanning/alerts": {
+      "get": { "tags": ["security"], "summary": "Code-scanning alerts (?state=open|dismissed)", "parameters": [{ "name": "ref", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Alert list" } } }
+    },
+    "/api/v1/repos/{ref}/+/security-advisories": {
+      "get": { "tags": ["security"], "summary": "Published security advisories (drafts are writer-only)", "parameters": [{ "name": "ref", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Advisory list" } } },
+      "post": { "tags": ["security"], "summary": "Create a draft advisory", "parameters": [{ "name": "ref", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "201": { "description": "Advisory created" } } }
+    },
+    "/{owner}/{repo}/dg/oplog": {
+      "get": {
+        "tags": ["agent"],
+        "summary": "Public operation log — merge intents, adjudication, ref updates",
+        "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }],
+        "responses": { "200": { "description": "Op-log entries" } }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "owner": { "name": "owner", "in": "path", "required": true, "schema": { "type": "string" } },
+      "repo": { "name": "repo", "in": "path", "required": true, "schema": { "type": "string" } },
+      "number": { "name": "number", "in": "path", "required": true, "schema": { "type": "integer" } }
+    },
+    "schemas": {
+      "IssueInput": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "labels": { "type": "array", "items": { "type": "string" } },
+          "assignees": { "type": "array", "items": { "type": "string" } },
+          "type": { "type": "string" }
+        }
+      },
+      "PullInput": {
+        "type": "object",
+        "required": ["source_branch"],
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "source_branch": { "type": "string" },
+          "target_branch": { "type": "string", "default": "main" },
+          "is_draft": { "type": "boolean" }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "required": ["state", "context"],
+        "properties": {
+          "state": { "type": "string", "enum": ["pending", "success", "failure", "error"] },
+          "context": { "type": "string" },
+          "description": { "type": "string" },
+          "target_url": { "type": "string" }
+        }
+      }
+    }
+  }
+}

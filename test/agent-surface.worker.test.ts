@@ -57,6 +57,15 @@ describe("agent surface", () => {
     expect(skill.body).toContain("/api/v3");
   });
 
+  it("serves the OpenAPI spec at /api/openapi.json", async () => {
+    const { status, body } = await get("/api/openapi.json");
+    expect(status).toBe(200);
+    const spec = JSON.parse(body) as { openapi: string; paths: Record<string, unknown> };
+    expect(spec.openapi).toBe("3.0.3");
+    expect(spec.paths["/api/v3/repos/{owner}/{repo}/issues"]).toBeTruthy();
+    expect(spec.paths["/.well-known/delta-node"]).toBeTruthy();
+  });
+
   it("returns a markdown repo card on Accept: text/markdown", async () => {
     const { status, body, contentType } = await get(
       `/${seeded.namespaceSlug}/agsrepo`,
