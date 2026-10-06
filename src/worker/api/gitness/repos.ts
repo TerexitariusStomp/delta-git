@@ -592,14 +592,25 @@ export function registerGitnessRepos(router: AppRouter) {
     if (access.kind !== "ok") return access.response;
     const row = await findRepositoryByDoName(c.var.db, access.route.doName);
     if (!row) return gNotFound(c, "repository");
-    const nodes = await listForkNetwork(c.var.db, row.id);
+    const { root, nodes } = await listForkNetwork(c.var.db, row.id);
     const canSeePrivate = access.viewer
       ? await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId)
       : false;
     const visible = nodes.filter((n) => canSeePrivate || n.repository.visibility === "public");
+    const showRoot = root && (canSeePrivate || root.repository.visibility === "public");
     return c.json({
       count: visible.length,
+      root: showRoot
+        ? {
+            id: numericId(root.repository.id),
+            owner: root.namespaceSlug,
+            name: root.repository.slug,
+            full_name: `${root.namespaceSlug}/${root.repository.slug}`,
+            is_public: root.repository.visibility === "public",
+          }
+        : null,
       forks: visible.map((n) => ({
+        id: numericId(n.repository.id),
         owner: n.namespaceSlug,
         name: n.repository.slug,
         full_name: `${n.namespaceSlug}/${n.repository.slug}`,

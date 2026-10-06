@@ -5,6 +5,7 @@ import { Button, SandboxLayout, StatusBadge, Table, Tag, Text } from '@harnessio
 
 import { PathParams } from '../../RouteDefinitions'
 import {
+  ForkNode,
   useArenaMatch,
   useArenaMatches,
   useCreateIdea,
@@ -13,6 +14,7 @@ import {
   useDeltaOplog,
   useDeltaWork,
   useEnterArenaMatch,
+  useRepoNetwork,
   useVerifyIdea,
   useVoteArenaMatch
 } from './delta-api'
@@ -296,6 +298,75 @@ export function RepoDeltaArenaMatchPage() {
             ))}
           </Table.Body>
         </Table.Root>
+      </SandboxLayout.Content>
+    </SandboxLayout.Main>
+  )
+}
+
+/** Fork-lineage tree — children are indented under their forked-from parent. */
+function ForkTree({ root, nodes }: { root: ForkNode | null; nodes: ForkNode[] }) {
+  const children = new Map<number | null, ForkNode[]>()
+  const ids = new Set(nodes.map(n => n.id))
+  if (root) ids.add(root.id)
+  for (const n of nodes) {
+    // Nodes whose parent isn't visible (hidden intermediate fork, or the
+    // invisible root) hang directly under the rendered root row — or at the
+    // top level when the root itself is hidden.
+    const parent =
+      n.forked_from_id !== null && ids.has(n.forked_from_id)
+        ? n.forked_from_id
+        : (root?.id ?? null)
+    children.set(parent, [...(children.get(parent) ?? []), n])
+  }
+  const renderRow = (node: ForkNode, depth: number) => (
+    <Link
+      to={`/${node.owner}/${node.name}`}
+      className="flex items-center gap-cn-xs py-cn-3xs hover:bg-cn-2 rounded-cn-2"
+      style={{ paddingLeft: `${depth * 1.5}rem` }}>
+      <Text variant="body-strong" color="foreground-1">
+        {node.full_name}
+      </Text>
+      {!node.is_public && <Tag value="private" />}
+    </Link>
+  )
+  const renderLevel = (parentId: number | null, depth: number) =>
+    (children.get(parentId) ?? []).map(node => (
+      <div key={node.id}>
+        {renderRow(node, depth)}
+        {renderLevel(node.id, depth + 1)}
+      </div>
+    ))
+  return (
+    <div>
+      {root && renderRow(root, 0)}
+      {renderLevel(root ? root.id : null, root ? 1 : 0)}
+    </div>
+  )
+}
+
+/** Network — the fork lineage tree (GitHub /network parity). */
+export function RepoNetworkPage() {
+  const { spaceId, repoId } = useRepoParams()
+  const { data: network, isLoading } = useRepoNetwork(spaceId, repoId)
+  const forks = network?.forks ?? []
+  return (
+    <SandboxLayout.Main>
+      <SandboxLayout.Content>
+        <Text as="h1" variant="heading-section" className="mb-cn-md">
+          Fork network
+        </Text>
+        {isLoading ? (
+          <Text color="foreground-3">Loading…</Text>
+        ) : !forks.length ? (
+          <Text color="foreground-3">No forks yet — this repository stands alone.</Text>
+        ) : (
+          <>
+            <Text color="foreground-3" className="mb-cn-sm">
+              {forks.length} {forks.length === 1 ? 'fork' : 'forks'} in this network
+            </Text>
+            <ForkTree root={network?.root ?? null} nodes={forks} />
+          </>
+        )}
       </SandboxLayout.Content>
     </SandboxLayout.Main>
   )

@@ -833,3 +833,26 @@ export const useOpLog = (spaceId: string, repoId: string) =>
     () => dgFetch<{ entries: OpLogEntry[] }>(`/api/${spaceId}/${repoId}/dg/oplog`),
     { select: data => data.entries ?? [], refetchInterval: 30_000 }
   )
+
+// --- fork network (GitHub /network parity — fork lineage tree) ---------------
+
+export interface ForkNode {
+  id: number
+  owner: string
+  name: string
+  full_name: string
+  forked_from_id: number | null
+  is_public: boolean
+  created: number
+}
+
+export interface RepoNetwork {
+  count: number
+  root: ForkNode | null
+  forks: ForkNode[]
+}
+
+export const useRepoNetwork = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'network', spaceId, repoId], () =>
+    dgFetch<RepoNetwork>(`${v1Path(spaceId, repoId)}/network`)
+  )

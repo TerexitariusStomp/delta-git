@@ -280,11 +280,15 @@ export async function countRepositoriesForNamespace(db: Db, namespaceId: string)
 
 /**
  * Fork network for a repo: walk up to the root, then BFS down collecting
- * every descendant with its owning namespace slug. Public-only filtering
- * happens at the route layer (private forks are simply absent from the
- * response for unauthorized viewers).
+ * every descendant with its owning namespace slug. Returns the root node
+ * alongside its descendants so callers can anchor the lineage tree.
+ * Public-only filtering happens at the route layer (private forks are
+ * simply absent from the response for unauthorized viewers).
  */
-export async function listForkNetwork(db: Db, repositoryId: string): Promise<ForkNode[]> {
+export async function listForkNetwork(
+  db: Db,
+  repositoryId: string
+): Promise<{ root: ForkNode | undefined; nodes: ForkNode[] }> {
   // Root = oldest ancestor (bounded — pathological chains stop at 32 hops).
   let rootId = repositoryId;
   for (let hops = 0; hops < 32; hops++) {
@@ -296,6 +300,12 @@ export async function listForkNetwork(db: Db, repositoryId: string): Promise<For
     if (!row[0]?.parent) break;
     rootId = row[0].parent;
   }
+  const rootRow = await db
+    .select({ repository: repositories, namespaceSlug: namespaces.slug })
+    .from(repositories)
+    .innerJoin(namespaces, eq(repositories.namespaceId, namespaces.id))
+    .where(eq(repositories.id, rootId))
+    .limit(1);
   const out: ForkNode[] = [];
   const queue = [rootId];
   const seen = new Set<string>();
@@ -313,7 +323,7 @@ export async function listForkNetwork(db: Db, repositoryId: string): Promise<For
       queue.push(child.repository.id);
     }
   }
-  return out;
+  return { root: rootRow[0], nodes: out };
 }
 
 /** Gist-backed repos hide from space lists but resolve publicly by slug. */

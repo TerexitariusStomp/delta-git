@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 
 import { Layout, NoData, SandboxLayout, StatusBadge, Text } from '@harnessio/ui/components'
 
@@ -197,6 +197,15 @@ export function RepoInsightsPage() {
               )
             })
           )}
+        </Layout.Vertical>
+
+        <Layout.Vertical gap="xs" className="mt-cn-lg">
+          <Text variant="body-strong" color="foreground-1">
+            More
+          </Text>
+          <Link to="../network" className="text-cn-accent hover:underline">
+            Network — fork lineage
+          </Link>
         </Layout.Vertical>
 
         <AuditTrail spaceId={spaceId} repoId={repoId} />

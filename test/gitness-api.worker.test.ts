@@ -721,9 +721,17 @@ describe("gitness /api/v1 write paths", () => {
 
     const network = await get(`/api/v1/repos/${ref}/network`, w.cookieHeader);
     expect(network.status).toBe(200);
-    const net = network.body as { count: number; forks: { full_name: string }[] };
+    const net = network.body as {
+      count: number;
+      root: { id: number; full_name: string } | null;
+      forks: { id: number; full_name: string; forked_from_id: number | null }[];
+    };
     expect(net.count).toBe(1);
     expect(net.forks[0].full_name).toBe(`${w.namespaceSlug}/gwrepo-fork`);
+    // The fork's own id lets clients rebuild the lineage tree; the root row
+    // anchors it (forked_from_id → root.id).
+    expect(net.root?.full_name).toBe(`${w.namespaceSlug}/gwrepo`);
+    expect(net.forks[0].forked_from_id).toBe(net.root?.id);
 
     // The fork resolves as its own repo and reports 0 forks of its own.
     const forkDetail = await get(`/api/v1/repos/${w.namespaceSlug}/gwrepo-fork/+`, w.cookieHeader);

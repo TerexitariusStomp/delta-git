@@ -68,6 +68,7 @@ import {
   RepoDeltaArenaPage,
   RepoDeltaIdeasPage,
   RepoDeltaIntentsPage,
+  RepoNetworkPage,
 } from "./pages-v2/delta/repo-pages";
 import {
   RepoIssueDetailPage,
@@ -854,6 +855,15 @@ export const repoRoutes: CustomRouteObject[] = [
             handle: {
               breadcrumb: () => <span>Insights</span>,
               pageTitle: "Insights",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "network",
+            element: <RepoNetworkPage />,
+            handle: {
+              breadcrumb: () => <span>Network</span>,
+              pageTitle: "Network",
               publicAccess: true,
             },
           },
