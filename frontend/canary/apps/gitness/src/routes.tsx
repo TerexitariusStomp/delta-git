@@ -33,6 +33,7 @@ import {
   ConnectorsPage,
   DelegatesPage,
   ExternalTicketsPage,
+  FeatureFlagsPage,
   FileStorePage,
   FreezeWindowsPage,
   GitOpsPage,
@@ -1019,6 +1020,11 @@ export const routes: CustomRouteObject[] = [
           routeName: RouteConstants.toArtifacts,
           pageTitle: "Artifacts",
         },
+      },
+      {
+        path: "feature-flags",
+        element: <FeatureFlagsPage />,
+        handle: { routeName: RouteConstants.toFeatureFlags, pageTitle: "Feature Flags" },
       },
       {
         path: "connectors",

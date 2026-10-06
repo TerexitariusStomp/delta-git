@@ -459,6 +459,29 @@ export function registerGitnessDevx(router: AppRouter) {
     ]);
     const now = Date.now();
     const week = 7 * 86400_000;
+
+    // SEI metrics from repo DO state (bounded to the first 100 repos):
+    // weekly receive-ops from the op-log, plus merge-intent lead time.
+    let pushesWeek = 0;
+    let mergesWeek = 0;
+    let leadTimeTotalMs = 0;
+    let leadTimeCount = 0;
+    for (const repo of repos.slice(0, 100)) {
+      const stub = getRepoStub(c.env, repo.doName);
+      const [ops, intents] = await Promise.all([
+        stub.listOpLog(-1),
+        stub.listMergeIntents(["merged"]),
+      ]);
+      pushesWeek += ops.filter((o) => o.kind === "receive" && o.createdAt > now - week).length;
+      for (const intent of intents) {
+        if (intent.resolvedAt !== null && intent.resolvedAt > now - week) {
+          mergesWeek++;
+          leadTimeTotalMs += intent.resolvedAt - intent.createdAt;
+          leadTimeCount++;
+        }
+      }
+    }
+
     return c.json({
       repositories: repos.length,
       members: members.length,
@@ -470,6 +493,10 @@ export function registerGitnessDevx(router: AppRouter) {
       security_findings_week: tests
         .filter((t) => t.createdAt > now - week)
         .reduce((n, t) => n + t.findings, 0),
+      // Real SEI aggregates — not synthesized.
+      pushes_week: pushesWeek,
+      merges_week: mergesWeek,
+      merge_lead_time_ms: leadTimeCount > 0 ? Math.round(leadTimeTotalMs / leadTimeCount) : null,
     });
   });
 }

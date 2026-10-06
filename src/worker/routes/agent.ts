@@ -44,7 +44,13 @@ import {
   updateRepoExecution,
 } from "@/worker/api/gitness/stores";
 import { listScanRunsForRepo, upsertScanRun } from "@/worker/db/d1/dal/scanRuns";
-import { findArtifact, listArtifactsForRepo, upsertArtifact } from "@/worker/db/d1/dal/modules";
+import {
+  findArtifact,
+  findDelegate,
+  listArtifactsForRepo,
+  updateDelegate,
+  upsertArtifact,
+} from "@/worker/db/d1/dal/modules";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { ensureArtifactsPushSubscription } from "@/worker/tasks/artifactsSubscriptions";
@@ -1985,6 +1991,17 @@ export function registerAgentRoutes(router: AppRouter): void {
       (exec) => (exec.status === "running" ? { ...exec, heartbeat: Date.now() } : exec)
     );
     if (!updated) return bad(c, "execution not found", 404);
+    // Registry liveness — runners that match a declared delegate in this
+    // space stay `online` for the cron staleness reaper.
+    if (updated.runner) {
+      const delegate = await findDelegate(c.var.db, route.namespaceId, updated.runner);
+      if (delegate) {
+        await updateDelegate(c.var.db, delegate.id, {
+          status: "online",
+          lastSeenAt: Date.now(),
+        });
+      }
+    }
     return json(c, { ok: true, status: updated.status });
   });
 

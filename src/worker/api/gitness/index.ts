@@ -37,7 +37,7 @@ import { registerGitnessRepoKeys } from "./repokeys";
 import { registerGitnessKnowledge } from "./knowledge";
 import { registerGitnessRbac } from "./rbac";
 import { registerGitnessModules } from "./modules";
-import { registerGitnessDelivery } from "./delivery";
+import { registerGitnessDelivery, registerGitnessFlags } from "./delivery";
 import { registerGitnessReliability } from "./reliability";
 import { registerGitnessDevx, registerGitnessDr } from "./devx";
 
@@ -70,6 +70,9 @@ export function registerGitnessApi(router: AppRouter) {
   // Reliability plane claims `/spaces/{ref}/{monitors,slos,downtimes,
   // incidents,certificates,costs,chaos,reliability}` tails.
   registerGitnessReliability(router);
+  // Flags/overrides/gitops-sync claim `/spaces/{ref}/{flags,overrides}` tails
+  // plus the gitops reconcile tail — same greedy-route ordering rule.
+  registerGitnessFlags(router);
   // Devx plane claims `/spaces/{ref}/{catalog,dev-environments,databases,
   // security-tests,supply-chain,dashboards,insights}` tails.
   registerGitnessDevx(router);

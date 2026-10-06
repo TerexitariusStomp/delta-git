@@ -150,6 +150,8 @@ export const gitopsTargets = sqliteTable(
     targetEnvironment: text("target_environment").notNull(),
     enabled: integer("enabled").notNull().default(1),
     lastSyncAt: integer("last_sync_at"),
+    // Head oid captured at the last reconcile — drift = repo head ≠ this.
+    lastSyncOid: text("last_sync_oid"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -207,3 +209,48 @@ export const iacStates = sqliteTable(
 );
 export type IacStateRow = typeof iacStates.$inferSelect;
 export type NewIacStateRow = typeof iacStates.$inferInsert;
+
+// Feature flags — space-scoped toggles with JSON targeting rules. Eval is
+// OpenFeature-protocol-shaped: flag name + subject → boolean.
+export const featureFlags = sqliteTable(
+  "feature_flags",
+  {
+    id: text("id").primaryKey(),
+    namespaceId: text("namespace_id")
+      .notNull()
+      .references(() => namespaces.id, { onDelete: "cascade" }),
+    identifier: text("identifier").notNull(),
+    state: integer("state").notNull().default(0), // 0 off | 1 on
+    // JSON targeting: [{kind:"user"|"group"|"percentage", value}]
+    targets: text("targets").notNull().default("[]"),
+    description: text("description"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("uq_flags_ns_ident").on(table.namespaceId, table.identifier),
+    index("idx_flags_ns").on(table.namespaceId),
+  ]
+);
+export type FeatureFlagRow = typeof featureFlags.$inferSelect;
+export type NewFeatureFlagRow = typeof featureFlags.$inferInsert;
+
+// Overrides — env-scoped policy/SLO exemptions with expiry.
+export const overrides = sqliteTable(
+  "overrides",
+  {
+    id: text("id").primaryKey(),
+    namespaceId: text("namespace_id")
+      .notNull()
+      .references(() => namespaces.id, { onDelete: "cascade" }),
+    // What is overridden: "freeze:<id>" | "policy:<id>" | "slo:<id>"
+    subject: text("subject").notNull(),
+    reason: text("reason").notNull(),
+    createdBy: text("created_by").notNull(),
+    expiresAt: integer("expires_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("idx_overrides_ns").on(table.namespaceId)]
+);
+export type OverrideRow = typeof overrides.$inferSelect;
+export type NewOverrideRow = typeof overrides.$inferInsert;

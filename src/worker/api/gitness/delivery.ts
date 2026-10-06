@@ -35,10 +35,11 @@ import {
   listPolicies,
   listTickets,
   updateFreezeWindow,
+  updateGitopsTarget,
   updateIacState,
   updateTicket,
 } from "@/worker/db/d1/dal/modules";
-import { newPrefixedId } from "@/worker/common";
+import { newPrefixedId, getRepoStub } from "@/worker/common";
 import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound, numericId } from "./shared";
 import {
@@ -813,3 +814,205 @@ export async function evaluateDeliveryGates(
   }
   return { ok: true, warnings };
 }
+
+// --- feature flags + overrides + gitops sync -------------------------------------------
+// Registered separately so the flag-eval contract stays clear of the CRUD block.
+
+import {
+  deleteFeatureFlag,
+  deleteOverride,
+  findFeatureFlag,
+  insertFeatureFlag,
+  insertOverride,
+  listFeatureFlags,
+  listOverrides,
+  updateFeatureFlag,
+} from "@/worker/db/d1/dal/modules";
+const repoStub = getRepoStub;
+
+interface FlagTarget {
+  kind: "user" | "group" | "percentage";
+  value: string;
+}
+
+/** OpenFeature-shaped flag evaluation — deterministic percentage bucketing. */
+export function evaluateFlag(row: { state: number; targets: string }, subject: string): boolean {
+  if (row.state !== 1) return false;
+  const targets = JSON.parse(row.targets) as FlagTarget[];
+  if (targets.length === 0) return true;
+  for (const t of targets) {
+    if (t.kind === "user" && t.value === subject) return true;
+    if (t.kind === "percentage") {
+      const pct = parseInt(t.value, 10);
+      if (Number.isFinite(pct)) {
+        let h = 0x811c9dc5;
+        const key = `${subject}`;
+        for (let i = 0; i < key.length; i++) {
+          h ^= key.charCodeAt(i);
+          h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        if (h % 100 < pct) return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function registerGitnessFlags(router: AppRouter) {
+  router.get("/api/v1/spaces/:space_ref{.+}/flags", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const rows = await listFeatureFlags(c.var.db, ns.id);
+    return c.json(
+      rows.map((r) => ({
+        id: r.id,
+        identifier: r.identifier,
+        state: r.state === 1 ? "on" : "off",
+        targets: JSON.parse(r.targets) as FlagTarget[],
+        description: r.description,
+        updated: r.updatedAt,
+      }))
+    );
+  });
+
+  router.post("/api/v1/spaces/:space_ref{.+}/flags", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const body = (await c.req.json().catch(() => null)) as {
+      identifier?: string;
+      state?: string;
+      description?: string;
+      targets?: FlagTarget[];
+    } | null;
+    const identifier = body?.identifier?.trim().toLowerCase();
+    if (!identifier || !isValidOwnerRepo(identifier)) {
+      return gErr(c, 400, "valid identifier required");
+    }
+    const now = Date.now();
+    await insertFeatureFlag(c.var.db, {
+      id: newPrefixedId("flg"),
+      namespaceId: ns.id,
+      identifier,
+      state: body?.state === "on" ? 1 : 0,
+      targets: JSON.stringify(body?.targets ?? []),
+      description: body?.description ?? null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return c.json({ identifier }, 201);
+  });
+
+  router.patch("/api/v1/spaces/:space_ref{.+}/flags/:id", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const row = await findFeatureFlag(c.var.db, ns.id, c.req.param("id"));
+    if (!row) return gNotFound(c, "flag");
+    const body = (await c.req.json().catch(() => null)) as {
+      state?: string;
+      targets?: FlagTarget[];
+      description?: string;
+    } | null;
+    await updateFeatureFlag(c.var.db, row.id, {
+      ...(body?.state ? { state: body.state === "on" ? 1 : 0 } : {}),
+      ...(body?.targets ? { targets: JSON.stringify(body.targets) } : {}),
+      ...(body?.description !== undefined ? { description: body.description } : {}),
+      updatedAt: Date.now(),
+    });
+    return c.json({});
+  });
+
+  router.delete("/api/v1/spaces/:space_ref{.+}/flags/:id", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const row = await findFeatureFlag(c.var.db, ns.id, c.req.param("id"));
+    if (!row) return gNotFound(c, "flag");
+    await deleteFeatureFlag(c.var.db, row.id);
+    return c.body(null, 204);
+  });
+
+  // OpenFeature-shaped eval: GET …/flags/{name}/eval?subject=<uid-or-did>
+  router.get("/api/v1/spaces/:space_ref{.+}/flags/:id/eval", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const row = await findFeatureFlag(c.var.db, ns.id, c.req.param("id"));
+    if (!row) return gNotFound(c, "flag");
+    const subject = c.req.query("subject") ?? ns.userId;
+    return c.json({ flag: row.identifier, subject, value: evaluateFlag(row, subject) });
+  });
+
+  // --- overrides ----------------------------------------------------------------------
+  router.get("/api/v1/spaces/:space_ref{.+}/overrides", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const rows = await listOverrides(c.var.db, ns.id);
+    const now = Date.now();
+    return c.json(
+      rows.map((r) => ({
+        id: r.id,
+        subject: r.subject,
+        reason: r.reason,
+        created_by: r.createdBy,
+        expires_at: r.expiresAt,
+        active: r.expiresAt === null || r.expiresAt > now,
+        created: r.createdAt,
+      }))
+    );
+  });
+
+  router.post("/api/v1/spaces/:space_ref{.+}/overrides", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const body = (await c.req.json().catch(() => null)) as {
+      subject?: string;
+      reason?: string;
+      expires_at?: number;
+    } | null;
+    if (!body?.subject?.trim() || !body?.reason?.trim()) {
+      return gErr(c, 400, "subject + reason required");
+    }
+    await insertOverride(c.var.db, {
+      id: newPrefixedId("ovr"),
+      namespaceId: ns.id,
+      subject: body.subject.trim(),
+      reason: body.reason.trim(),
+      createdBy: ns.userId,
+      expiresAt: body.expires_at ?? null,
+      createdAt: Date.now(),
+    });
+    return c.json({}, 201);
+  });
+
+  router.delete("/api/v1/spaces/:space_ref{.+}/overrides/:id", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    await deleteOverride(c.var.db, c.req.param("id"));
+    return c.body(null, 204);
+  });
+
+  // --- gitops reconcile ----------------------------------------------------------------
+  // POST /gitops/{id}/sync — reads the target branch head from the repo DO;
+  // drift = head ≠ last_sync_oid. The reconcile job records the new head as
+  // synced (the "apply" half lands wherever the environment lives — connector
+  // delivery is the follow-on; the drift ledger is real now).
+  router.post("/api/v1/spaces/:space_ref{.+}/gitops/:id/sync", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const rows = await listGitopsTargets(c.var.db, ns.id);
+    const row = rows.find((g) => g.id === c.req.param("id") || g.identifier === c.req.param("id"));
+    if (!row) return gNotFound(c, "gitops target");
+    const repo = await findRepositoryById(c.var.db, row.repositoryId);
+    if (!repo) return gNotFound(c, "repository");
+    const stub = repoStub(c.env, repo.doName);
+    const { refs } = await stub.getHeadAndRefs();
+    const branchRef = `refs/heads/${row.branch}`;
+    const head = refs.find((r) => r.name === branchRef)?.oid ?? null;
+    if (!head) return gErr(c, 400, `branch ${row.branch} has no head`);
+    const drifted = row.lastSyncOid !== head;
+    await updateGitopsTarget(c.var.db, row.id, {
+      lastSyncOid: head,
+      lastSyncAt: Date.now(),
+    });
+    return c.json({ drifted, oid: head, synced_at: Date.now() });
+  });
+}
+import { findRepositoryById } from "@/worker/db/d1/dal/repositories";

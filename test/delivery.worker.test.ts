@@ -203,3 +203,83 @@ describe("policies + tickets + gitops + iac", () => {
     expect(unlock.status).toBe(200);
   });
 });
+
+describe("feature flags + overrides + gitops sync", () => {
+  it("CRUDs flags and evaluates user/percentage targets deterministically", async () => {
+    const create = await req(`/api/v1/spaces/${owner}/flags`, {
+      method: "POST",
+      body: { identifier: "beta-ui" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(create.status).toBe(201);
+
+    // Default off → eval false.
+    const evalOff = await req(`/api/v1/spaces/${owner}/flags/beta-ui/eval`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(evalOff.status).toBe(200);
+    expect((evalOff.body as { value: boolean }).value).toBe(false);
+
+    const toggle = await req(`/api/v1/spaces/${owner}/flags/beta-ui`, {
+      method: "PATCH",
+      body: { state: "on" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(toggle.status).toBe(200);
+
+    const evalOn = await req(`/api/v1/spaces/${owner}/flags/beta-ui/eval`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect((evalOn.body as { value: boolean }).value).toBe(true);
+
+    const del = await req(`/api/v1/spaces/${owner}/flags/beta-ui`, {
+      method: "DELETE",
+      cookie: seeded.cookieHeader,
+    });
+    expect(del.status).toBe(204);
+  });
+
+  it("stores overrides with active/expired semantics", async () => {
+    const create = await req(`/api/v1/spaces/${owner}/overrides`, {
+      method: "POST",
+      body: { subject: "freeze:deploy-freeze", reason: "hotfix window" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(create.status).toBe(201);
+
+    const list = await req(`/api/v1/spaces/${owner}/overrides`, { cookie: seeded.cookieHeader });
+    const row = (list.body as { subject: string; active: boolean }[]).find(
+      (o) => o.subject === "freeze:deploy-freeze"
+    )!;
+    expect(row.active).toBe(true);
+  });
+
+  it("gitops sync reports drift then converges on the recorded head", async () => {
+    // Seed a real pack + main ref so the DO has a head to compare against.
+    const { seedPackFirstRepo } = await import("./util/pack-first");
+    await seedPackFirstRepo(`${owner}/${seeded.repoSlug}`);
+
+    const create = await req(`/api/v1/spaces/${owner}/gitops`, {
+      method: "POST",
+      body: { identifier: "prod-deploy", repo: seeded.repoSlug, target_environment: "prod" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(create.status).toBe(201);
+
+    const first = await req(`/api/v1/spaces/${owner}/gitops/prod-deploy/sync`, {
+      method: "POST",
+      body: {},
+      cookie: seeded.cookieHeader,
+    });
+    expect(first.status).toBe(200);
+    expect((first.body as { drifted: boolean }).drifted).toBe(true);
+
+    const second = await req(`/api/v1/spaces/${owner}/gitops/prod-deploy/sync`, {
+      method: "POST",
+      body: {},
+      cookie: seeded.cookieHeader,
+    });
+    expect(second.status).toBe(200);
+    expect((second.body as { drifted: boolean }).drifted).toBe(false);
+  });
+});

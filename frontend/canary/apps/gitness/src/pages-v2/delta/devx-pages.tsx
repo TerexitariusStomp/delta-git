@@ -224,6 +224,9 @@ interface InsightsData {
   open_incidents: number;
   security_tests_week: number;
   security_findings_week: number;
+  pushes_week: number;
+  merges_week: number;
+  merge_lead_time_ms: number | null;
 }
 
 export function DevInsightsPage() {
@@ -234,7 +237,7 @@ export function DevInsightsPage() {
     { enabled: !!space }
   );
 
-  const cards: { label: string; value: number | undefined }[] = [
+  const cards: { label: string; value: number | undefined; suffix?: string }[] = [
     { label: "Repositories", value: data?.repositories },
     { label: "Members", value: data?.members },
     { label: "Artifacts", value: data?.artifacts },
@@ -243,6 +246,16 @@ export function DevInsightsPage() {
     { label: "Open incidents", value: data?.open_incidents },
     { label: "Security tests (7d)", value: data?.security_tests_week },
     { label: "Security findings (7d)", value: data?.security_findings_week },
+    { label: "Pushes (7d)", value: data?.pushes_week },
+    { label: "Merges (7d)", value: data?.merges_week },
+    {
+      label: "Merge lead time",
+      value:
+        data?.merge_lead_time_ms != null
+          ? Math.round(data.merge_lead_time_ms / 60000)
+          : undefined,
+      suffix: data?.merge_lead_time_ms != null ? "min" : undefined,
+    },
   ];
 
   return (
@@ -254,7 +267,10 @@ export function DevInsightsPage() {
             key={card.label}
             className="rounded-cn-md border border-cn-borders-2 bg-cn-background-2 p-cn-lg"
           >
-            <div className="text-2xl font-semibold text-cn-foreground-1">{card.value ?? "—"}</div>
+            <div className="text-2xl font-semibold text-cn-foreground-1">
+              {card.value ?? "—"}
+              {card.suffix && <span className="text-sm text-cn-foreground-3"> {card.suffix}</span>}
+            </div>
             <div className="text-sm text-cn-foreground-3">{card.label}</div>
           </div>
         ))}

@@ -3,10 +3,12 @@
 // tracking, cost snapshots, and chaos experiment records. Space-scoped.
 
 import type { AppRouter } from "@/worker/routes/hono";
+import type { Db } from "@/worker/db/d1";
 
 import { loadViewer } from "@/worker/auth/session";
 import { viewerIsNamespaceMember } from "@/worker/auth/pat";
-import { findNamespaceBySlug } from "@/worker/db/d1/dal/namespaces";
+import { findNamespaceBySlug, listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
+
 import {
   deleteCertificate,
   deleteChaosExperiment,
@@ -22,6 +24,7 @@ import {
   insertIncident,
   insertIncidentUpdate,
   insertMonitor,
+  insertNotification,
   insertMonitorCheck,
   insertSlo,
   listCertificates,
@@ -37,6 +40,7 @@ import {
   updateIncident,
   updateMonitor,
 } from "@/worker/db/d1/dal/modules";
+import type { MonitorRow } from "@/worker/db/d1/schema";
 import { newPrefixedId } from "@/worker/common";
 import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound } from "./shared";
@@ -56,6 +60,69 @@ async function resolveMemberSpace(
     return gErr(c, 403, "forbidden");
   }
   return { id: ns.id, slug: ns.slug, userId: viewer.userId };
+}
+
+/** One monitor check — used by the /run endpoint and the cron probe. */
+export async function runMonitorProbe(
+  db: Db,
+  row: MonitorRow
+): Promise<{ status: string; latency_ms: number; status_code: number | null }> {
+  const started = Date.now();
+  let statusCode: number | null = null;
+  let up = false;
+  try {
+    const res = await fetch(row.url, {
+      method: row.method,
+      signal: AbortSignal.timeout(10_000),
+    });
+    statusCode = res.status;
+    up = res.status === row.expectedStatus;
+    // Consume the body so the subrequest isn't pinned open.
+    await res.arrayBuffer().catch(() => undefined);
+  } catch {
+    up = false;
+  }
+  const latencyMs = Date.now() - started;
+  const now = Date.now();
+  await insertMonitorCheck(db, {
+    id: newPrefixedId("mck"),
+    monitorId: row.id,
+    status: up ? "up" : "down",
+    latencyMs,
+    statusCode,
+    checkedAt: now,
+  });
+  await updateMonitor(db, row.id, {
+    lastStatus: up ? "up" : "down",
+    lastLatencyMs: latencyMs,
+    lastCheckedAt: now,
+  });
+  return { status: up ? "up" : "down", latency_ms: latencyMs, status_code: statusCode };
+}
+
+/** Inbox fan-out: every space member except the actor gets the incident row. */
+async function notifyIncident(
+  c: GitnessContext,
+  namespaceId: string,
+  actor: string,
+  title: string,
+  body: string
+): Promise<void> {
+  const members = await listMembershipsForNamespace(c.var.db, namespaceId);
+  const now = Date.now();
+  for (const member of members) {
+    if (member.userId === actor) continue;
+    await insertNotification(c.var.db, {
+      id: newPrefixedId("ntf"),
+      userId: member.userId,
+      kind: "incident",
+      title,
+      body,
+      link: null,
+      createdAt: now,
+      readAt: null,
+    }).catch(() => {});
+  }
 }
 
 function monitorView(r: {
@@ -159,37 +226,8 @@ export function registerGitnessReliability(router: AppRouter) {
     if (ns instanceof Response) return ns;
     const row = await findMonitor(c.var.db, ns.id, c.req.param("id"));
     if (!row) return gNotFound(c, "monitor");
-    const started = Date.now();
-    let statusCode: number | null = null;
-    let up = false;
-    try {
-      const res = await fetch(row.url, {
-        method: row.method,
-        signal: AbortSignal.timeout(10_000),
-      });
-      statusCode = res.status;
-      up = res.status === row.expectedStatus;
-      // Consume the body so the subrequest isn't pinned open.
-      await res.arrayBuffer().catch(() => undefined);
-    } catch {
-      up = false;
-    }
-    const latencyMs = Date.now() - started;
-    const now = Date.now();
-    await insertMonitorCheck(c.var.db, {
-      id: newPrefixedId("mck"),
-      monitorId: row.id,
-      status: up ? "up" : "down",
-      latencyMs,
-      statusCode,
-      checkedAt: now,
-    });
-    await updateMonitor(c.var.db, row.id, {
-      lastStatus: up ? "up" : "down",
-      lastLatencyMs: latencyMs,
-      lastCheckedAt: now,
-    });
-    return c.json({ status: up ? "up" : "down", latency_ms: latencyMs, status_code: statusCode });
+    const result = await runMonitorProbe(c.var.db, row);
+    return c.json(result);
   });
 
   // External probe ingest — delegates/agents POST check results they ran on
@@ -439,6 +477,15 @@ export function registerGitnessReliability(router: AppRouter) {
       if (body.status === "resolved") patch.resolvedAt = now;
     }
     await updateIncident(c.var.db, row.id, patch);
+    if (body.status === "resolved" || body.status === "mitigated") {
+      await notifyIncident(
+        c,
+        ns.id,
+        ns.userId,
+        `Incident ${body.status}: ${row.title}`,
+        body.body.trim()
+      );
+    }
     return c.json({});
   });
 

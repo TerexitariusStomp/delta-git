@@ -701,3 +701,80 @@ export async function updateDashboard(
 export async function deleteDashboard(db: Db, id: string): Promise<void> {
   await db.delete(dashboards).where(eq(dashboards.id, id)).run();
 }
+
+// --- feature flags + overrides ---------------------------------------------------
+
+import {
+  featureFlags,
+  overrides,
+  type FeatureFlagRow,
+  type NewFeatureFlagRow,
+  type NewOverrideRow,
+  type OverrideRow,
+} from "../schema";
+
+export async function listFeatureFlags(db: Db, namespaceId: string): Promise<FeatureFlagRow[]> {
+  return db.select().from(featureFlags).where(eq(featureFlags.namespaceId, namespaceId)).all();
+}
+export async function findFeatureFlag(db: Db, namespaceId: string, identifier: string) {
+  return db
+    .select()
+    .from(featureFlags)
+    .where(and(eq(featureFlags.namespaceId, namespaceId), eq(featureFlags.identifier, identifier)))
+    .get();
+}
+export async function insertFeatureFlag(db: Db, row: NewFeatureFlagRow): Promise<void> {
+  await db.insert(featureFlags).values(row).run();
+}
+export async function updateFeatureFlag(
+  db: Db,
+  id: string,
+  patch: Partial<FeatureFlagRow>
+): Promise<void> {
+  await db.update(featureFlags).set(patch).where(eq(featureFlags.id, id)).run();
+}
+export async function deleteFeatureFlag(db: Db, id: string): Promise<void> {
+  await db.delete(featureFlags).where(eq(featureFlags.id, id)).run();
+}
+
+export async function listOverrides(db: Db, namespaceId: string): Promise<OverrideRow[]> {
+  return db.select().from(overrides).where(eq(overrides.namespaceId, namespaceId)).all();
+}
+export async function insertOverride(db: Db, row: NewOverrideRow): Promise<void> {
+  await db.insert(overrides).values(row).run();
+}
+export async function deleteOverride(db: Db, id: string): Promise<void> {
+  await db.delete(overrides).where(eq(overrides.id, id)).run();
+}
+
+// --- cron-scope readers (fleet-wide, no namespace filter) -------------------------------
+
+/** All enabled monitors across namespaces — the scheduled probe iterates these. */
+export async function listAllEnabledMonitors(db: Db): Promise<MonitorRow[]> {
+  return db.select().from(monitors).where(eq(monitors.enabled, 1)).all();
+}
+
+/** Online delegates for the staleness reaper — cron flips them offline. */
+export async function listOnlineDelegates(db: Db): Promise<DelegateAgentRow[]> {
+  return db.select().from(delegateAgents).where(eq(delegateAgents.status, "online")).all();
+}
+
+/** Certificates still within their expiry horizon — cron expiry scanner. */
+export async function listAllCertificates(db: Db): Promise<CertificateRow[]> {
+  return db.select().from(certificates).all();
+}
+
+/** Delegate lookup by identifier — the runner protocol touches rows it matches. */
+export async function findDelegate(
+  db: Db,
+  namespaceId: string,
+  identifier: string
+): Promise<DelegateAgentRow | undefined> {
+  return db
+    .select()
+    .from(delegateAgents)
+    .where(
+      and(eq(delegateAgents.namespaceId, namespaceId), eq(delegateAgents.identifier, identifier))
+    )
+    .get();
+}

@@ -120,6 +120,13 @@
       "when": 1791243768762,
       "tag": "0016_mute_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1791244534472,
+      "tag": "0017_magenta_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

@@ -180,3 +180,50 @@ describe("certificates + costs + chaos", () => {
     expect(row.last_outcome).toBe("pass");
   });
 });
+
+describe("scheduled handler", () => {
+  it("probes due monitors and reaps stale delegates on the 5-min cron", async () => {
+    const { handleScheduled } = await import("@/worker/scheduled");
+    const { createDb } = await import("@/worker/db/d1");
+    const { insertMonitor, insertDelegate, findMonitor, listMonitorChecks, listDelegates } =
+      await import("@/worker/db/d1/dal/modules");
+    const db = createDb(env.DB);
+    const now = Date.now();
+
+    await insertMonitor(db, {
+      id: `mon-cron-${now}`,
+      namespaceId: seeded.namespaceId,
+      identifier: "cronprobe",
+      url: "https://127.0.0.1:1/unreachable",
+      method: "GET",
+      expectedStatus: 200,
+      intervalSec: 1,
+      enabled: 1,
+      lastStatus: null,
+      lastLatencyMs: null,
+      lastCheckedAt: null,
+      createdAt: now,
+    });
+    await insertDelegate(db, {
+      id: `dlg-cron-${now}`,
+      namespaceId: seeded.namespaceId,
+      identifier: "stale-runner",
+      tags: "[]",
+      status: "online",
+      lastSeenAt: now - 20 * 60 * 1000,
+      createdBy: seeded.userId,
+      createdAt: now - 3600_000,
+    });
+
+    await handleScheduled("*/5 * * * *", env);
+
+    const monitor = await findMonitor(db, seeded.namespaceId, "cronprobe");
+    expect(monitor?.lastCheckedAt).not.toBeNull();
+    expect(monitor?.lastStatus).toBe("down");
+    const checks = await listMonitorChecks(db, monitor!.id, 10);
+    expect(checks.length).toBeGreaterThan(0);
+
+    const delegates = await listDelegates(db, seeded.namespaceId);
+    expect(delegates.find((d) => d.identifier === "stale-runner")?.status).toBe("offline");
+  });
+});

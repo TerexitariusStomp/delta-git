@@ -18,6 +18,7 @@ import { requestServicesMiddleware, type AppBindings, type AppContext } from "./
 import { renderUiDocumentResponse } from "./routes/uiResponse";
 import { loadViewer } from "./auth/session";
 import { json } from "./common";
+import { handleScheduled } from "./scheduled";
 import { handleRepoTaskQueue } from "./tasks/queue";
 
 const app = new Hono<AppBindings>({ strict: false });
@@ -101,6 +102,9 @@ export default {
   },
   async queue(batch: MessageBatch<unknown>, env: Env, ctx: ExecutionContext) {
     return await handleRepoTaskQueue(batch, env, ctx);
+  },
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(handleScheduled(controller.cron, env));
   },
 };
 

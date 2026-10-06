@@ -938,3 +938,128 @@ export function IaCPage() {
     </PageShell>
   );
 }
+
+// --- feature flags -----------------------------------------------------------
+
+interface FlagItem {
+  id: string;
+  identifier: string;
+  state: "on" | "off";
+  targets: { kind: string; value: string }[];
+  description: string | null;
+  updated: number;
+}
+
+export function FeatureFlagsPage() {
+  const { spaces, space, setSpace } = useSpacePicker();
+  const queryClient = useQueryClient();
+  const [identifier, setIdentifier] = useState("");
+  const [subject, setSubject] = useState("");
+
+  const { data } = useQuery(
+    ["feature-flags", space],
+    () => deltaApi<FlagItem[]>(`/api/v1/spaces/${space}/flags`),
+    { enabled: !!space }
+  );
+  const { data: evalResult } = useQuery(
+    ["flag-eval", space, subject],
+    () =>
+      deltaApi<{ flag: string; subject: string; value: boolean }>(
+        `/api/v1/spaces/${space}/flags/${subject}/eval`
+      ),
+    { enabled: !!space && !!subject }
+  );
+  const createFlag = useMutation(
+    () =>
+      deltaApi(`/api/v1/spaces/${space}/flags`, {
+        method: "POST",
+        body: JSON.stringify({ identifier }),
+      }),
+    {
+      onSuccess: () => {
+        setIdentifier("");
+        queryClient.invalidateQueries(["feature-flags", space]);
+      },
+    }
+  );
+  const toggleFlag = useMutation(
+    (flag: FlagItem) =>
+      deltaApi(`/api/v1/spaces/${space}/flags/${flag.identifier}`, {
+        method: "PATCH",
+        body: JSON.stringify({ state: flag.state === "on" ? "off" : "on" }),
+      }),
+    { onSuccess: () => queryClient.invalidateQueries(["feature-flags", space]) }
+  );
+  const deleteFlag = useMutation(
+    (flag: FlagItem) =>
+      deltaApi(`/api/v1/spaces/${space}/flags/${flag.identifier}`, { method: "DELETE" }),
+    { onSuccess: () => queryClient.invalidateQueries(["feature-flags", space]) }
+  );
+
+  return (
+    <PageShell title="Feature flags">
+      <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
+      {space && (
+        <>
+          <div className="mt-cn-md flex gap-cn-sm">
+            <TextInput
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="flag identifier"
+            />
+            <Button onClick={() => createFlag.mutate()} disabled={!identifier.trim()}>
+              Create flag
+            </Button>
+          </div>
+          <Table.Root>
+            <Table.Header>
+              <Table.Row>
+                <Table.Head>Flag</Table.Head>
+                <Table.Head>State</Table.Head>
+                <Table.Head>Targets</Table.Head>
+                <Table.Head></Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {data?.map((flag) => (
+                <Table.Row key={flag.id}>
+                  <Table.Cell>{flag.identifier}</Table.Cell>
+                  <Table.Cell>
+                    <StatusBadge variant="status" theme={flag.state === "on" ? "success" : "muted"}>
+                      {flag.state}
+                    </StatusBadge>
+                  </Table.Cell>
+                  <Table.Cell>{flag.targets.length}</Table.Cell>
+                  <Table.Cell>
+                    <div className="flex gap-cn-sm">
+                      <Button variant="outline" onClick={() => toggleFlag.mutate(flag)}>
+                        {flag.state === "on" ? "Turn off" : "Turn on"}
+                      </Button>
+                      <Button variant="ghost" onClick={() => deleteFlag.mutate(flag)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Root>
+          {data && data.length === 0 && <EmptyNote text="No flags defined for this space." />}
+          <div className="mt-cn-md flex items-center gap-cn-sm">
+            <TextInput
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="eval: flag name"
+              className="max-w-cn-sm"
+            />
+            {evalResult && (
+              <Text>
+                {evalResult.flag} → {evalResult.value ? "true" : "false"} for {evalResult.subject}
+              </Text>
+            )}
+          </div>
+        </>
+      )}
+    </PageShell>
+  );
+}

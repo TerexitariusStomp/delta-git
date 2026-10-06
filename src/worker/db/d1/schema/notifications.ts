@@ -14,7 +14,7 @@ export const notifications = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    // Event discriminator: push | intent_resolved | execution | mention.
+    // Event discriminator: push | intent_resolved | execution | mention | incident.
     kind: text("kind").notNull(),
     title: text("title").notNull(),
     body: text("body"),

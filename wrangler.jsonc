@@ -102,6 +102,9 @@
   ],
   // Analytics Engine is included with Workers Paid; `metric()` no-ops if the
   // binding is ever absent (e.g. an older deploy config).
+  // Cron tiers: 5-min handles due monitor probes + delegate staleness;
+  // hourly carries the certificate-expiry notification scan.
+  "triggers": { "crons": ["*/5 * * * *", "0 * * * *"] },
   "analytics_engine_datasets": [
     {
       "binding": "ANALYTICS",
