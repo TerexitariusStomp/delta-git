@@ -302,6 +302,13 @@ describe("releases: generate-notes", () => {
     expect(commitsFeed.status).toBe(200);
     const commitsXml = new TextDecoder().decode(commitsFeed.bytes!);
     expect(commitsXml).toContain("drop the legacy API");
+
+    // Iframe-able repo card for external embeds.
+    const card = await call("GET", `/embed/${repo.namespaceSlug}/notesrepo`);
+    expect(card.status).toBe(200);
+    const cardHtml = new TextDecoder().decode(card.bytes!);
+    expect(cardHtml).toContain(`${repo.namespaceSlug}/notesrepo`);
+    expect(cardHtml).toContain("delta-git");
   });
 });
 
