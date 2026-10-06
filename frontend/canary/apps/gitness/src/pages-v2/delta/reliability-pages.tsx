@@ -24,7 +24,7 @@ function PageShell({ title, children }: { title: string; children: React.ReactNo
 }
 
 function EmptyNote({ text }: { text: string }) {
-  return <Text className="mt-cn-md text-cn-foreground-3">{text}</Text>;
+  return <Text className="mt-cn-md text-cn-3">{text}</Text>;
 }
 
 // --- monitors -------------------------------------------------------------------
@@ -352,7 +352,7 @@ export function IncidentsPage() {
       <div className="mb-cn-lg flex items-end gap-cn-md">
         <TextInput label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="edge 5xx spike" />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={severity}
           onChange={(e) => setSeverity(e.target.value)}
         >
@@ -597,14 +597,14 @@ export function ChaosPage() {
   return (
     <PageShell title="Chaos engineering">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         Experiment definitions + outcome ledger. Experiments run on your own infra; record the
         result here.
       </Text>
       <div className="mb-cn-lg flex items-end gap-cn-md">
         <TextInput label="Identifier" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="latency-poke" />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
         >
@@ -695,10 +695,10 @@ export function ServiceReliabilityPage() {
         {cards.map((card) => (
           <div
             key={card.label}
-            className="rounded-cn-md border border-cn-borders-2 bg-cn-background-2 p-cn-lg"
+            className="rounded-cn-2 border border-cn-2 bg-cn-2 p-cn-lg"
           >
-            <div className="text-2xl font-semibold text-cn-foreground-1">{card.value}</div>
-            <div className="text-sm text-cn-foreground-3">{card.label}</div>
+            <div className="text-2xl font-semibold text-cn-1">{card.value}</div>
+            <div className="text-sm text-cn-3">{card.label}</div>
           </div>
         ))}
       </div>

@@ -149,7 +149,7 @@ export default function RepoPipelineEditPage() {
 
   return (
     <Layout.Vertical className="flex-1">
-      {saveError ? <div className="px-5 pt-2 text-cn-foreground-danger">{saveError}</div> : null}
+      {saveError ? <div className="px-5 pt-2 text-cn-danger">{saveError}</div> : null}
       <UnifiedPipelineStudio
         view={view}
         setView={setView}

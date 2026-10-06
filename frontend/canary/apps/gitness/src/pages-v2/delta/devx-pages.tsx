@@ -25,7 +25,7 @@ function PageShell({ title, children }: { title: string; children: React.ReactNo
 }
 
 function EmptyNote({ text }: { text: string }) {
-  return <Text className="mt-cn-md text-cn-foreground-3">{text}</Text>;
+  return <Text className="mt-cn-md text-cn-3">{text}</Text>;
 }
 
 // --- developer portal (catalog) -------------------------------------------------
@@ -70,13 +70,13 @@ export function DevPortalPage() {
   return (
     <PageShell title="Developer portal">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         The software catalog — services, sites, libraries, and APIs in this space.
       </Text>
       <div className="mb-cn-lg flex items-end gap-cn-md">
         <TextInput label="Identifier" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="api-svc" />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
         >
@@ -265,13 +265,13 @@ export function DevInsightsPage() {
         {cards.map((card) => (
           <div
             key={card.label}
-            className="rounded-cn-md border border-cn-borders-2 bg-cn-background-2 p-cn-lg"
+            className="rounded-cn-2 border border-cn-2 bg-cn-2 p-cn-lg"
           >
-            <div className="text-2xl font-semibold text-cn-foreground-1">
+            <div className="text-2xl font-semibold text-cn-1">
               {card.value ?? "—"}
-              {card.suffix && <span className="text-sm text-cn-foreground-3"> {card.suffix}</span>}
+              {card.suffix && <span className="text-sm text-cn-3"> {card.suffix}</span>}
             </div>
-            <div className="text-sm text-cn-foreground-3">{card.label}</div>
+            <div className="text-sm text-cn-3">{card.label}</div>
           </div>
         ))}
       </div>
@@ -335,7 +335,7 @@ export function DatabasesPage() {
       <div className="mb-cn-lg flex items-end gap-cn-md">
         <TextInput label="Identifier" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="main-db" />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={engine}
           onChange={(e) => setEngine(e.target.value)}
         >
@@ -416,7 +416,7 @@ export function SecurityTestsPage() {
   return (
     <PageShell title="Security tests">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         SAST/DAST/secrets/deps jobs — queued here, executed by delegates or the dgit CLI on
         client machines, results posted back.
       </Text>
@@ -480,7 +480,7 @@ export function SupplyChainPage() {
   return (
     <PageShell title="Supply chain">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         SBOMs, provenance statements, and attestations bound to repos and commits.
       </Text>
       <Table.Root>

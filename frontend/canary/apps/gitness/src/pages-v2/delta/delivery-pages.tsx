@@ -32,7 +32,7 @@ function PageShell({
 }
 
 function EmptyNote({ text }: { text: string }) {
-  return <Text className="mt-cn-md text-cn-foreground-3">{text}</Text>;
+  return <Text className="mt-cn-md text-cn-3">{text}</Text>;
 }
 
 // --- connectors --------------------------------------------------------------
@@ -79,7 +79,7 @@ export function ConnectorsPage() {
   return (
     <PageShell title="Connectors">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         Connector credentials stay in your custody — records here hold only sealed broker handles.
       </Text>
       <div className="mb-cn-lg flex items-end gap-cn-md">
@@ -90,7 +90,7 @@ export function ConnectorsPage() {
           placeholder="gh-mirror"
         />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={type}
           onChange={(e) => setType(e.target.value)}
         >
@@ -182,7 +182,7 @@ export function DelegatesPage() {
   return (
     <PageShell title="Delegates">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         Pipeline runners on your own infrastructure. Runners claim work over the signed agent
         protocol (`dg/runner/*`).
       </Text>
@@ -265,7 +265,7 @@ export function FileStorePage() {
   return (
     <PageShell title="File store">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         Arbitrary blobs for this space — PUT /api/v1/spaces/{space ?? "{space}"}/files/{"{name}"}{" "}
         to upload.
       </Text>
@@ -539,7 +539,7 @@ export function FreezeWindowsPage() {
   return (
     <PageShell title="Freeze windows">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         Schedule format: day letters + optional UTC hour range — e.g. <code>sa,su</code>,{" "}
         <code>mo-fr 17-09</code>. Active windows gate pushes and merges.
       </Text>
@@ -556,7 +556,7 @@ export function FreezeWindowsPage() {
           onChange={(e) => setSchedule(e.target.value)}
         />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={appliesTo}
           onChange={(e) => setAppliesTo(e.target.value)}
         >
@@ -723,7 +723,7 @@ export function GitOpsPage() {
   return (
     <PageShell title="GitOps">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         Declarative sync targets — a repo+branch reconciled into an environment.
       </Text>
       <Table.Root>
@@ -808,7 +808,7 @@ export function PoliciesPage() {
   return (
     <PageShell title="Policies">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         JSON rule documents evaluated on push and merge. Quick-create below adds a
         branch-protection deny rule.
       </Text>
@@ -825,7 +825,7 @@ export function PoliciesPage() {
           onChange={(e) => setBranch(e.target.value)}
         />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={appliesTo}
           onChange={(e) => setAppliesTo(e.target.value)}
         >
@@ -900,7 +900,7 @@ export function IaCPage() {
   return (
     <PageShell title="Infrastructure as Code">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-      <Text className="mb-cn-md text-cn-foreground-3">
+      <Text className="mb-cn-md text-cn-3">
         Terraform-compatible HTTP state backend. Point your backend config at{" "}
         <code>/api/v1/spaces/{space ?? "{space}"}/iac/{"{name}"}/state</code> — supports
         lock/unlock semantics.
@@ -916,7 +916,7 @@ export function IaCPage() {
           Inspect
         </Button>
       </div>
-      {error && <Text className="text-cn-foreground-danger">{error}</Text>}
+      {error && <Text className="text-cn-danger">{error}</Text>}
       {state && (
         <Table.Root>
           <Table.Header>

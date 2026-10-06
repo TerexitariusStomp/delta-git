@@ -33,8 +33,8 @@ function MermaidDiagram({ code, title }: { code: string; title: string }) {
   if (error) {
     return (
       <details>
-        <summary className="cursor-pointer text-cn-foreground-3">{title} (render failed — show source)</summary>
-        <pre className="mt-cn-sm overflow-auto rounded-cn-md bg-cn-background-2 p-cn-md text-cn-foreground-1">
+        <summary className="cursor-pointer text-cn-3">{title} (render failed — show source)</summary>
+        <pre className="mt-cn-sm overflow-auto rounded-cn-2 bg-cn-2 p-cn-md text-cn-1">
           {code}
         </pre>
       </details>
@@ -218,7 +218,7 @@ function AskBox({ spaceId, repoId }: { spaceId: string; repoId: string }) {
       {ask.isError && <Text color="danger">{String(ask.error)}</Text>}
       <div className="space-y-cn-md">
         {history.map((h, i) => (
-          <div key={i} className="max-w-3xl rounded-cn-md border border-cn-borders-2 p-cn-md">
+          <div key={i} className="max-w-3xl rounded-cn-2 border border-cn-2 p-cn-md">
             <Text variant="heading-subsection" className="mb-cn-sm">
               {h.q}
             </Text>

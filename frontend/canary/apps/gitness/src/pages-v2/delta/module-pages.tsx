@@ -56,7 +56,7 @@ export function SpacePicker({
     <div className="mb-cn-lg flex items-center gap-cn-md">
       <Text variant="heading-subsection">Space</Text>
       <select
-        className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+        className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
         value={space ?? ""}
         onChange={(e) => setSpace(e.target.value)}
       >
@@ -136,7 +136,7 @@ export function NotificationsPage() {
                     }}
                   >
                     {n.title}
-                    {n.body && <div className="text-cn-foreground-3 text-sm">{n.body}</div>}
+                    {n.body && <div className="text-cn-3 text-sm">{n.body}</div>}
                   </button>
                 </Table.Cell>
                 <Table.Cell>{new Date(n.created).toLocaleString()}</Table.Cell>
@@ -154,7 +154,7 @@ export function NotificationsPage() {
           </Table.Body>
         </Table.Root>
         {(data?.notifications ?? []).length === 0 && (
-          <Text className="mt-cn-md text-cn-foreground-3">No notifications yet.</Text>
+          <Text className="mt-cn-md text-cn-3">No notifications yet.</Text>
         )}
       </SandboxLayout.Content>
     </SandboxLayout.Main>
@@ -215,7 +215,7 @@ export function EnvironmentsPage() {
             placeholder="production"
           />
           <select
-            className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+            className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
             value={type}
             onChange={(e) => setType(e.target.value)}
           >
@@ -254,7 +254,7 @@ export function EnvironmentsPage() {
           </Table.Body>
         </Table.Root>
         {(envs ?? []).length === 0 && (
-          <Text className="mt-cn-md text-cn-foreground-3">No environments in this space.</Text>
+          <Text className="mt-cn-md text-cn-3">No environments in this space.</Text>
         )}
       </SandboxLayout.Content>
     </SandboxLayout.Main>
@@ -290,7 +290,7 @@ export function ArtifactsPage() {
           Artifacts
         </Text>
         <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
-        <Text className="mb-cn-md text-cn-foreground-3">
+        <Text className="mb-cn-md text-cn-3">
           Pipeline outputs and published packages. Upload with a push PAT: PUT /api/
           {"{owner}/{repo}"}/dg/artifacts/{"{name}/{version}/{path}"}
         </Text>
@@ -324,7 +324,7 @@ export function ArtifactsPage() {
           </Table.Body>
         </Table.Root>
         {(artifacts ?? []).length === 0 && (
-          <Text className="mt-cn-md text-cn-foreground-3">No artifacts published yet.</Text>
+          <Text className="mt-cn-md text-cn-3">No artifacts published yet.</Text>
         )}
       </SandboxLayout.Content>
     </SandboxLayout.Main>

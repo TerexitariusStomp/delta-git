@@ -50,7 +50,7 @@ function SpacePicker({
     <div className="mb-cn-lg flex items-center gap-cn-md">
       <Text variant="heading-subsection">Space</Text>
       <select
-        className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md py-cn-sm text-cn-foreground-1"
+        className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
         value={space ?? ''}
         onChange={e => setSpace(e.target.value)}>
         {spaces.map(s => (
@@ -153,7 +153,7 @@ export function AdminUserGroupsPage() {
           placeholder="group identifier"
         />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md text-cn-1"
           value={role}
           onChange={e => setRole(e.target.value)}>
           {ROLES.map(r => (
@@ -272,7 +272,7 @@ export function AdminServiceAccountsPage() {
           placeholder="account identifier"
         />
         <select
-          className="rounded-cn-md border border-cn-borders-2 bg-cn-background-1 px-cn-md text-cn-foreground-1"
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md text-cn-1"
           value={role}
           onChange={e => setRole(e.target.value)}>
           {ROLES.map(r => (
@@ -286,11 +286,11 @@ export function AdminServiceAccountsPage() {
         </Button>
       </div>
       {minted && (
-        <div className="mb-cn-md rounded-cn-md border border-cn-borders-2 p-cn-md">
+        <div className="mb-cn-md rounded-cn-2 border border-cn-2 p-cn-md">
           <Text variant="heading-subsection" className="mb-cn-sm">
             Token for {minted.account} — shown once, store it now
           </Text>
-          <code className="break-all text-cn-foreground-1">{minted.token}</code>
+          <code className="break-all text-cn-1">{minted.token}</code>
         </div>
       )}
       <Table.Root variant="default">

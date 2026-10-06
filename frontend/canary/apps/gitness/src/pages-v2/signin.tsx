@@ -30,9 +30,9 @@ export const SignIn: FC = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-cn-1">
-      <div className="w-full max-w-sm rounded-lg border border-cn-borders-2 bg-cn-2 p-8">
-        <h1 className="mb-2 text-xl font-semibold text-cn-foreground-1">Sign in to delta-git</h1>
-        <p className="mb-6 text-sm text-cn-foreground-2">
+      <div className="w-full max-w-sm rounded-lg border border-cn-2 bg-cn-2 p-8">
+        <h1 className="mb-2 text-xl font-semibold text-cn-1">Sign in to delta-git</h1>
+        <p className="mb-6 text-sm text-cn-2">
           Authenticate with your Bluesky handle — OAuth runs entirely in your browser; your tokens
           and keys never reach our servers.
         </p>
@@ -45,20 +45,20 @@ export const SignIn: FC = () => {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && handle.trim()) void onBluesky()
           }}
-          className="mb-4 w-full rounded border border-cn-borders-2 bg-cn-1 px-3 py-2 text-sm text-cn-foreground-1"
+          className="mb-4 w-full rounded border border-cn-2 bg-cn-1 px-3 py-2 text-sm text-cn-1"
         />
         <button
           type="button"
           disabled={busy || !handle.trim()}
           onClick={() => void onBluesky()}
-          className="w-full rounded bg-cn-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="w-full rounded bg-cn-brand-primary px-3 py-2 text-sm font-medium text-cn-brand-primary disabled:opacity-50"
         >
           {busy ? 'Waiting for Bluesky…' : 'Continue with Bluesky'}
         </button>
-        {error && <p className="mt-4 text-sm text-cn-foreground-danger">{error}</p>}
-        <p className="mt-6 text-center text-xs text-cn-foreground-3">
+        {error && <p className="mt-4 text-sm text-cn-danger">{error}</p>}
+        <p className="mt-6 text-center text-xs text-cn-3">
           Have an agent key?{' '}
-          <a href="/auth" className="text-cn-accent underline">
+          <a href="/auth" className="text-cn-brand underline">
             DID sign-in
           </a>
         </p>
