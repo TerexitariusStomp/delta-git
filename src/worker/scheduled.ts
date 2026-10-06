@@ -15,6 +15,13 @@ import {
 import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
 import { newPrefixedId } from "@/worker/common";
 import { runMonitorProbe } from "@/worker/api/gitness/reliability";
+import {
+  readCronPipelineRepos,
+  readRepoPipelines,
+  writeRepoPipelines,
+} from "@/worker/api/gitness/stores";
+import { createExecution } from "@/worker/api/gitness/executions";
+import { nextCronFire } from "@/worker/tasks/cronmatch";
 
 const log = createLogger(undefined, { service: "scheduled" });
 
@@ -35,6 +42,45 @@ export async function handleScheduled(cron: string, env: Env): Promise<void> {
   }
   await probeDueMonitors(db, now);
   await reapStaleDelegates(db, now);
+  await fireDueCronPipelines(env, now);
+}
+
+/**
+ * Pipeline `schedule` triggers — walks only the repos indexed as holding an
+ * enabled cron trigger (`gpipes-crons`, maintained by writeRepoPipelines).
+ * Per-trigger `lastFired` is the high-water mark: the sweep fires once per
+ * due occurrence window, then persists.
+ */
+async function fireDueCronPipelines(env: Env, now: number): Promise<void> {
+  const doNames = await readCronPipelineRepos(env);
+  let fired = 0;
+  for (const doName of doNames) {
+    const pipes = await readRepoPipelines(env, doName).catch(() => null);
+    if (!pipes) continue;
+    let changed = false;
+    for (const pipe of pipes) {
+      for (const trigger of pipe.triggers ?? []) {
+        if (!trigger.enabled || trigger.event !== "cron" || !trigger.cron) continue;
+        const due = nextCronFire(trigger.cron, trigger.lastFired ?? trigger.created);
+        if (due === null || due > now) continue;
+        await createExecution(env, doName, {
+          pipeline: pipe,
+          event: "cron",
+          ref: `refs/heads/${pipe.default_branch ?? "main"}`,
+          message: `schedule ${trigger.cron}`,
+        });
+        trigger.lastFired = now;
+        changed = true;
+        fired++;
+      }
+    }
+    if (changed) {
+      await writeRepoPipelines(env, doName, pipes).catch((err) =>
+        log.warn("scheduled:cron-persist-failed", { doName, error: String(err) })
+      );
+    }
+  }
+  if (fired > 0) log.info("scheduled:cron-fired", { fired });
 }
 
 async function probeDueMonitors(db: Db<D1Database>, now: number): Promise<void> {

@@ -7,6 +7,8 @@ import { buildPack } from "./util/git-pack";
 import { buildTreePayload } from "./util/packed-repo";
 import { toRequestBody } from "./util/test-helpers";
 import { ensureD1Migrations } from "./util/d1Setup";
+import { readCronPipelineRepos, writeRepoPipelines } from "@/worker/api/gitness/stores";
+import { handleScheduled } from "@/worker/scheduled";
 import { lookupPushAuth, setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
 
 // Pipeline/execution surface: pipeline CRUD + view, trigger CRUD (the
@@ -307,5 +309,58 @@ describe("actions: .github/workflows materialize into pipelines", () => {
       if (!found) await new Promise((r) => setTimeout(r, 150));
     }
     expect(found).toBe(true);
+  });
+});
+
+describe("actions: cron schedules fire via the scheduled sweep", () => {
+  let w: SetupRepoForTestsResult;
+  let ref: string;
+  const pipeBase = () => `/api/v1/repos/${ref}/pipelines`;
+
+  beforeAll(async () => {
+    await ensureD1Migrations(env);
+    w = await setupRepoForTests(env, uniq("cron-ns"), "cronrepo");
+    ref = `${w.namespaceSlug}/cronrepo/+`;
+  });
+
+  it("due cron trigger spawns a cron-event execution once", async () => {
+    // Seed a pipeline whose cron trigger is already due (created 10m ago,
+    // */1-every-minute schedule).
+    await writeRepoPipelines(env, w.doName, [
+      {
+        id: 1,
+        identifier: "nightly",
+        config_path: ".harness/nightly.yaml",
+        triggers: [
+          {
+            identifier: "every_min",
+            event: "cron",
+            cron: "* * * * *",
+            enabled: true,
+            created: Date.now() - 10 * 60 * 1000,
+          },
+        ],
+        created: Date.now() - 10 * 60 * 1000,
+        updated: Date.now(),
+      },
+    ]);
+    // The write indexed the repo for the sweep.
+    expect(await readCronPipelineRepos(env)).toContain(w.doName);
+
+    await handleScheduled("*/5 * * * *", env);
+
+    const execs = await api("GET", `${pipeBase()}/nightly/executions`, w.cookieHeader);
+    expect(execs.status).toBe(200);
+    const cronExecs = (execs.body as { event: string; status: string }[]).filter(
+      (e) => e.event === "cron"
+    );
+    expect(cronExecs.length).toBe(1);
+    expect(cronExecs[0].status).toBe("pending");
+
+    // Immediately re-running the sweep doesn't double-fire — lastFired
+    // moved the high-water mark.
+    await handleScheduled("*/5 * * * *", env);
+    const again = await api("GET", `${pipeBase()}/nightly/executions`, w.cookieHeader);
+    expect((again.body as { event: string }[]).filter((e) => e.event === "cron").length).toBe(1);
   });
 });

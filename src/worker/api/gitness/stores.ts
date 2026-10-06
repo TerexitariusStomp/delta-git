@@ -106,13 +106,15 @@ export function requiredCheckContexts(rules: RepoRule[], ref: string): string[] 
 /** A declared pipeline trigger — `push` events are honored by the queue task. */
 export interface RepoPipelineTrigger {
   identifier: string;
-  /** push | pull_request | cron (cron records persist; scheduling is a gap). */
+  /** push | pull_request | cron */
   event: string;
   /** Glob-ish branch filter (bare names or `*`-suffix prefixes). */
   branch_scope?: string;
   cron?: string;
   enabled: boolean;
   created: number;
+  /** Last scheduled fire (cron triggers) — the sweep's high-water mark. */
+  lastFired?: number;
 }
 
 export interface RepoPipeline {
@@ -138,6 +140,26 @@ export async function readRepoPipelines(env: Env, doName: string): Promise<RepoP
 
 export async function writeRepoPipelines(env: Env, doName: string, pipes: RepoPipeline[]) {
   await env.ROUTES.put(`gpipes:${doName}`, JSON.stringify(pipes));
+  // Keep the cron index in sync — the scheduled sweep only walks repos that
+  // hold at least one enabled cron trigger, so writes maintain it here
+  // rather than scanning every repo each tick.
+  const idx = await readCronPipelineRepos(env);
+  const hasCron = pipes.some((p) =>
+    p.triggers?.some((t) => t.enabled && t.event === "cron" && !!t.cron)
+  );
+  const had = idx.includes(doName);
+  if (hasCron && !had) {
+    idx.push(doName);
+    await env.ROUTES.put("gpipes-crons", JSON.stringify(idx));
+  } else if (!hasCron && had) {
+    await env.ROUTES.put("gpipes-crons", JSON.stringify(idx.filter((d) => d !== doName)));
+  }
+}
+
+/** doNames holding at least one enabled cron-triggered pipeline. */
+export async function readCronPipelineRepos(env: Env): Promise<string[]> {
+  const raw = await env.ROUTES.get("gpipes-crons", "json").catch(() => null);
+  return (raw as string[] | null) ?? [];
 }
 
 // ---------------------------------------------------------------------------
