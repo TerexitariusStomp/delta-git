@@ -1245,3 +1245,103 @@ describe("signature verification — SSHSIG signed commits", () => {
     }
   });
 });
+
+describe("dr — bundle export, drill, download", () => {
+  const te = new TextEncoder();
+
+  async function pushCommit(
+    repo: SetupRepoForTestsResult,
+    text: string,
+    name: string,
+    message: string
+  ) {
+    const { buildPack } = await import("./util/git-pack");
+    const { encodeGitObject, pktLine, flushPkt, concatChunks } = await import("@/worker/git/core");
+    const { buildTreePayload } = await import("./util/packed-repo");
+    const blob = await encodeGitObject("blob", te.encode(text));
+    const treePayload = buildTreePayload([{ mode: "100644", name, oid: blob.oid }]);
+    const tree = await encodeGitObject("tree", treePayload);
+    const commitPayload = te.encode(
+      `tree ${tree.oid}\nauthor You <you@example.com> 0 +0000\ncommitter You <you@example.com> 0 +0000\n\n${message}\n`
+    );
+    const commit = await encodeGitObject("commit", commitPayload);
+    const pack = await buildPack([
+      { type: "blob", payload: te.encode(text) },
+      { type: "tree", payload: treePayload },
+      { type: "commit", payload: commitPayload },
+    ]);
+    const body = concatChunks([
+      pktLine(
+        `0000000000000000000000000000000000000000 ${commit.oid} refs/heads/main\0 report-status ofs-delta\n`
+      ),
+      flushPkt(),
+      pack,
+    ]);
+    const res = await workerExports.default.fetch(
+      `https://example.com/${repo.namespaceSlug}/${repo.repoSlug}/git-receive-pack`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-git-receive-pack-request",
+          Authorization: repo.pushAuthHeader,
+        },
+        body,
+      }
+    );
+    expect(res.status).toBe(200);
+    return commit.oid;
+  }
+
+  it("exports a bundle manifest, drills it clean, and serves the download", async () => {
+    const repo = await setupRepoForTests(env, uniq("dr-ns"), "drrepo");
+    const base = `/api/v1/repos/${repo.namespaceSlug}/drrepo/+`;
+    const commitOid = await pushCommit(repo, "dr backup\n", "data.txt", "dr seed");
+
+    const exported = await workerExports.default.fetch(
+      `${"https://example.com"}${base}/dr/export`,
+      {
+        method: "POST",
+        headers: { Cookie: repo.cookieHeader },
+      }
+    );
+    const exportedText = await exported.text();
+    expect(exported.status, exportedText).toBe(201);
+    const manifest = JSON.parse(exportedText) as {
+      bundleKey: string;
+      bundleBytes: number;
+      refs: { name: string; oid: string }[];
+      manifestKey: string;
+      exportedAt: number;
+    };
+    expect(manifest.bundleBytes).toBeGreaterThan(0);
+    expect(manifest.refs.find((r) => r.name === "refs/heads/main")?.oid).toBe(commitOid);
+
+    const list = await workerExports.default.fetch(`https://example.com${base}/dr/exports`, {
+      headers: { Cookie: repo.cookieHeader },
+    });
+    const manifests = (await list.json()) as { bundleBytes: number }[];
+    expect(manifests.length).toBe(1);
+
+    const drilled = await workerExports.default.fetch(`https://example.com${base}/dr/verify`, {
+      method: "POST",
+      headers: { Cookie: repo.cookieHeader },
+    });
+    const drillText = await drilled.text();
+    const drill = JSON.parse(drillText) as {
+      status: string;
+      checks: { name: string; ok: boolean; detail?: string }[];
+    };
+    expect(drill.status, drillText).toBe("pass");
+    for (const check of drill.checks) expect(check.ok).toBe(true);
+    const objCheck = drill.checks.find((ch) => ch.name === "pack_objects");
+    expect(objCheck?.detail).toContain("3 objects");
+
+    const dl = await workerExports.default.fetch(
+      `https://example.com${base}/dr/download/${manifest.exportedAt}`,
+      { headers: { Cookie: repo.cookieHeader } }
+    );
+    expect(dl.status).toBe(200);
+    const bytes = new Uint8Array(await dl.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.subarray(0, 14))).toBe("GIT BUNDLE V3\n");
+  });
+});

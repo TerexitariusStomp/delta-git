@@ -7,6 +7,7 @@ import { responseCacheControl } from "@/worker/cache/policy";
 import { createLogger } from "@/worker/common";
 import { getLimiter, countSubrequest } from "./limits";
 import { getHeadAndRefs } from "./read/refs";
+import type { HeadInfo } from "./types";
 import {
   buildServeUploadPackPlan,
   FetchPlanRetryError,
@@ -72,28 +73,40 @@ export async function handleBundleUriCommand(
   });
 }
 
-export async function handleBundleGet(
+export type BundleBuild =
+  | {
+      kind: "ok";
+      /** "GIT BUNDLE V3\n<oid> <ref>\n...<oid> HEAD\n" — pack follows. */
+      headerBytes: Uint8Array;
+      refs: { name: string; oid: string }[];
+      head: HeadInfo | undefined;
+      /** Complete-pack stream (bundle body after the header). */
+      packStream: ReadableStream<Uint8Array>;
+    }
+  | { kind: "empty" }
+  | { kind: "not_ready"; reason: string }
+  | { kind: "retry"; seconds: number };
+
+/**
+ * Build a v3 bundle for the repo's full ref set — the same snapshot a
+ * `haves=∅` fetch produces. Shared by the bundle-uri GET route and the DR
+ * export path (which persists the stream to R2 instead of a client).
+ */
+export async function buildBundleStream(
   env: Env,
   route: RepositoryRoute,
-  token: string,
   signal?: AbortSignal,
   cacheCtx?: CacheContext
-): Promise<Response> {
+): Promise<BundleBuild> {
   const log = createLogger(env.LOG_LEVEL, { service: "BundleUri", repoId: route.doName });
-  if (signal?.aborted) return new Response("client aborted\n", { status: 499 });
-
-  // Stale tokens still serve a *correct* bundle — the client only uses it as
-  // a baseline and negotiates the delta afterwards, so we don't 404 on drift;
-  // we just serve the current snapshot.
-  log.debug("bundle:get:requested", { token });
   const snapshotLoad = await loadUploadPackSnapshot(env, route.doName, cacheCtx);
   if (snapshotLoad.type === "RepositoryNotReady") {
-    log.warn("bundle:get:repository-not-ready", { reason: snapshotLoad.reason });
-    return repositoryNotReadyResponse();
+    log.warn("bundle:build:not-ready", { reason: snapshotLoad.reason });
+    return { kind: "not_ready", reason: snapshotLoad.reason };
   }
 
   const { head, refs } = await getHeadAndRefs(env, route.doName, cacheCtx);
-  if (refs.length === 0) return new Response("repository has no refs\n", { status: 404 });
+  if (refs.length === 0) return { kind: "empty" };
 
   let plan;
   try {
@@ -108,39 +121,64 @@ export async function handleBundleGet(
     );
   } catch (error) {
     if (error instanceof FetchPlanRetryError) {
-      return new Response("Bundle is not ready yet, retry shortly.\n", {
-        status: 503,
-        headers: { "Retry-After": String(error.retryAfterSeconds) },
-      });
+      return { kind: "retry", seconds: error.retryAfterSeconds };
     }
     throw error;
   }
-  if (plan.type !== "Serve") return repositoryNotReadyResponse();
+  if (plan.type !== "Serve") return { kind: "not_ready", reason: "plan-not-serve" };
 
   const encoder = new TextEncoder();
   const headerLines = ["GIT BUNDLE V3"];
   for (const r of refs) headerLines.push(`${r.oid} ${r.name}`);
   if (head?.oid && head.target) headerLines.push(`${head.oid} HEAD`);
-  const header = encoder.encode(headerLines.join("\n") + "\n");
+  const headerBytes = encoder.encode(headerLines.join("\n") + "\n");
 
+  const limiter = getLimiter(plan.cacheCtx);
+  const packResult = await resolvePackStreamResult(env, plan, {
+    signal: plan.signal,
+    limiter,
+    countSubrequest: (n?: number) => countSubrequest(plan.cacheCtx, n),
+  });
+  if (packResult.status !== "ok") {
+    log.warn("bundle:build:assemble-unavailable", { reason: packResult.failure.reason });
+    return { kind: "not_ready", reason: packResult.failure.reason };
+  }
+  return { kind: "ok", headerBytes, refs, head, packStream: packResult.stream };
+}
+
+export async function handleBundleGet(
+  env: Env,
+  route: RepositoryRoute,
+  token: string,
+  signal?: AbortSignal,
+  cacheCtx?: CacheContext
+): Promise<Response> {
+  const log = createLogger(env.LOG_LEVEL, { service: "BundleUri", repoId: route.doName });
+  if (signal?.aborted) return new Response("client aborted\n", { status: 499 });
+
+  // Stale tokens still serve a *correct* bundle — the client only uses it as
+  // a baseline and negotiates the delta afterwards, so we don't 404 on drift;
+  // we just serve the current snapshot.
+  log.debug("bundle:get:requested", { token });
+  const built = await buildBundleStream(env, route, signal, cacheCtx);
+  switch (built.kind) {
+    case "empty":
+      return new Response("repository has no refs\n", { status: 404 });
+    case "not_ready":
+      return repositoryNotReadyResponse();
+    case "retry":
+      return new Response("Bundle is not ready yet, retry shortly.\n", {
+        status: 503,
+        headers: { "Retry-After": String(built.seconds) },
+      });
+  }
+
+  const { headerBytes, packStream } = built;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        controller.enqueue(header);
-        const limiter = getLimiter(plan.cacheCtx);
-        const packResult = await resolvePackStreamResult(env, plan, {
-          signal: plan.signal,
-          limiter,
-          countSubrequest: (n?: number) => countSubrequest(plan.cacheCtx, n),
-        });
-        if (packResult.status !== "ok") {
-          log.warn("bundle:get:assemble-unavailable", {
-            reason: packResult.failure.reason,
-          });
-          controller.error(new Error(packResult.failure.reason));
-          return;
-        }
-        const reader = packResult.stream.getReader();
+        controller.enqueue(headerBytes);
+        const reader = packStream.getReader();
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;

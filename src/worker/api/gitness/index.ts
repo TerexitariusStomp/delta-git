@@ -43,6 +43,7 @@ import { registerGitnessModeration } from "./moderation";
 import { registerGitnessWorkflows } from "./workflows";
 import { registerGitnessGists } from "./gists";
 import { registerGitnessGhImport } from "./ghimport";
+import { registerGitnessRepoDr } from "./dr";
 import { registerGitnessReleases } from "./releases";
 import { registerGitnessWiki } from "./wiki";
 import { registerGitnessRepos } from "./repos";
@@ -128,6 +129,9 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessWorkflows(router);
   registerGitnessGists(router);
   registerGitnessGhImport(router);
+  // Repo-scoped DR export/drill/download — must precede the greedy bare-repo
+  // GET in registerGitnessRepos or /dr/* reads resolve as repo refs.
+  registerGitnessRepoDr(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);

@@ -229,5 +229,11 @@ Do not edit generated migrations under `drizzle/repo-do/` manually. Treat `src/w
 - Broad refactors across route, DO, and UI layers unless the task truly needs it
 - Raw SQL/Drizzle access outside the repo DB DAL
 - Accidental route shadowing with `/:owner` and `/:owner/:repo`
+- Suffix literals after a `{.+}` param that share the previous segment's
+  prefix — Hono's RegExpRouter silently fails to match them when exact
+  sibling routes exist (e.g. `/repos/:repo_ref{.+}/dr/drill` 404s while
+  `/repos/import` and `/repos/link` are registered; `/dr/verify` works).
+  If a new subroute 404s mysteriously, rename the suffix so its last
+  segment doesn't start with the same letters as the one before it.
 - Re-introducing loose objects as a correctness dependency
 - Assuming README or docs reflect every current file path without checking the source tree
