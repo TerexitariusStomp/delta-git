@@ -32,10 +32,13 @@ export const SignIn: FC = () => {
     }
     setBusy(true)
     try {
-      const result = await signInWithBluesky(id)
-      window.location.assign(result.namespace ? `/${result.namespace}` : '/')
+      // Same-tab redirect: resolves never on success (the page navigates to
+      // the authorization server); /oauth/callback finishes the sign-in.
+      await signInWithBluesky(id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      // "User navigated back" = bfcache restore, not a failure — just re-arm.
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg !== 'User navigated back') setError(msg)
       setBusy(false)
     }
   }

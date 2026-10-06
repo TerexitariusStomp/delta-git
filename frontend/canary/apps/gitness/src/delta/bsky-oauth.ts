@@ -37,138 +37,56 @@ export function getBskyClient(): Promise<BrowserOAuthClient> {
   return clientPromise
 }
 
-/** localStorage flag telling /oauth/callback that a Bluesky popup is in flight. */
-const BSKY_POPUP_FLAG = 'dg-bsky-popup'
-/** localStorage handoff: the popup writes its callback params; the opener's
- *  `storage` listener picks them up and runs the token exchange. */
-const BSKY_CALLBACK_KEY = 'dg-bsky-callback'
 /** Set by verifyAtpSession when the dg_session is DPoP-bound — the fetch
  *  interceptor (auth-fetch.ts) checks this to decide whether to attach proofs. */
 export const DPOP_BOUND_FLAG = 'dg-dpop-bound'
 
+/** Normalize a typed handle: bare names resolve on bsky.social; handles and
+ *  DIDs pass through unchanged. */
+function normalizeHandle(handle: string): string {
+  return handle.includes('.') || handle.startsWith('did:')
+    ? handle
+    : `${handle}.bsky.social`
+}
+
 /**
- * Start Bluesky sign-in in a popup. Resolves with the OAuth session after
- * the user authorizes.
+ * Start Bluesky sign-in as a same-tab redirect. On success this never
+ * resolves — the browser navigates to the authorization server and returns
+ * to /oauth/callback, where completeBskyRedirect() finishes the flow.
  *
- * We deliberately do NOT use the library's signInPopup(): its popup-side
- * initCallback + BroadcastChannel ack handshake is fragile across the
- * COOP-severed cross-origin navigation. Instead the popup writes its callback
- * URL params to localStorage — origin-scoped, survives COOP — and THIS window
- * runs client.callback() to do the token exchange itself.
+ * A redirect (not a popup) is deliberate: popup variants lose the opener
+ * handle when COOP severs the relationship mid-flow, and browsers that open
+ * window.open as a plain tab leave the callback window unclosable.
+ * signInRedirect() rejects with "User navigated back" if bfcache restores
+ * this page instead of navigating — callers should treat that as cancel.
  */
-export async function signInBlueskyPopup(handle: string): Promise<OAuthSession> {
-  // Bare names resolve on bsky.social; handles must be valid domains.
-  const normalized =
-    handle.includes('.') || handle.startsWith('did:') ? handle : `${handle}.bsky.social`
+export async function signInBlueskyRedirect(handle: string): Promise<never> {
+  const normalized = normalizeHandle(handle)
   const client = await getBskyClient()
-
-  // Open synchronously to dodge popup blockers; authorize() navigates it.
-  const popup = window.open('about:blank', 'dg-bsky-oauth', 'width=600,height=700,scrollbars=yes')
   try {
-    localStorage.setItem(BSKY_POPUP_FLAG, String(Date.now()))
-    localStorage.removeItem(BSKY_CALLBACK_KEY)
-  } catch {
-    /* storage unavailable — the storage listener simply never fires */
-  }
-
-  try {
-    const url = await client.authorize(normalized, { state: 'deltagit' })
-    if (popup) popup.location.href = url.href
-    else window.open(url.href, 'dg-bsky-oauth', 'width=600,height=700,scrollbars=yes')
+    return await client.signInRedirect(normalized, { state: 'deltagit' })
   } catch (err) {
-    try {
-      popup?.close()
-    } catch {
-      /* popup may already be gone */
-    }
     const msg = err instanceof Error ? err.message : String(err)
+    if (msg === 'User navigated back') throw err
     throw new Error(`Bluesky sign-in failed (${normalized}): ${msg}`)
   }
+}
 
-  const startedAt = Date.now()
-  const closePopup = () => {
-    try {
-      popup?.close()
-    } catch {
-      /* popup may already be gone or opener-severed */
-    }
-  }
-  const params = await new Promise<URLSearchParams>((resolve, reject) => {
-    const cleanup = () => {
-      clearTimeout(timer)
-      window.removeEventListener('storage', onStorage)
-      try {
-        localStorage.removeItem(BSKY_CALLBACK_KEY)
-        localStorage.removeItem(BSKY_POPUP_FLAG)
-      } catch {
-        /* ignore */
-      }
-    }
-    const consume = (raw: string) => {
-      try {
-        const { q, h, ts } = JSON.parse(raw) as { q?: string; h?: string; ts?: number }
-        if (typeof ts !== 'number' || ts < startedAt) return // stale
-        const p = new URLSearchParams(h ? h.slice(1) : q)
-        cleanup()
-        resolve(p)
-      } catch (err) {
-        cleanup()
-        reject(err)
-      }
-    }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== BSKY_CALLBACK_KEY || !e.newValue) return
-      consume(e.newValue)
-    }
-    const timer = setTimeout(
-      () => {
-        cleanup()
-        reject(new Error('Bluesky sign-in timed out'))
-      },
-      5 * 60_000
-    )
-    window.addEventListener('storage', onStorage)
-    try {
-      const existing = localStorage.getItem(BSKY_CALLBACK_KEY)
-      if (existing) consume(existing)
-    } catch {
-      /* ignore */
-    }
-  })
-
-  // The callback page self-closes when opened as a real popup; when the
-  // browser opened it as a tab (self-close blocked), close it from here —
-  // the opener handle survives the cross-origin round trip.
-  closePopup()
-
+/**
+ * Run on /oauth/callback after the authorization server redirects back.
+ * initCallback() performs the token exchange against the PKCE/DPoP state the
+ * client persisted before navigating, strips the oauth params from the URL,
+ * and returns the fresh session.
+ */
+export async function completeBskyRedirect(): Promise<OAuthSession> {
+  const client = await getBskyClient()
   try {
-    const { session } = await client.callback(params, {
-      redirect_uri: `${window.location.origin}/oauth/callback` as `https://${string}`,
-    })
+    const { session } = await client.initCallback()
     currentSession = session
     return session
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(`Bluesky sign-in failed: ${msg}`)
-  }
-}
-
-/**
- * Called inside the OAuth popup on /oauth/callback — writes the callback URL
- * params to localStorage so the opener can complete the exchange, then closes.
- */
-export function handoffBskyPopupCallback(): void {
-  try {
-    localStorage.setItem(
-      BSKY_CALLBACK_KEY,
-      JSON.stringify({
-        q: window.location.search,
-        h: window.location.hash,
-        ts: Date.now(),
-      })
-    )
-  } catch {
-    /* ignore */
   }
 }
 
@@ -248,8 +166,22 @@ export async function verifyAtpSession(session: OAuthSession): Promise<AtpVerify
   return result
 }
 
-/** Full popup flow: Bluesky OAuth → serviceAuth → bound dg_session cookie. */
-export async function signInWithBluesky(handle: string): Promise<AtpVerifyResult> {
-  const session = await signInBlueskyPopup(handle)
+/**
+ * Kick off sign-in from /signin: same-tab redirect to the authorization
+ * server. Never resolves on success — the page unloads. The post-auth step
+ * (callback → serviceAuth → dg_session → namespace redirect) runs in
+ * completeBskySignIn() on /oauth/callback.
+ */
+export async function signInWithBluesky(handle: string): Promise<never> {
+  return signInBlueskyRedirect(handle)
+}
+
+/**
+ * Finish sign-in on /oauth/callback: token exchange → serviceAuth JWT →
+ * bound dg_session cookie. Returns the verify result so the caller can
+ * route to the user's namespace.
+ */
+export async function completeBskySignIn(): Promise<AtpVerifyResult> {
+  const session = await completeBskyRedirect()
   return verifyAtpSession(session)
 }

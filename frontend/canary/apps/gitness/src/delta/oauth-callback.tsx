@@ -1,32 +1,35 @@
-import { FC, useEffect } from 'react'
+import { FC, useEffect, useState } from 'react'
 
-import { handoffBskyPopupCallback } from './bsky-oauth'
+import { completeBskySignIn } from './bsky-oauth'
 
 /**
  * /oauth/callback — the client-side atproto OAuth redirect target.
- * Runs inside the authorization popup: hands the callback params to the
- * opener window via localStorage (survives COOP cross-origin navigation),
- * then closes itself.
  *
- * `window.close()` only works for script-opened popups; when the browser
- * opened the OAuth URL as a normal tab (or blocks the self-close), we fall
- * back to a visible "you can close this" message so the tab doesn't sit blank.
+ * The Bluesky flow is a same-tab redirect (not a popup): /signin navigates
+ * here via the authorization server, this page runs the token exchange,
+ * establishes the bound dg_session via /auth/atp/verify, then forwards the
+ * user to their namespace. On failure we render the error with a link back.
  */
 export const OAuthCallback: FC = () => {
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    handoffBskyPopupCallback()
-    window.close()
-    // If self-close was blocked, swap in the fallback text after a beat.
-    const t = setTimeout(() => {
-      const el = document.getElementById('oauth-callback-msg')
-      if (el) el.textContent = 'Signed in — you can close this window now.'
-    }, 800)
-    return () => clearTimeout(t)
+    let cancelled = false
+    completeBskySignIn()
+      .then(result => {
+        if (cancelled) return
+        window.location.replace(result.namespace ?? '/')
+      })
+      .catch(err => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
     <div
-      id="oauth-callback-msg"
       style={{
         display: 'flex',
         minHeight: '100vh',
@@ -37,7 +40,16 @@ export const OAuthCallback: FC = () => {
         background: '#0b0e14'
       }}
     >
-      Completing sign-in…
+      {error ? (
+        <div style={{ textAlign: 'center', maxWidth: '28rem' }}>
+          <p>Sign-in failed: {error}</p>
+          <a href="/signin" style={{ color: '#7c8cff' }}>
+            Back to sign in
+          </a>
+        </div>
+      ) : (
+        'Completing sign-in…'
+      )}
     </div>
   )
 }
