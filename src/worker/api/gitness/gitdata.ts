@@ -1334,9 +1334,13 @@ export function registerGitnessGitdata(router: AppRouter) {
     const baseOid = await resolveRef(c.env, gate.route.doName, targetRef, gate.cacheCtx);
     if (!baseOid) return gErr(c, 400, `branch not found: ${branch}`);
 
+    // GitHub noreply convention: web commits attribute to the actor at
+    // `ID+uid@users.noreply.<host>` — no real mailbox, but stable and
+    // host-derived so multi-instance deployments stay distinguishable.
+    const noreply = `${numericId(gate.actor)}+${gate.actor}@users.noreply.${new URL(c.req.url).host}`;
     const author = req.author?.name
-      ? `${req.author.name} <${req.author.email ?? "web@delta-git.invalid>"}`
-      : `${gate.actor} <web@delta-git.invalid>`;
+      ? `${req.author.name} <${req.author.email ?? noreply}>`
+      : `${gate.actor} <${noreply}>`;
     const built = await commitFileActions({
       env: c.env,
       repoId: gate.route.doName,
