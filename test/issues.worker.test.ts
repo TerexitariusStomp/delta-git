@@ -275,6 +275,57 @@ describe("issues: qualifier search (q=)", () => {
     const noRepo = await call("GET", `/api/v3/search/issues?q=${encodeURIComponent("is:open")}`);
     expect(noRepo.status).toBe(422);
   });
+
+  it("pins issues to the top of the list, capped at three", async () => {
+    // Seed two more issues so ordering is observable.
+    await call("POST", `${base}/issues`, {
+      cookie: seeded.cookieHeader,
+      body: { title: "Second issue" },
+    });
+    const third = await call("POST", `${base}/issues`, {
+      cookie: seeded.cookieHeader,
+      body: { title: "Third issue" },
+    });
+    const thirdNumber = (third.body as IssueJson).number;
+
+    const pin = await call("PUT", `${base}/issues/${thirdNumber}/pin`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(pin.status).toBe(200);
+    expect((pin.body as { pinned: boolean }).pinned).toBe(true);
+
+    // Pinned floats to the top with a `pinned` flag; pin order is insertion.
+    const list = await call("GET", `${base}/issues`, { cookie: seeded.cookieHeader });
+    const items = list.body as (IssueJson & { pinned?: boolean })[];
+    expect(items[0].number).toBe(thirdNumber);
+    expect(items[0].pinned).toBe(true);
+    expect(items.find((i) => i.number === 1)?.pinned).toBe(false);
+
+    // Cap at three pins — issue numbers 1..3 exist; fill and overflow.
+    await call("PUT", `${base}/issues/1/pin`, { cookie: seeded.cookieHeader });
+    await call("PUT", `${base}/issues/2/pin`, { cookie: seeded.cookieHeader });
+    const fourth = await call("POST", `${base}/issues`, {
+      cookie: seeded.cookieHeader,
+      body: { title: "Fourth issue" },
+    });
+    const fourthNumber = (fourth.body as IssueJson).number;
+    const over = await call("PUT", `${base}/issues/${fourthNumber}/pin`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(over.status).toBe(409);
+
+    // Unpin restores default ordering.
+    const unpin = await call("DELETE", `${base}/issues/${thirdNumber}/pin`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(unpin.status).toBe(200);
+    const after = await call("GET", `${base}/issues`, { cookie: seeded.cookieHeader });
+    expect((after.body as (IssueJson & { pinned?: boolean })[])[0].number).not.toBe(thirdNumber);
+
+    // Anonymous pin attempts are rejected.
+    const anon = await call("PUT", `${base}/issues/1/pin`, {});
+    expect(anon.status).toBe(401);
+  });
 });
 
 describe("issues: .github issue templates", () => {
@@ -374,9 +425,7 @@ describe("issues: .github issue templates", () => {
     expect(templates[0].body).toContain("Describe what happened.");
 
     // CODEOWNERS endpoint on the same repo — second commit adds the file.
-    const coSource = ["* @all-hands", "*.ts @ts-guild", ".github/ @meta-owners", ""].join(
-      "\n"
-    );
+    const coSource = ["* @all-hands", "*.ts @ts-guild", ".github/ @meta-owners", ""].join("\n");
     const coBlobPayload = new TextEncoder().encode(coSource);
     const coBlob = await encodeGitObject("blob", coBlobPayload);
     const coDirPayload = buildTreePayload([

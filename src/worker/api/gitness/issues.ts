@@ -11,6 +11,7 @@ import { getRepoStub } from "@/worker/common";
 import { parseIssueQuery } from "@/worker/do/repo/catalog/issueQuery";
 import { readPath } from "@/worker/git/operations/read/tree";
 import { gErr, gNotFound, pageParams, paginate, requireWriter, resolveGitnessRepo } from "./shared";
+import { MAX_PINNED_ISSUES, readPinnedIssues, writePinnedIssues } from "./stores";
 
 // GitHub-shaped issues surface for the SPA — session-authed like every
 // /api/v1 route. The same model is re-exposed as REST v3 for gh/agent
@@ -90,13 +91,20 @@ export function registerGitnessIssues(router: AppRouter) {
       state: state === "open" || state === "closed" ? state : undefined,
       query,
     });
-    const page = pageParams(c);
-    return c.json(
-      paginate(
-        issues.map((i) => issueView(i)),
-        page
+    // Pinned issues float to the top in pin order (GitHub behavior), then
+    // everything else keeps the catalog's default ordering.
+    const pins = await readPinnedIssues(c.env, access.route.doName);
+    const pinRank = new Map(pins.map((n, i) => [n, i]));
+    const ranked = issues
+      .map((i) => ({ view: { ...issueView(i), pinned: pinRank.has(i.number) }, num: i.number }))
+      .sort(
+        (a, b) =>
+          (pinRank.get(a.num) ?? Number.MAX_SAFE_INTEGER) -
+          (pinRank.get(b.num) ?? Number.MAX_SAFE_INTEGER)
       )
-    );
+      .map((r) => r.view);
+    const page = pageParams(c);
+    return c.json(paginate(ranked, page));
   });
 
   router.post("/api/v1/repos/:repo_ref{.+}/issues", async (c) => {
@@ -200,6 +208,37 @@ export function registerGitnessIssues(router: AppRouter) {
     if (result.status === "not-found") return gNotFound(c, "issue");
     if (result.status === "invalid") return gErr(c, 422, result.reason);
     return c.json(issueView(result.issue));
+  });
+
+  // Pin/unpin — writer-gated; pin order is insertion order, capped at
+  // MAX_PINNED_ISSUES like GitHub.
+  router.put("/api/v1/repos/:repo_ref{.+}/issues/:number/pin", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const stub = getRepoStub(c.env, access.route.doName);
+    const issue = await stub.getIssue(number);
+    if (issue.status !== "ok") return gNotFound(c, "issue");
+    const pins = await readPinnedIssues(c.env, access.route.doName);
+    if (pins.includes(number)) return c.json({ pinned: true, pins });
+    if (pins.length >= MAX_PINNED_ISSUES) {
+      return gErr(c, 409, `at most ${MAX_PINNED_ISSUES} issues can be pinned`);
+    }
+    const next = [...pins, number];
+    await writePinnedIssues(c.env, access.route.doName, next);
+    return c.json({ pinned: true, pins: next });
+  });
+
+  router.delete("/api/v1/repos/:repo_ref{.+}/issues/:number/pin", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const number = parseInt(c.req.param("number"), 10);
+    if (Number.isNaN(number)) return gNotFound(c, "issue");
+    const pins = await readPinnedIssues(c.env, access.route.doName);
+    const next = pins.filter((n) => n !== number);
+    if (next.length !== pins.length) await writePinnedIssues(c.env, access.route.doName, next);
+    return c.json({ pinned: false, pins: next });
   });
 
   router.get("/api/v1/repos/:repo_ref{.+}/issues/:number/comments", async (c) => {

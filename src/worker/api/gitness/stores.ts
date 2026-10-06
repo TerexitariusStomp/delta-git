@@ -294,6 +294,22 @@ export async function writeImportProgress(env: Env, doName: string, progress: Im
 }
 
 // ---------------------------------------------------------------------------
+// Pinned issues — ordered issue numbers surfaced at the top of the issues
+// list. GitHub caps pins at 3 per repo; the cap lives in the route layer.
+// ---------------------------------------------------------------------------
+
+export const MAX_PINNED_ISSUES = 3;
+
+export async function readPinnedIssues(env: Env, doName: string): Promise<number[]> {
+  const raw = await env.ROUTES.get(`gpins:${doName}`, "json").catch(() => null);
+  return (raw as number[] | null) ?? [];
+}
+
+export async function writePinnedIssues(env: Env, doName: string, pins: number[]) {
+  await env.ROUTES.put(`gpins:${doName}`, JSON.stringify(pins));
+}
+
+// ---------------------------------------------------------------------------
 // PR file-view marks — per (repo, intent, viewer): which diff files the
 // viewer marked as reviewed, and at which blob checksum. The SPA stores the
 // whole map; we persist it verbatim so "viewed" survives reloads.
