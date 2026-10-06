@@ -41,7 +41,24 @@ export async function favoriteRepoIds(env: Env, userId: string | undefined): Pro
 // ---------------------------------------------------------------------------
 
 export function gErr(c: GitnessContext, status: number, message: string): Response {
-  return c.json({ message }, status as never);
+  // Frozen machine code alongside the GitHub-shaped `message` (DGS-02).
+  const error =
+    status === 400
+      ? "bad-request"
+      : status === 401
+        ? "unauthorized"
+        : status === 403
+          ? "forbidden"
+          : status === 404
+            ? "not-found"
+            : status === 409
+              ? "conflict"
+              : status === 422
+                ? "validation-failed"
+                : status === 429
+                  ? "rate-limited"
+                  : "internal-error";
+  return c.json({ message, error }, status as never);
 }
 
 export function gNotFound(c: GitnessContext, what = "resource"): Response {

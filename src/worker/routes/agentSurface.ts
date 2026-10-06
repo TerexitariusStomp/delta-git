@@ -157,12 +157,22 @@ blindly:
     GET        /api/v3/repos/{owner}/{repo}
     GET        /{owner}/{repo}   (Accept: text/markdown → markdown card)
 
-## Errors
+## Errors (DGS-02 frozen codes)
 
-JSON errors carry a stable \`message\`; 401 means authenticate, 403 means
-the token lacks the role, 404 means the repo is missing OR private
-(existence is never disclosed). Merge conflicts on a PR merge return 422
-with the conflicting paths.
+JSON errors carry \`message\` (prose) and \`error\` (frozen machine code):
+unauthorized | forbidden | not-found | conflict | validation-failed |
+rate-limited | bad-request | internal-error | unavailable. 429 bodies may
+add \`proof_required\` + \`acquire\` pointing at the rep-cert endpoint.
+404 means missing OR private — existence is never disclosed. Merge
+conflicts on a PR merge return 422 with the conflicting paths.
+
+## Protocol specs
+
+- DGS-01 signed requests (RFC 9421 push auth for did:key agents)
+- DGS-02 frozen error codes
+- DGS-03 reputation certificates (dg-rep-cert-1)
+- DGS-04 clone bundles (bundle-uri)
+Docs: /docs/dgs/ in the repo; conformance behavior as above.
 
 ## Etiquette
 

@@ -36,6 +36,26 @@ import type { IssueView } from "@/worker/do/repo/catalog/issues";
 
 const td = new TextDecoder();
 
+// Frozen machine error codes (DGS-02): `message` stays GitHub-compatible
+// prose for `gh`; `error` is the stable code agents branch on.
+export const ERROR_CODES = {
+  400: "bad-request",
+  401: "unauthorized",
+  403: "forbidden",
+  404: "not-found",
+  409: "conflict",
+  422: "validation-failed",
+  429: "rate-limited",
+  500: "internal-error",
+  503: "unavailable",
+} as const;
+
+type ErrorStatus = keyof typeof ERROR_CODES;
+
+export function v3Err(c: AppContext, status: ErrorStatus, message: string): Response {
+  return c.json({ message, error: ERROR_CODES[status] }, status as never);
+}
+
 async function resolveRoute(c: AppContext): Promise<RepositoryRoute | null> {
   const owner = c.req.param("owner");
   const repo = c.req.param("repo");
@@ -60,10 +80,10 @@ async function authenticated(c: AppContext, route: RepositoryRoute): Promise<str
     if (auth.verified.member && hasOAuthScope(auth.verified.scopes, needed)) {
       return auth.verified.userId;
     }
-    return c.json({ message: "Requires authentication" }, 401);
+    return v3Err(c, 401, "Requires authentication");
   }
   if (route.visibility === "public" && c.req.method === "GET") return "anonymous";
-  return c.json({ message: "Requires authentication" }, 401);
+  return v3Err(c, 401, "Requires authentication");
 }
 
 function commitOidForRef(refs: { name: string; oid: string }[], ref?: string): string | undefined {
@@ -81,7 +101,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo — gh repo view
   router.get("/api/v3/repos/:owner/:repo", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
@@ -114,7 +134,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/git/ref(s)
   router.get("/api/v3/repos/:owner/:repo/git/refs", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const { refs } = await stub.getHeadAndRefs();
     return c.json(
@@ -129,16 +149,16 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/contents/{path}?ref=
   router.get("/api/v3/repos/:owner/:repo/contents/*", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const { refs } = await stub.getHeadAndRefs();
     const ref = c.req.query("ref");
     const oid = commitOidForRef(refs, ref);
-    if (!oid) return c.json({ message: "Not Found" }, 404);
+    if (!oid) return v3Err(c, 404, "Not Found");
     const commit = await readPayload(c.env, route.doName, oid, c.var.cacheCtx);
-    if (!commit) return c.json({ message: "Not Found" }, 404);
+    if (!commit) return v3Err(c, 404, "Not Found");
     const treeOid = parseCommitText(td.decode(commit.payload)).tree;
-    if (!treeOid) return c.json({ message: "Not Found" }, 404);
+    if (!treeOid) return v3Err(c, 404, "Not Found");
 
     const path = decodeURIComponent(
       new URL(c.req.url).pathname.split(
@@ -148,7 +168,7 @@ export function registerApiV3Routes(router: AppRouter): void {
 
     if (path === "") {
       const treeObj = await readPayload(c.env, route.doName, treeOid, c.var.cacheCtx);
-      if (!treeObj) return c.json({ message: "Not Found" }, 404);
+      if (!treeObj) return v3Err(c, 404, "Not Found");
       const tree = parseTree(treeObj.payload);
       return c.json(
         [...tree.values()].map((entry) => ({
@@ -161,10 +181,10 @@ export function registerApiV3Routes(router: AppRouter): void {
     }
 
     const entry = await resolvePathEntry(c.env, route.doName, treeOid, path, c.var.cacheCtx);
-    if (!entry) return c.json({ message: "Not Found" }, 404);
+    if (!entry) return v3Err(c, 404, "Not Found");
     if (isTreeMode(entry.mode)) {
       const treeObj = await readPayload(c.env, route.doName, entry.oid, c.var.cacheCtx);
-      if (!treeObj) return c.json({ message: "Not Found" }, 404);
+      if (!treeObj) return v3Err(c, 404, "Not Found");
       const tree = parseTree(treeObj.payload);
       return c.json(
         [...tree.values()].map((child) => ({
@@ -176,7 +196,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       );
     }
     const blob = await readObject(c.env, route.doName, entry.oid, c.var.cacheCtx);
-    if (!blob || blob.type !== "blob") return c.json({ message: "Not Found" }, 404);
+    if (!blob || blob.type !== "blob") return v3Err(c, 404, "Not Found");
     return c.json({
       name: path.split("/").pop(),
       path,
@@ -190,17 +210,17 @@ export function registerApiV3Routes(router: AppRouter): void {
   // POST /api/v3/repos/:owner/:repo/statuses/:sha — Checks/status writeback
   router.post("/api/v3/repos/:owner/:repo/statuses/:sha", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const parsed = await c.req
       .json<{ state?: string; context?: string; description?: string; target_url?: string }>()
       .catch(() => null);
     if (!parsed?.state || !parsed.context) {
-      return c.json({ message: "state + context required" }, 422);
+      return v3Err(c, 422, "state + context required");
     }
     if (!["pending", "success", "failure", "error"].includes(parsed.state)) {
-      return c.json({ message: "invalid state" }, 422);
+      return v3Err(c, 422, "invalid state");
     }
     const stub = getRepoStub(c.env, route.doName);
     await stub.setCommitStatus({
@@ -221,7 +241,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/commits/:sha/status — combined status
   router.get("/api/v3/repos/:owner/:repo/commits/:sha/status", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const rows = await stub.getCommitStatuses(c.req.param("sha"));
     const state =
@@ -291,7 +311,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/pulls?state= — gh pr list
   router.get("/api/v3/repos/:owner/:repo/pulls", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const all = await intentsOrdered(c.env, route.doName);
@@ -319,25 +339,25 @@ export function registerApiV3Routes(router: AppRouter): void {
   // POST /api/v3/repos/:owner/:repo/pulls — gh pr create
   router.post("/api/v3/repos/:owner/:repo/pulls", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const body = await c.req
       .json<{ title?: string; body?: string; head?: string; base?: string }>()
       .catch(() => null);
     if (!body?.head || !body?.base) {
-      return c.json({ message: "head and base required" }, 422);
+      return v3Err(c, 422, "head and base required");
     }
     const targetRef = `refs/heads/${body.base.replace(/^refs\/heads\//, "")}`;
     const sourceRef = `refs/heads/${body.head.replace(/^refs\/heads\//, "")}`;
-    if (targetRef === sourceRef) return c.json({ message: "head and base match" }, 422);
+    if (targetRef === sourceRef) return v3Err(c, 422, "head and base match");
     const stub = getRepoStub(c.env, route.doName);
     const { refs } = await stub.getHeadAndRefs();
     const source = refs.find((r) => r.name === sourceRef);
-    if (!source) return c.json({ message: `head ref not found: ${body.head}` }, 422);
+    if (!source) return v3Err(c, 422, `head ref not found: ${body.head}`);
     if (!refs.some((r) => r.name === targetRef)) {
-      return c.json({ message: `base ref not found: ${body.base}` }, 422);
+      return v3Err(c, 422, `base ref not found: ${body.base}`);
     }
     const actor = await actorSlug(c, auth);
     const accepted = await stub.acceptPatchCommit({
@@ -373,14 +393,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/pulls/:number — gh pr view
   router.get("/api/v3/repos/:owner/:repo/pulls/:number", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const all = await intentsOrdered(c.env, route.doName);
     const intent = all[number - 1];
-    if (!intent) return c.json({ message: "Not Found" }, 404);
+    if (!intent) return v3Err(c, 404, "Not Found");
     const origin = new URL(c.req.url).origin;
     return c.json(
       await pullJson(
@@ -398,15 +418,15 @@ export function registerApiV3Routes(router: AppRouter): void {
   // PATCH /api/v3/repos/:owner/:repo/pulls/:number — gh pr close/edit
   router.patch("/api/v3/repos/:owner/:repo/pulls/:number", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const all = await intentsOrdered(c.env, route.doName);
     const intent = all[number - 1];
-    if (!intent) return c.json({ message: "Not Found" }, 404);
+    if (!intent) return v3Err(c, 404, "Not Found");
     const actor = await actorSlug(c, auth);
     const body = await c.req
       .json<{ title?: string; body?: string; state?: string }>()
@@ -414,9 +434,9 @@ export function registerApiV3Routes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     if (body?.state === "closed") {
       const result = await stub.rejectMergeIntent({ id: intent.id, actor });
-      if (result.status === "not_found") return c.json({ message: "Not Found" }, 404);
+      if (result.status === "not_found") return v3Err(c, 404, "Not Found");
       if (result.status === "not_rejectable") {
-        return c.json({ message: `pull request is ${result.state}` }, 409);
+        return v3Err(c, 409, `pull request is ${result.state}`);
       }
     }
     if (body?.title !== undefined || body?.body !== undefined) {
@@ -443,15 +463,15 @@ export function registerApiV3Routes(router: AppRouter): void {
   // PUT /api/v3/repos/:owner/:repo/pulls/:number/merge — gh pr merge
   router.put("/api/v3/repos/:owner/:repo/pulls/:number/merge", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const all = await intentsOrdered(c.env, route.doName);
     const intent = all[number - 1];
-    if (!intent) return c.json({ message: "Not Found" }, 404);
+    if (!intent) return v3Err(c, 404, "Not Found");
     const actor = await actorSlug(c, auth);
     const stub = getRepoStub(c.env, route.doName);
     const result = await attemptMerge({
@@ -489,14 +509,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET/POST /api/v3/repos/:owner/:repo/pulls/:number/comments — gh pr comment
   router.get("/api/v3/repos/:owner/:repo/pulls/:number/comments", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const all = await intentsOrdered(c.env, route.doName);
     const intent = all[number - 1];
-    if (!intent) return c.json({ message: "Not Found" }, 404);
+    if (!intent) return v3Err(c, 404, "Not Found");
     const meta = await readPrMeta(c.env, route.doName, intent.id);
     return c.json(
       meta.comments.map((cm) => ({
@@ -513,17 +533,17 @@ export function registerApiV3Routes(router: AppRouter): void {
 
   router.post("/api/v3/repos/:owner/:repo/pulls/:number/comments", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const all = await intentsOrdered(c.env, route.doName);
     const intent = all[number - 1];
-    if (!intent) return c.json({ message: "Not Found" }, 404);
+    if (!intent) return v3Err(c, 404, "Not Found");
     const body = await c.req.json<{ body?: string }>().catch(() => null);
-    if (!body?.body?.trim()) return c.json({ message: "body required" }, 422);
+    if (!body?.body?.trim()) return v3Err(c, 422, "body required");
     const actor = await actorSlug(c, auth);
     const meta = await readPrMeta(c.env, route.doName, intent.id);
     const comment = {
@@ -583,7 +603,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/issues — gh issue list
   router.get("/api/v3/repos/:owner/:repo/issues", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
@@ -600,14 +620,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // POST /api/v3/repos/:owner/:repo/issues — gh issue create
   router.post("/api/v3/repos/:owner/:repo/issues", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const body = await c.req
       .json<{ title?: string; body?: string; labels?: string[]; assignees?: string[] }>()
       .catch(() => null);
-    if (!body?.title?.trim()) return c.json({ message: "title required" }, 422);
+    if (!body?.title?.trim()) return v3Err(c, 422, "title required");
     const actor = await actorSlug(c, auth);
     const stub = getRepoStub(c.env, route.doName);
     const labelIds: string[] = [];
@@ -627,7 +647,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       assignees: body.assignees,
       labelIds,
     });
-    if (result.status !== "created") return c.json({ message: result.reason }, 422);
+    if (result.status !== "created") return v3Err(c, 422, result.reason);
     const origin = new URL(c.req.url).origin;
     return c.json(issueJson(result.issue, origin, c.req.param("owner"), c.req.param("repo")), 201);
   });
@@ -635,14 +655,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/issues/:number — gh issue view
   router.get("/api/v3/repos/:owner/:repo/issues/:number", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.getIssue(number);
-    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.status !== "ok") return v3Err(c, 404, "Not Found");
     const origin = new URL(c.req.url).origin;
     return c.json(issueJson(result.issue, origin, c.req.param("owner"), c.req.param("repo")));
   });
@@ -650,12 +670,12 @@ export function registerApiV3Routes(router: AppRouter): void {
   // PATCH /api/v3/repos/:owner/:repo/issues/:number — gh issue edit/close
   router.patch("/api/v3/repos/:owner/:repo/issues/:number", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const body = await c.req
       .json<{
         title?: string;
@@ -686,8 +706,8 @@ export function registerApiV3Routes(router: AppRouter): void {
       patch.labelIds = labelIds;
     }
     const result = await stub.updateIssue({ number, patch, actor });
-    if (result.status === "not-found") return c.json({ message: "Not Found" }, 404);
-    if (result.status === "invalid") return c.json({ message: result.reason }, 422);
+    if (result.status === "not-found") return v3Err(c, 404, "Not Found");
+    if (result.status === "invalid") return v3Err(c, 422, result.reason);
     const origin = new URL(c.req.url).origin;
     return c.json(issueJson(result.issue, origin, c.req.param("owner"), c.req.param("repo")));
   });
@@ -695,14 +715,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/issues/:number/comments — gh issue view --comments
   router.get("/api/v3/repos/:owner/:repo/issues/:number/comments", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.listIssueComments(number);
-    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.status !== "ok") return v3Err(c, 404, "Not Found");
     return c.json(
       result.comments.map((cm) => ({
         id: cm.id,
@@ -717,19 +737,19 @@ export function registerApiV3Routes(router: AppRouter): void {
   // POST /api/v3/repos/:owner/:repo/issues/:number/comments — gh issue comment
   router.post("/api/v3/repos/:owner/:repo/issues/:number/comments", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const body = await c.req.json<{ body?: string }>().catch(() => null);
-    if (!body?.body?.trim()) return c.json({ message: "body required" }, 422);
+    if (!body?.body?.trim()) return v3Err(c, 422, "body required");
     const actor = await actorSlug(c, auth);
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.addIssueComment({ number, body: body.body, actor });
-    if (result.status === "not-found") return c.json({ message: "Not Found" }, 404);
-    if (result.status === "invalid") return c.json({ message: "body required" }, 422);
+    if (result.status === "not-found") return v3Err(c, 404, "Not Found");
+    if (result.status === "invalid") return v3Err(c, 422, "body required");
     return c.json(
       {
         id: result.comment.id,
@@ -744,7 +764,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET/POST /api/v3/repos/:owner/:repo/labels — gh label list/create
   router.get("/api/v3/repos/:owner/:repo/labels", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const rows = await stub.listLabels();
     return c.json(
@@ -754,15 +774,14 @@ export function registerApiV3Routes(router: AppRouter): void {
 
   router.post("/api/v3/repos/:owner/:repo/labels", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const body = await c.req
       .json<{ name?: string; color?: string; description?: string }>()
       .catch(() => null);
-    if (!body?.name?.trim() || !body.color)
-      return c.json({ message: "name + color required" }, 422);
+    if (!body?.name?.trim() || !body.color) return v3Err(c, 422, "name + color required");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.createLabel({
       name: body.name,
@@ -770,7 +789,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       description: body.description ?? null,
       actor: await actorSlug(c, auth),
     });
-    if (result.status === "invalid") return c.json({ message: "invalid name or color" }, 422);
+    if (result.status === "invalid") return v3Err(c, 422, "invalid name or color");
     return c.json(
       { name: result.label.name, color: result.label.color, description: result.label.description },
       result.status === "exists" ? 200 : 201
@@ -780,7 +799,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET/POST /api/v3/repos/:owner/:repo/milestones
   router.get("/api/v3/repos/:owner/:repo/milestones", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const state = c.req.query("state");
     const rows = await stub.listMilestones({
@@ -799,14 +818,14 @@ export function registerApiV3Routes(router: AppRouter): void {
 
   router.post("/api/v3/repos/:owner/:repo/milestones", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const body = await c.req
       .json<{ title?: string; description?: string; due_on?: string }>()
       .catch(() => null);
-    if (!body?.title?.trim()) return c.json({ message: "title required" }, 422);
+    if (!body?.title?.trim()) return v3Err(c, 422, "title required");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.createMilestone({
       title: body.title,
@@ -814,7 +833,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       dueOn: body.due_on ? Date.parse(body.due_on) : null,
       actor: await actorSlug(c, auth),
     });
-    if (result.status !== "created") return c.json({ message: "title required" }, 422);
+    if (result.status !== "created") return v3Err(c, 422, "title required");
     return c.json(
       {
         number: result.milestone.number,
@@ -848,7 +867,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/discussions
   router.get("/api/v3/repos/:owner/:repo/discussions", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
@@ -863,14 +882,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // POST /api/v3/repos/:owner/:repo/discussions
   router.post("/api/v3/repos/:owner/:repo/discussions", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const body = await c.req
       .json<{ title?: string; body?: string; category?: string }>()
       .catch(() => null);
-    if (!body?.title?.trim()) return c.json({ message: "title required" }, 422);
+    if (!body?.title?.trim()) return v3Err(c, 422, "title required");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.createDiscussion({
       title: body.title,
@@ -878,7 +897,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       category: body.category,
       actor: await actorSlug(c, auth),
     });
-    if (result.status !== "created") return c.json({ message: result.reason }, 422);
+    if (result.status !== "created") return v3Err(c, 422, result.reason);
     const origin = new URL(c.req.url).origin;
     return c.json(
       discussionJson(result.discussion, origin, c.req.param("owner"), c.req.param("repo")),
@@ -889,14 +908,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/discussions/:number
   router.get("/api/v3/repos/:owner/:repo/discussions/:number", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.getDiscussion(number);
-    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.status !== "ok") return v3Err(c, 404, "Not Found");
     const origin = new URL(c.req.url).origin;
     return c.json(
       discussionJson(result.discussion, origin, c.req.param("owner"), c.req.param("repo"))
@@ -906,14 +925,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/discussions/:number/comments
   router.get("/api/v3/repos/:owner/:repo/discussions/:number/comments", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.listDiscussionComments(number);
-    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.status !== "ok") return v3Err(c, 404, "Not Found");
     return c.json(
       result.comments.map((cm) => ({
         id: cm.id,
@@ -928,22 +947,22 @@ export function registerApiV3Routes(router: AppRouter): void {
   // POST /api/v3/repos/:owner/:repo/discussions/:number/comments
   router.post("/api/v3/repos/:owner/:repo/discussions/:number/comments", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const number = parseInt(c.req.param("number"), 10);
-    if (Number.isNaN(number)) return c.json({ message: "Not Found" }, 404);
+    if (Number.isNaN(number)) return v3Err(c, 404, "Not Found");
     const body = await c.req.json<{ body?: string }>().catch(() => null);
-    if (!body?.body?.trim()) return c.json({ message: "body required" }, 422);
+    if (!body?.body?.trim()) return v3Err(c, 422, "body required");
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.addDiscussionComment({
       number,
       body: body.body,
       actor: await actorSlug(c, auth),
     });
-    if (result.status === "not-found") return c.json({ message: "Not Found" }, 404);
-    if (result.status === "invalid") return c.json({ message: "body required" }, 422);
+    if (result.status === "not-found") return v3Err(c, 404, "Not Found");
+    if (result.status === "invalid") return v3Err(c, 422, "body required");
     return c.json(
       {
         id: result.comment.id,
@@ -988,7 +1007,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/releases — gh release list
   router.get("/api/v3/repos/:owner/:repo/releases", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
@@ -1002,10 +1021,10 @@ export function registerApiV3Routes(router: AppRouter): void {
   // POST /api/v3/repos/:owner/:repo/releases — gh release create
   router.post("/api/v3/repos/:owner/:repo/releases", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const body = await c.req
       .json<{
         tag_name?: string;
@@ -1015,7 +1034,7 @@ export function registerApiV3Routes(router: AppRouter): void {
         prerelease?: boolean;
       }>()
       .catch(() => null);
-    if (!body?.tag_name?.trim()) return c.json({ message: "tag_name required" }, 422);
+    if (!body?.tag_name?.trim()) return v3Err(c, 422, "tag_name required");
     const targetOid =
       (await resolveRef(c.env, route.doName, `refs/tags/${body.tag_name}`, c.var.cacheCtx).catch(
         () => undefined
@@ -1030,7 +1049,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       targetOid,
       actor: await actorSlug(c, auth),
     });
-    if (result.status === "invalid") return c.json({ message: result.reason }, 422);
+    if (result.status === "invalid") return v3Err(c, 422, result.reason);
     const origin = new URL(c.req.url).origin;
     return c.json(
       releaseJson(result.release, [], origin, c.req.param("owner"), c.req.param("repo")),
@@ -1041,12 +1060,12 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/releases/latest — gh release view (latest)
   router.get("/api/v3/repos/:owner/:repo/releases/latest", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.getLatestRelease();
-    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.status !== "ok") return v3Err(c, 404, "Not Found");
     const origin = new URL(c.req.url).origin;
     return c.json(
       releaseJson(result.release, result.assets, origin, c.req.param("owner"), c.req.param("repo"))
@@ -1056,14 +1075,14 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/releases/tags/:tag — gh release view <tag>
   router.get("/api/v3/repos/:owner/:repo/releases/tags/:tag", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.getReleaseByTag(c.req.param("tag"));
-    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.status !== "ok") return v3Err(c, 404, "Not Found");
     if (result.release.draft === 1 && auth === "anonymous") {
-      return c.json({ message: "Not Found" }, 404);
+      return v3Err(c, 404, "Not Found");
     }
     const origin = new URL(c.req.url).origin;
     return c.json(
@@ -1074,7 +1093,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/repos/:owner/:repo/releases/:id/assets/:asset_id — download
   router.get("/api/v3/repos/:owner/:repo/releases/:id/assets/:asset_id", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
@@ -1082,9 +1101,9 @@ export function registerApiV3Routes(router: AppRouter): void {
       releaseId: c.req.param("id"),
       assetId: c.req.param("asset_id"),
     });
-    if (result.status !== "ok") return c.json({ message: "Not Found" }, 404);
+    if (result.status !== "ok") return v3Err(c, 404, "Not Found");
     const obj = await c.env.REPO_BUCKET.get(result.asset.r2Key);
-    if (!obj) return c.json({ message: "Not Found" }, 404);
+    if (!obj) return v3Err(c, 404, "Not Found");
     return new Response(obj.body, {
       headers: {
         "content-type": result.asset.contentType,
@@ -1099,20 +1118,20 @@ export function registerApiV3Routes(router: AppRouter): void {
   // PUT/DELETE /api/v3/user/starred/:owner/:repo — gh api -X PUT user/starred/o/r
   router.put("/api/v3/user/starred/:owner/:repo", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     await starRepository(c.var.db, auth, route.repositoryId);
     return c.body(null, 204);
   });
 
   router.delete("/api/v3/user/starred/:owner/:repo", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     await unstarRepository(c.var.db, auth, route.repositoryId);
     return c.body(null, 204);
   });
@@ -1120,20 +1139,20 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET /api/v3/user/starred/:owner/:repo — 204 starred / 404 not
   router.get("/api/v3/user/starred/:owner/:repo", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     return (await isStarred(c.var.db, auth, route.repositoryId))
       ? c.body(null, 204)
-      : c.json({ message: "Not Found" }, 404);
+      : v3Err(c, 404, "Not Found");
   });
 
   // GET /api/v3/repos/:owner/:repo/stargazers — GitHub returns user objects;
   // our stars table stores user ids, so the row shape is login-only.
   router.get("/api/v3/repos/:owner/:repo/stargazers", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     const rows = await listStargazers(c.var.db, route.repositoryId);
@@ -1145,7 +1164,7 @@ export function registerApiV3Routes(router: AppRouter): void {
   // GET/PUT /api/v3/repos/:owner/:repo/topics — gh repo edit --add-topic
   router.get("/api/v3/repos/:owner/:repo/topics", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
     return c.json({ names: await listRepoTopics(c.var.db, route.repositoryId) });
@@ -1153,14 +1172,14 @@ export function registerApiV3Routes(router: AppRouter): void {
 
   router.put("/api/v3/repos/:owner/:repo/topics", async (c) => {
     const route = await resolveRoute(c);
-    if (!route) return c.json({ message: "Not Found" }, 404);
+    if (!route) return v3Err(c, 404, "Not Found");
     const auth = await authenticated(c, route);
     if (auth instanceof Response) return auth;
-    if (auth === "anonymous") return c.json({ message: "Requires authentication" }, 401);
+    if (auth === "anonymous") return v3Err(c, 401, "Requires authentication");
     const body = await c.req.json<{ names?: string[] }>().catch(() => null);
-    if (!body?.names) return c.json({ message: "names required" }, 422);
+    if (!body?.names) return v3Err(c, 422, "names required");
     const topics = normalizeTopics(body.names);
-    if (!topics) return c.json({ message: "invalid topic names" }, 422);
+    if (!topics) return v3Err(c, 422, "invalid topic names");
     await setRepoTopics(c.var.db, route.repositoryId, topics);
     return c.json({ names: topics });
   });
