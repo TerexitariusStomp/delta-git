@@ -8,6 +8,7 @@ import { getLimiter } from "@/worker/git/operations/limits";
 import { readObject } from "@/worker/git/object-store/store";
 import { parseCommitText } from "@/worker/git/core";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
+import { LICENSE_NAME, LICENSE_SIGNATURES } from "@/worker/git/operations/read/license";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { makeBadge } from "badge-maker";
 
@@ -55,25 +56,8 @@ function relAge(fromSeconds: number): string {
   return `${Math.floor(s / (86400 * 365))}y ago`;
 }
 
-// Root-tree filename check — same pattern the About sidebar uses.
-const LICENSE_NAME = /^(licen[sc]e|copying|unlicen[sc]e|notice)(\.\w{1,4})?$/i;
-
-// Lightweight SPDX signature match on the first chunk of the license body.
-// Detection lives in one place so a badge, the About sidebar, and later a
-// `detected_license` API field can share the vocabulary.
-const LICENSE_SIGNATURES: [RegExp, string][] = [
-  [/apache license\s+version 2\.0/i, "Apache-2.0"],
-  [/mit license|permission is hereby granted, free of charge/i, "MIT"],
-  [/gnu general public license\s+version 3|gpl-3/i, "GPL-3.0"],
-  [/gnu general public license\s+version 2|gpl-2/i, "GPL-2.0"],
-  [/gnu affero general public license/i, "AGPL"],
-  [/gnu lesser general public license/i, "LGPL"],
-  [/bsd 3-clause|bsd 2-clause|redistribution and use in source and binary forms/i, "BSD"],
-  [/mozilla public license\s+version 2\.0|mpl-2/i, "MPL-2.0"],
-  [/the unlicense|free and unencumbered software released into the public domain/i, "Unlicense"],
-  [/creative commons/i, "CC"],
-  [/isc license/i, "ISC"],
-];
+// License detection vocabulary lives in read/license.ts so the badge, the
+// community profile, and a future `detected_license` field share it.
 
 async function headCommitOid(env: Env, doName: string, cacheCtx: CacheContext | undefined) {
   return resolveRef(env, doName, "HEAD", cacheCtx);

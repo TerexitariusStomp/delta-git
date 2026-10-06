@@ -1188,7 +1188,7 @@ describe("signature verification — SSHSIG signed commits", () => {
           "Content-Type": "application/x-git-receive-pack-request",
           Authorization: repo.pushAuthHeader,
         },
-        body,
+        body: new Uint8Array(body),
       }
     );
     expect(push.status).toBe(200);
@@ -1229,7 +1229,7 @@ describe("signature verification — SSHSIG signed commits", () => {
           "Content-Type": "application/x-git-receive-pack-request",
           Authorization: repo.pushAuthHeader,
         },
-        body: body2,
+        body: new Uint8Array(body2),
       }
     );
     // Even if the thin push is refused, verification only needs the object —
@@ -1285,7 +1285,7 @@ describe("dr — bundle export, drill, download", () => {
           "Content-Type": "application/x-git-receive-pack-request",
           Authorization: repo.pushAuthHeader,
         },
-        body,
+        body: new Uint8Array(body),
       }
     );
     expect(res.status).toBe(200);
@@ -1652,8 +1652,7 @@ describe("dependency graph", () => {
     let captured: { url: string; body: string } | null = null;
     const vulns = await queryOsvBatch(
       g.dependencies.map((d) => {
-        const [purl, rest] = [d.package_url, ""];
-        const m = /^pkg:[a-z]+\/(.+?)@([^@]+)$/.exec(purl);
+        const m = /^pkg:[a-z]+\/(.+?)@([^@]+)$/.exec(d.package_url);
         return {
           purl: d.package_url,
           name: m?.[1] ?? "",
@@ -1729,5 +1728,54 @@ describe("ops probes", () => {
     expect(checks.d1).toBe(true);
     expect(checks.kv).toBe(true);
     expect(checks.r2).toBe(true);
+  });
+});
+
+describe("community profile", () => {
+  it("scores health files in root and .github", async () => {
+    const repo = await setupRepoForTests(env, uniq("comm-ns"), "commrepo");
+    // Give the repo a main branch + objects so the commits API has a base.
+    await env.REPO_DO.get(env.REPO_DO.idFromName(repo.doName)).seedMinimalRepo();
+    const base = `/api/v1/repos/${repo.namespaceSlug}/commrepo/+`;
+
+    const commit = await workerExports.default.fetch(`https://example.com${base}/commits`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+      body: JSON.stringify({
+        branch: "main",
+        message: "seed community files",
+        actions: [
+          { action: "CREATE", path: "README.md", encoding: "text", payload: "# commrepo\n" },
+          {
+            action: "CREATE",
+            path: "LICENSE",
+            encoding: "text",
+            payload: "MIT License\n\nPermission is hereby granted, free of charge\n",
+          },
+          { action: "CREATE", path: "SECURITY.md", encoding: "text", payload: "# Security\n" },
+          {
+            action: "CREATE",
+            path: ".github/PULL_REQUEST_TEMPLATE.md",
+            encoding: "text",
+            payload: "Template\n",
+          },
+        ],
+      }),
+    });
+    expect(commit.status, await commit.text()).toBe(200);
+
+    const profile = await get(`${base}/community/profile`);
+    expect(profile.status, JSON.stringify(profile.body)).toBe(200);
+    const body = profile.body as {
+      health_percentage: number;
+      files: Record<string, { name: string; path: string; spdx_id?: string } | null>;
+    };
+    expect(body.files.readme?.name).toBe("README.md");
+    expect(body.files.license?.spdx_id).toBe("MIT");
+    expect(body.files.security?.name).toBe("SECURITY.md");
+    expect(body.files.pull_request_template?.path).toBe(".github/PULL_REQUEST_TEMPLATE.md");
+    expect(body.files.code_of_conduct).toBeNull();
+    // 4 of 7 slots filled: readme, license, security, pr_template.
+    expect(body.health_percentage).toBe(Math.round((4 / 7) * 100));
   });
 });

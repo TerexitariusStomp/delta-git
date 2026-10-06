@@ -27,6 +27,7 @@ import {
   isSymlinkMode,
 } from "@/worker/git/operations/read";
 import type { TreeEntry } from "@/worker/git/operations/read/types";
+import { LICENSE_NAME, LICENSE_SIGNATURES } from "@/worker/git/operations/read/license";
 import { attemptMerge, mergeDryRun, findMergeBase } from "@/worker/merge/engine";
 import { writeServerPack } from "@/worker/merge/packWriter";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
@@ -1174,6 +1175,88 @@ export function registerGitnessGitdata(router: AppRouter) {
     if (removed === "protected") return gErr(c, 403, "tag is protected");
     if (removed === "missing") return gNotFound(c, "tag");
     return c.json({ deleted: true });
+  });
+
+  // GitHub's community profile — scans root + .github/ for the standard
+  // health files and reports a completeness percentage.
+  router.get("/api/v1/repos/:repo_ref{.+}/community/profile", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const ref = c.req.query("git_ref") || "HEAD";
+
+    const root = await readPath(c.env, access.route.doName, ref, "", access.cacheCtx).catch(
+      () => null
+    );
+    if (!root || root.type !== "tree") return gNotFound(c, "ref");
+    const dotGithub = root.entries.find((e) => e.name === ".github" && isTreeMode(e.mode));
+    const ghEntries = dotGithub
+      ? await readTree(c.env, access.route.doName, dotGithub.oid, access.cacheCtx).catch(
+          () => [] as TreeEntry[]
+        )
+      : [];
+
+    const find = (re: RegExp, dirs: { name: string; entries: TreeEntry[] }[]) => {
+      for (const d of dirs) {
+        const hit = d.entries.find((e) => !isTreeMode(e.mode) && re.test(e.name));
+        if (hit) return { name: hit.name, path: d.name ? `${d.name}/${hit.name}` : hit.name };
+      }
+      return null;
+    };
+    const dirs = [
+      { name: "", entries: root.entries },
+      { name: ".github", entries: ghEntries },
+    ];
+
+    const fileEntry = (f: { name: string; path: string } | null) =>
+      f ? { name: f.name, path: f.path, url: f.path } : null;
+
+    const readme = find(/^readme(\.\w+)?$/i, dirs);
+    const coc = find(/^code[_-]?of[_-]?conduct(\.\w+)?$/i, dirs);
+    const contributing = find(/^contributing(\.\w+)?$/i, dirs);
+    const security = find(/^security(\.\w+)?$/i, dirs);
+    const licenseFile = find(LICENSE_NAME, dirs);
+    const ghIssueTpl = ghEntries.find((e) => /^issue[_-]?template/i.test(e.name));
+    const ghPrTpl = ghEntries.find((e) => /^pull[_-]?request[_-]?template/i.test(e.name));
+    const issueTemplate = ghIssueTpl
+      ? { name: ghIssueTpl.name, path: `.github/${ghIssueTpl.name}` }
+      : find(/^issue[_-]?template(\.\w+)?$/i, dirs);
+    const prTemplate = ghPrTpl
+      ? { name: ghPrTpl.name, path: `.github/${ghPrTpl.name}` }
+      : find(/^pull[_-]?request[_-]?template(\.\w+)?$/i, dirs);
+
+    // SPDX detection reads the license blob's head chunk — same signature
+    // table the badge endpoint uses.
+    let license: { name: string; spdx_id: string | null } | null = null;
+    if (licenseFile) {
+      const blob = await readPath(
+        c.env,
+        access.route.doName,
+        ref,
+        licenseFile.path,
+        access.cacheCtx
+      ).catch(() => null);
+      let spdx: string | null = null;
+      if (blob?.type === "blob" && !blob.tooLarge) {
+        const headChunk = new TextDecoder().decode(blob.content.slice(0, 8 * 1024));
+        spdx = LICENSE_SIGNATURES.find(([re]) => re.test(headChunk))?.[1] ?? null;
+      }
+      license = { name: spdx ?? licenseFile.name, spdx_id: spdx };
+    }
+
+    const present = [readme, coc, contributing, security, licenseFile, issueTemplate, prTemplate];
+    const health = Math.round((present.filter(Boolean).length / present.length) * 100);
+    return c.json({
+      health_percentage: health,
+      files: {
+        code_of_conduct: fileEntry(coc),
+        contributing: fileEntry(contributing),
+        issue_template: fileEntry(issueTemplate),
+        pull_request_template: fileEntry(prTemplate),
+        license: license ? { ...license, path: licenseFile!.path } : null,
+        readme: fileEntry(readme),
+        security: fileEntry(security),
+      },
+    });
   });
 
   // Commit-files: file create/update/delete/move/patch in one commit, the
