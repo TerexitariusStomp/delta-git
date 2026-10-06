@@ -1244,6 +1244,94 @@ describe("signature verification — SSHSIG signed commits", () => {
       expect(r2.reason).toContain("unknown key");
     }
   });
+
+  it("verifies a PGP-signed commit against the registered gpg key", async () => {
+    const openpgp = await import("openpgp");
+    const repo = await setupRepoForTests(env, uniq("pgp-ns"), "pgprepo");
+
+    const { privateKey: armoredPriv, publicKey: armoredPub } = await openpgp.generateKey({
+      userIDs: [{ name: "Test", email: "t@example.com" }],
+      curve: "ed25519Legacy",
+      format: "armored",
+    });
+    const priv = await openpgp.readPrivateKey({ armoredKey: armoredPriv });
+
+    // Register the public key via the gpg-keys API (writes gpgfp index).
+    const keyRes = await workerExports.default.fetch("https://example.com/api/v1/user/gpg-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+      body: JSON.stringify({ armored_key: armoredPub }),
+    });
+    expect(keyRes.status).toBe(201);
+    const registered = (await keyRes.json()) as { key_id: string; fingerprint: string };
+    expect(registered.fingerprint).toMatch(/^[0-9A-F]{40}$/);
+
+    // Build a commit, detach-sign the unsigned payload, embed the armor.
+    const { buildPack } = await import("./util/git-pack");
+    const { encodeGitObject, pktLine, flushPkt, concatChunks } = await import("@/worker/git/core");
+    const { buildTreePayload } = await import("./util/packed-repo");
+
+    const blob = await encodeGitObject("blob", te.encode("pgp signed"));
+    const tree = await encodeGitObject(
+      "tree",
+      buildTreePayload([{ mode: "100644", name: "p.txt", oid: blob.oid }])
+    );
+    const unsignedText =
+      `tree ${tree.oid}\n` +
+      `author T <t@example.com> 0 +0000\n` +
+      `committer T <t@example.com> 0 +0000\n` +
+      `\npgp signed commit\n`;
+    const armor = await openpgp.sign({
+      message: await openpgp.createMessage({ binary: te.encode(unsignedText) }),
+      signingKeys: priv,
+      detached: true,
+      format: "armored",
+    });
+    const signedPayload = withGpgsig(unsignedText, armor);
+    const commit = await encodeGitObject("commit", signedPayload);
+
+    const pack = await buildPack([
+      { type: "blob", payload: te.encode("pgp signed") },
+      {
+        type: "tree",
+        payload: buildTreePayload([{ mode: "100644", name: "p.txt", oid: blob.oid }]),
+      },
+      { type: "commit", payload: signedPayload },
+    ]);
+    const push = await workerExports.default.fetch(
+      `https://example.com/${repo.namespaceSlug}/${repo.repoSlug}/git-receive-pack`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-git-receive-pack-request",
+          Authorization: repo.pushAuthHeader,
+        },
+        body: new Uint8Array(
+          concatChunks([
+            pktLine(
+              `0000000000000000000000000000000000000000 ${commit.oid} refs/heads/main\0 report-status ofs-delta\n`
+            ),
+            flushPkt(),
+            pack,
+          ])
+        ),
+      }
+    );
+    expect(push.status).toBe(200);
+
+    const verify = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${repo.namespaceSlug}/${repo.repoSlug}/signature-verification?commit_sha=${commit.oid}`
+    );
+    const result = (await verify.json()) as {
+      signed: boolean;
+      verified: boolean;
+      signer?: string;
+      reason?: string;
+    };
+    expect(result.signed).toBe(true);
+    expect(result.verified).toBe(true);
+    expect(result.signer).toBe(repo.userId);
+  });
 });
 
 describe("dr — bundle export, drill, download", () => {

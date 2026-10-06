@@ -390,6 +390,105 @@ export function registerGitnessApi(router: AppRouter) {
     return c.json({});
   });
 
+  // --- OpenPGP public keys (GitHub /user/gpg_keys parity) --------------------
+  // KV mirror of the SSH keyring: `gpgkeys:{userId}` holds armored public
+  // keys, and `gpgfp:{fingerprint}` / `gpgfp:{keyid}` reverse-index signer
+  // identities for commit-signature verification. openpgp lazy-imports —
+  // key registration is rare and the package is large.
+
+  type GpgKeyRow = {
+    id: number;
+    identifier: string;
+    key_id: string;
+    fingerprint: string;
+    armored_key: string;
+    created: number;
+  };
+  const gpgKeyList = async (env: Env, userId: string): Promise<GpgKeyRow[]> =>
+    ((await env.ROUTES.get(`gpgkeys:${userId}`, "json").catch(() => null)) as GpgKeyRow[] | null) ??
+    [];
+
+  router.get("/api/v1/user/gpg-keys", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const keys = await gpgKeyList(c.env, viewer.userId);
+    return c.json(
+      keys.map((k) => ({
+        id: k.id,
+        identifier: k.identifier,
+        key_id: k.key_id,
+        fingerprint: k.fingerprint,
+        created: k.created,
+      }))
+    );
+  });
+
+  router.post("/api/v1/user/gpg-keys", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const body = (await c.req.json().catch(() => null)) as {
+      identifier?: string;
+      armored_key?: string;
+    } | null;
+    if (!body?.armored_key?.includes("BEGIN PGP PUBLIC KEY BLOCK")) {
+      return gErr(c, 400, "invalid armored public key");
+    }
+    let fingerprint: string;
+    try {
+      const openpgp = await import("openpgp");
+      const key = await openpgp.readKey({ armoredKey: body.armored_key });
+      fingerprint = key.getFingerprint().toUpperCase();
+    } catch {
+      return gErr(c, 400, "unparseable public key");
+    }
+    const keys = await gpgKeyList(c.env, viewer.userId);
+    if (keys.some((k) => k.fingerprint === fingerprint)) {
+      return gErr(c, 409, "key already registered");
+    }
+    const row: GpgKeyRow = {
+      id: (keys.at(-1)?.id ?? 0) + 1,
+      identifier: body.identifier?.trim() || fingerprint.slice(-8),
+      key_id: fingerprint.slice(-16),
+      fingerprint,
+      armored_key: body.armored_key,
+      created: Date.now(),
+    };
+    await c.env.ROUTES.put(`gpgkeys:${viewer.userId}`, JSON.stringify([...keys, row]));
+    await c.env.ROUTES.put(`gpgfp:${fingerprint}`, viewer.userId).catch(() => {});
+    await c.env.ROUTES.put(`gpgfp:${row.key_id}`, viewer.userId).catch(() => {});
+    const { armored_key: _armored, ...out } = row;
+    return c.json(out, 201);
+  });
+
+  router.get("/api/v1/user/gpg-keys/:id", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const keys = await gpgKeyList(c.env, viewer.userId);
+    const key = keys.find(
+      (k) => k.id === parseInt(c.req.param("id"), 10) || k.identifier === c.req.param("id")
+    );
+    if (!key) return gNotFound(c, "key");
+    const { armored_key: _armored, ...out } = key;
+    return c.json(out);
+  });
+
+  router.delete("/api/v1/user/gpg-keys/:id", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const keys = await gpgKeyList(c.env, viewer.userId);
+    const next = keys.filter(
+      (k) => k.id !== parseInt(c.req.param("id"), 10) && k.identifier !== c.req.param("id")
+    );
+    if (next.length === keys.length) return gNotFound(c, "key");
+    const removed = keys.filter((k) => !next.includes(k));
+    await c.env.ROUTES.put(`gpgkeys:${viewer.userId}`, JSON.stringify(next));
+    for (const k of removed) {
+      await c.env.ROUTES.delete(`gpgfp:${k.fingerprint}`).catch(() => {});
+      await c.env.ROUTES.delete(`gpgfp:${k.key_id}`).catch(() => {});
+    }
+    return c.json({});
+  });
+
   // Template pickers in the create-repo dialog.
   router.get("/api/v1/resources/gitignore", async (c) => c.json(GITIGNORE_PRESETS));
   router.get("/api/v1/resources/license", async (c) => c.json(LICENSE_PRESETS));

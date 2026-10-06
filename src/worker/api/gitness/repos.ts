@@ -98,6 +98,7 @@ import {
   unarmorSshSig,
   verifySshSig,
 } from "@/worker/git/core/sshsig";
+import { isPgpSignatureArmor, pgpIssuerIds, verifyPgpDetached } from "@/worker/git/core/pgpsig";
 
 const OPEN_STATUSES = ["open", "merging", "adjudicating", "conflict"];
 const DONE_STATUSES = ["merged", "rejected", "expired"];
@@ -1470,9 +1471,10 @@ export function registerGitnessRepos(router: AppRouter) {
 
   // --- signature verification -----------------------------------------------------
 
-  // SSH commit signatures (git gpg.format=ssh → SSHSIG blob in gpgsig) are
-  // verified against the user SSH-key keyring — Ed25519 via WebCrypto.
-  // OpenPGP signatures report presence honestly but stay unverified.
+  // Commit signatures verified against the user's keyrings — SSHSIG via
+  // WebCrypto, OpenPGP detached signatures via openpgp.js (keyring =
+  // registered /user/gpg-keys). Signatures from unregistered keys report
+  // verified=false with the signer fingerprint, never silently trusted.
   router.get("/api/v1/repos/:repo_ref{.+}/signature-verification", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
     if (access.kind !== "ok") return access.response;
@@ -1489,11 +1491,62 @@ export function registerGitnessRepos(router: AppRouter) {
 
     const sshBlob = unarmorSshSig(sigText);
     if (!sshBlob) {
+      if (isPgpSignatureArmor(sigText)) {
+        const issuerIds = await pgpIssuerIds(sigText).catch(() => [] as string[]);
+        // Resolve registered keys for every issuer id the signature claims.
+        const userIds = new Set<string>();
+        for (const id of issuerIds) {
+          const uid = await c.env.ROUTES.get(`gpgfp:${id}`).catch(() => null);
+          if (uid) userIds.add(uid);
+        }
+        const armoredKeys: string[] = [];
+        let signerUserId: string | null = null;
+        for (const uid of userIds) {
+          const rows =
+            ((await c.env.ROUTES.get(`gpgkeys:${uid}`, "json").catch(() => null)) as
+              | { fingerprint: string; armored_key: string }[]
+              | null) ?? [];
+          for (const r of rows) {
+            // issuerIds may carry the 40-hex fingerprint, the 16-hex key id,
+            // or both — match on either form of this row's fingerprint.
+            const fp16 = r.fingerprint.slice(-16);
+            if (issuerIds.includes(r.fingerprint) || issuerIds.includes(fp16)) {
+              armoredKeys.push(r.armored_key);
+              signerUserId = uid;
+            }
+          }
+        }
+        if (armoredKeys.length === 0) {
+          return c.json({
+            commit_sha: sha,
+            signed: true,
+            verified: false,
+            key_fingerprint: issuerIds.find((id) => id.length === 40) ?? issuerIds[0],
+            reason: "openpgp signature from an unregistered key",
+          });
+        }
+        const pgp = await verifyPgpDetached(unsigned, sigText, armoredKeys).catch(() => ({
+          status: "failed" as const,
+          reason: "verification-error",
+        }));
+        return c.json({
+          commit_sha: sha,
+          signed: true,
+          verified: pgp.status === "verified",
+          key_fingerprint:
+            pgp.status === "verified"
+              ? pgp.fingerprint
+              : (issuerIds.find((id) => id.length === 40) ?? issuerIds[0]),
+          signer: pgp.status === "verified" ? (signerUserId ?? undefined) : undefined,
+          reason:
+            pgp.status === "verified" ? undefined : `openpgp: ${pgp.reason ?? "bad signature"}`,
+        });
+      }
       return c.json({
         commit_sha: sha,
         signed: true,
         verified: false,
-        reason: "openpgp signature detected — pgp verification unsupported",
+        reason: "unrecognized signature format",
       });
     }
     const sig = parseSshSig(sshBlob);
