@@ -1344,6 +1344,58 @@ describe("dr — bundle export, drill, download", () => {
     const bytes = new Uint8Array(await dl.arrayBuffer());
     expect(new TextDecoder().decode(bytes.subarray(0, 14))).toBe("GIT BUNDLE V3\n");
   });
+
+  it("restores a stored export into a fresh repo", async () => {
+    const repo = await setupRepoForTests(env, uniq("drs-ns"), "drsrc");
+    const base = `/api/v1/repos/${repo.namespaceSlug}/drsrc/+`;
+    const commitOid = await pushCommit(repo, "dr restore me\n", "r.txt", "dr restore seed");
+
+    const exported = await workerExports.default.fetch(`https://example.com${base}/dr/export`, {
+      method: "POST",
+      headers: { Cookie: repo.cookieHeader },
+    });
+    expect(exported.status).toBe(201);
+
+    // Fresh target repo in the same namespace — restore replays refs+pack.
+    const created = await workerExports.default.fetch("https://example.com/api/v1/repos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+      body: JSON.stringify({ identifier: "drtarget", parent_ref: repo.namespaceSlug }),
+    });
+    expect(created.status, await created.text()).toBe(200);
+    const restore = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${repo.namespaceSlug}/drtarget/+/dr/restore`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+        body: JSON.stringify({ source: `${repo.namespaceSlug}/drsrc` }),
+      }
+    );
+    const restoreText = await restore.text();
+    expect(restore.status, restoreText).toBe(201);
+    const restored = JSON.parse(restoreText) as { refs: number; objects: number };
+    expect(restored.objects).toBe(3);
+
+    // The target now serves the restored tip on refs/heads/main.
+    const refs = await get(
+      `/api/v1/repos/${repo.namespaceSlug}/drtarget/+/branches`,
+      repo.cookieHeader
+    );
+    expect(refs.status).toBe(200);
+    const refList = refs.body as { name: string; sha: string }[];
+    expect(refList.find((r) => r.name === "main")?.sha).toBe(commitOid);
+
+    // Second restore into the now-non-empty target must refuse.
+    const again = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${repo.namespaceSlug}/drtarget/+/dr/restore`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: repo.cookieHeader },
+        body: JSON.stringify({ source: `${repo.namespaceSlug}/drsrc` }),
+      }
+    );
+    expect(again.status).toBe(409);
+  });
 });
 
 describe("npm registry /npm", () => {

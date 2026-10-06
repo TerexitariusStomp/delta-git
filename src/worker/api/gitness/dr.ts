@@ -14,6 +14,7 @@ import type { AppRouter } from "@/worker/routes/hono";
 import { getRepoStub } from "@/worker/common";
 import { getHeadAndRefs } from "@/worker/git/operations/read";
 import { buildBundleStream } from "@/worker/git/operations/bundle";
+import { ingestPackIntoRepo } from "@/worker/agent/importer";
 import { doPrefix } from "@/worker/keys";
 import {
   gErr,
@@ -234,6 +235,89 @@ export function registerGitnessRepoDr(router: AppRouter) {
     const status = failed.length === 0 ? "pass" : "fail";
     log.info("dr:drilled", { status, checks: checks.length, exportTs: manifest.exportedAt });
     return c.json({ status, checks, manifest, liveHead: head ?? null });
+  });
+
+  // --- restore: replay an export into THIS (empty) repo ---------------------
+  // The disaster-recovery round trip: create a fresh repo, POST here with
+  // the *source* repo ref (+ optional export timestamp). The target must
+  // have no refs — `importPack` enforces that atomically in the DO.
+  router.post("/api/v1/repos/:repo_ref{.+}/dr/restore", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as {
+      source?: string;
+      exported_at?: number;
+    } | null;
+    if (!body?.source) return gErr(c, 400, "source repo_ref required");
+
+    // Reading another repo's exports carries the source's clone-level read
+    // gate — a private repo's backups stay member-only.
+    const source = await resolveGitnessRepo(c, body.source);
+    if (source.kind !== "ok") return source.response;
+    const sourceId = getRepoStub(c.env, source.route.doName).id.toString();
+
+    const manifest = await (async () => {
+      if (body.exported_at !== undefined) {
+        const key = `${drPrefix(sourceId)}/manifest-${body.exported_at}.json`;
+        const obj = await c.env.REPO_BUCKET.get(key);
+        return obj ? ((await obj.json()) as DrManifest) : null;
+      }
+      return readManifest(c.env, sourceId);
+    })();
+    if (!manifest) return gErr(c, 404, "no export found on the source repo");
+    const obj = await c.env.REPO_BUCKET.get(manifest.bundleKey);
+    if (!obj) return gErr(c, 404, "export bundle missing from storage");
+
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    const packStart = indexOfPack(bytes);
+    if (
+      new TextDecoder().decode(bytes.subarray(0, BUNDLE_MAGIC.length)) !== BUNDLE_MAGIC ||
+      packStart <= 0
+    ) {
+      return gErr(c, 422, "stored export is not a git bundle v3");
+    }
+    const refs: { name: string; oid: string }[] = [];
+    let headOid: string | undefined;
+    for (const line of new TextDecoder()
+      .decode(bytes.subarray(BUNDLE_MAGIC.length, packStart))
+      .split("\n")) {
+      const m = /^([0-9a-f]{40}) (\S+)$/.exec(line);
+      if (!m) continue;
+      if (m[2] === "HEAD") headOid = m[1];
+      else refs.push({ name: m[2], oid: m[1] });
+    }
+    // HEAD is recorded as an oid in our export format; its target ref is
+    // the branch carrying the same oid (manifest records it too).
+    const headRef =
+      refs.find((r) => r.name === manifest.head?.target) ??
+      refs.find((r) => headOid && r.oid === headOid && r.name.startsWith("refs/heads/")) ??
+      refs.find((r) => r.name.startsWith("refs/heads/")) ??
+      refs[0];
+    if (!headRef) return gErr(c, 422, "bundle contains no refs");
+
+    const stub = getRepoStub(c.env, access.route.doName);
+    const result = await ingestPackIntoRepo({
+      env: c.env,
+      repoId: access.route.doName,
+      stub,
+      pack: bytes.subarray(packStart),
+      refs,
+      head: { target: headRef.name, oid: headRef.oid },
+      actor: access.actor,
+      cacheCtx: access.cacheCtx,
+      packLabel: "restore",
+    });
+    if (result.kind === "not_empty") {
+      return gErr(c, 409, "target repository is not empty — restore needs a fresh repo");
+    }
+    if (result.kind === "failed") return gErr(c, 422, `restore failed: ${result.reason}`);
+    c.var.logFor({ service: "DrRestore" }).info("dr:restored", {
+      source: body.source,
+      exportTs: manifest.exportedAt,
+      refs: result.refs,
+      objects: result.objects,
+    });
+    return c.json({ restored: true, ...result, source_export: manifest.exportedAt }, 201);
   });
 }
 

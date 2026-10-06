@@ -198,10 +198,54 @@ export async function importRemoteRepo(args: {
     return { kind: "failed", reason: "not-a-pack" };
   }
 
+  const ingested = await ingestPackIntoRepo({
+    env,
+    repoId,
+    stub,
+    pack: fetched.pack,
+    refs,
+    head: { target: headRef.name, oid: headRef.oid },
+    actor,
+    cacheCtx,
+    packLabel: "import",
+  });
+  if (ingested.kind === "imported") {
+    log.info("import:done", {
+      url: base,
+      refs: refs.length,
+      objects: ingested.objects,
+    });
+  }
+  return ingested;
+}
+
+/**
+ * Stage a raw pack into the repo's R2 prefix, index it, and register
+ * catalog rows + refs + head atomically through the DO's `importPack` —
+ * the shared tail of `importRemoteRepo` and the DR bundle-restore path.
+ * The DO rejects non-empty repos, so callers get a clean `not_empty`.
+ */
+export async function ingestPackIntoRepo(args: {
+  env: Env;
+  repoId: string;
+  stub: DurableObjectStub<RepoDurableObject>;
+  pack: Uint8Array;
+  refs: { name: string; oid: string }[];
+  head: { target: string; oid: string };
+  actor: string;
+  cacheCtx?: CacheContext;
+  /** Distinguishes staged keys in R2 (e.g. "import" vs "restore"). */
+  packLabel: string;
+}): Promise<ImportResult> {
+  const { env, repoId, stub, pack, refs, head, actor, cacheCtx } = args;
+  const log = createLogger(env.LOG_LEVEL, { service: "Importer", repoId });
   const limiter = getLimiter(cacheCtx);
   const prefix = doPrefix(stub.id.toString());
-  const packKey = r2PackKey(prefix, `pack-import-${crypto.randomUUID().slice(0, 8)}.pack`);
-  await limiter.run("r2:put-import-pack", () => env.REPO_BUCKET.put(packKey, fetched.pack));
+  const packKey = r2PackKey(
+    prefix,
+    `pack-${args.packLabel}-${crypto.randomUUID().slice(0, 8)}.pack`
+  );
+  await limiter.run("r2:put-import-pack", () => env.REPO_BUCKET.put(packKey, pack));
   let subrequests = 1;
   const countSubrequest = (n = 1) => {
     subrequests += n;
@@ -210,7 +254,7 @@ export async function importRemoteRepo(args: {
   const scanResult = await scanPack({
     env,
     packKey,
-    packSize: fetched.pack.byteLength,
+    packSize: pack.byteLength,
     limiter,
     countSubrequest,
     log,
@@ -218,7 +262,7 @@ export async function importRemoteRepo(args: {
   const resolveResult = await resolveDeltasAndWriteIdx({
     env,
     packKey,
-    packSize: fetched.pack.byteLength,
+    packSize: pack.byteLength,
     limiter,
     countSubrequest,
     log,
@@ -231,28 +275,22 @@ export async function importRemoteRepo(args: {
     packs: [
       {
         packKey,
-        packBytes: fetched.pack.byteLength,
+        packBytes: pack.byteLength,
         idxBytes: resolveResult.idxBytes,
         objectCount: resolveResult.objectCount,
       },
     ],
     refs,
-    head: { target: headRef.name, oid: headRef.oid },
+    head,
     actor,
   });
   if (outcome.status !== "imported") {
     return { kind: "not_empty", refs: outcome.refs };
   }
-  log.info("import:done", {
-    url: base,
-    refs: refs.length,
-    objects: resolveResult.objectCount,
-    subrequests,
-  });
   return {
     kind: "imported",
     refs: refs.length,
-    head: headRef.name,
+    head: head.target,
     objects: resolveResult.objectCount,
   };
 }
