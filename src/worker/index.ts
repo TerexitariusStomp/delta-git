@@ -6,6 +6,7 @@ import { registerReputationRoutes } from "./routes/reputation";
 import { registerApiV3Routes } from "./routes/apiv3";
 import { registerPagesRoutes } from "./routes/pages";
 import { registerArchiveRoutes } from "./routes/archive";
+import { registerAgentSurfaceRoutes } from "./routes/agentSurface";
 import { registerBadgeRoutes } from "./routes/badge";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
@@ -62,6 +63,9 @@ registerPagesRoutes(app);
 registerArchiveRoutes(app);
 // shields.io-compatible SVG badges under /badge/:owner/:repo/:metric
 registerBadgeRoutes(app);
+// Agent-readable surface — /.well-known/delta-node, /llms.txt, /skill.md,
+// and `Accept: text/markdown` repo cards (falls through to UI otherwise).
+registerAgentSurfaceRoutes(app);
 
 // Functional legacy endpoints (raw blobs, refs JSON, site builds) — before
 // the SPA fallback so they keep winning their old paths.
