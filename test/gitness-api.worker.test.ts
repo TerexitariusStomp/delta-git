@@ -787,4 +787,50 @@ describe("gitness /api/v1 write paths", () => {
     const open = await get(`/api/v1/repos/${ref}/code-scanning/alerts?state=open`, w.cookieHeader);
     expect((open.body as unknown[]).length).toBe(0);
   });
+
+  it("security advisories: draft → publish → close lifecycle", async () => {
+    const created = await post(
+      `/api/v1/repos/${ref}/security-advisories`,
+      {
+        summary: "Test advisory",
+        description: "details",
+        severity: "high",
+        vulnerabilities: [
+          {
+            package: { name: "libx", ecosystem: "npm" },
+            vulnerable_version_range: "< 1.2.3",
+            patched_versions: "1.2.3",
+          },
+        ],
+      },
+      w.cookieHeader
+    );
+    expect(created.status).toBe(201);
+    const adv = created.body as { ghsa_id: string; state: string };
+    expect(adv.ghsa_id).toMatch(/^GHSA-/);
+    expect(adv.state).toBe("draft");
+
+    // Drafts are hidden from anonymous readers on public repos.
+    const anon = await get(`/api/v1/repos/${ref}/security-advisories`);
+    expect((anon.body as { ghsa_id: string }[]).some((a) => a.ghsa_id === adv.ghsa_id)).toBe(false);
+
+    const published = await patch(
+      `/api/v1/repos/${ref}/security-advisories/${adv.ghsa_id}`,
+      { state: "published" },
+      w.cookieHeader
+    );
+    expect((published.body as { state: string }).state).toBe("published");
+
+    const anonAfter = await get(`/api/v1/repos/${ref}/security-advisories`);
+    expect((anonAfter.body as { ghsa_id: string }[]).some((a) => a.ghsa_id === adv.ghsa_id)).toBe(
+      true
+    );
+
+    const closed = await patch(
+      `/api/v1/repos/${ref}/security-advisories/${adv.ghsa_id}`,
+      { state: "closed" },
+      w.cookieHeader
+    );
+    expect((closed.body as { state: string }).state).toBe("closed");
+  });
 });

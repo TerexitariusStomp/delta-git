@@ -1,13 +1,17 @@
 import type { AppRouter } from "@/worker/routes/hono";
 
 import { newPrefixedId } from "@/worker/common";
-import { gErr, gNotFound, requireWriter, resolveGitnessRepo } from "./shared";
+import { gErr, gNotFound, requireWriter, resolveGitnessRepo, viewerCanWrite } from "./shared";
 import {
   findAnalysisForAlert,
   listScanAnalyses,
+  MAX_REPO_ADVISORIES,
+  readRepoAdvisories,
   readScanAnalysis,
+  writeRepoAdvisories,
   writeScanAnalysis,
   writeScanAnalysisRecord,
+  type RepoAdvisory,
   type ScanAlert,
   type ScanAnalysis,
 } from "./stores";
@@ -166,5 +170,139 @@ export function registerGitnessCodeScan(router: AppRouter) {
     alert.dismissedAt = body.state === "dismissed" ? Date.now() : undefined;
     await writeScanAnalysisRecord(c.env, access.route.doName, analysis);
     return c.json(alertView(alert));
+  });
+
+  // --- repo security advisories (GHSA shape) --------------------------------
+  //
+  // Drafts are writer-only; published advisories are public on public repos
+  // (resolveGitnessRepo already 404s private repos for outsiders).
+
+  const SEVERITIES = ["low", "medium", "high", "critical"];
+
+  function advisoryView(a: RepoAdvisory) {
+    return {
+      ghsa_id: a.ghsaId,
+      summary: a.summary,
+      description: a.description,
+      severity: a.severity,
+      cve_id: a.cveId ?? null,
+      state: a.state,
+      vulnerabilities: a.vulnerabilities.map((v) => ({
+        package: { name: v.package, ecosystem: v.ecosystem },
+        vulnerable_version_range: v.vulnerableVersionRange,
+        patched_versions: v.patchedVersions ?? null,
+      })),
+      published_at: a.publishedAt ? new Date(a.publishedAt).toISOString() : null,
+      closed_at: a.closedAt ? new Date(a.closedAt).toISOString() : null,
+      created_at: new Date(a.createdAt).toISOString(),
+      updated_at: new Date(a.updatedAt).toISOString(),
+    };
+  }
+
+  function mintGhsaId(): string {
+    const seg = () =>
+      Array.from(crypto.getRandomValues(new Uint8Array(2)))
+        .map((b) => b.toString(36).padStart(2, "0"))
+        .join("")
+        .slice(0, 4);
+    return `GHSA-${seg()}-${seg()}-${seg()}`;
+  }
+
+  router.get("/api/v1/repos/:repo_ref{.+}/security-advisories", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const all = await readRepoAdvisories(c.env, access.route.doName);
+    // Drafts are private to writers — anonymous/other members see published
+    // and closed only.
+    const canWrite = access.viewer ? await viewerCanWrite(c, access) : false;
+    const visible = canWrite ? all : all.filter((a) => a.state !== "draft");
+    return c.json(visible.map(advisoryView));
+  });
+
+  router.post("/api/v1/repos/:repo_ref{.+}/security-advisories", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const body = (await c.req.json().catch(() => null)) as {
+      summary?: string;
+      description?: string;
+      severity?: string;
+      cve_id?: string;
+      vulnerabilities?: {
+        package?: { name?: string; ecosystem?: string };
+        vulnerable_version_range?: string;
+        patched_versions?: string;
+      }[];
+    } | null;
+    if (!body?.summary?.trim()) return gErr(c, 422, "summary required");
+    if (!body.severity || !SEVERITIES.includes(body.severity)) {
+      return gErr(c, 422, `severity must be one of ${SEVERITIES.join(", ")}`);
+    }
+    const advisories = await readRepoAdvisories(c.env, access.route.doName);
+    if (advisories.length >= MAX_REPO_ADVISORIES) {
+      return gErr(c, 409, `at most ${MAX_REPO_ADVISORIES} advisories`);
+    }
+    const advisory: RepoAdvisory = {
+      ghsaId: mintGhsaId(),
+      summary: body.summary.trim(),
+      description: body.description ?? "",
+      severity: body.severity as RepoAdvisory["severity"],
+      cveId: body.cve_id,
+      state: "draft",
+      vulnerabilities: (body.vulnerabilities ?? []).map((v) => ({
+        package: v.package?.name ?? "",
+        ecosystem: v.package?.ecosystem ?? "other",
+        vulnerableVersionRange: v.vulnerable_version_range ?? "",
+        patchedVersions: v.patched_versions,
+      })),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await writeRepoAdvisories(c.env, access.route.doName, [...advisories, advisory]);
+    return c.json(advisoryView(advisory), 201);
+  });
+
+  router.get("/api/v1/repos/:repo_ref{.+}/security-advisories/:ghsa_id", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const advisory = (await readRepoAdvisories(c.env, access.route.doName)).find(
+      (a) => a.ghsaId === c.req.param("ghsa_id")
+    );
+    if (!advisory) return gNotFound(c, "advisory");
+    if (advisory.state === "draft" && !(await viewerCanWrite(c, access))) {
+      return gNotFound(c, "advisory");
+    }
+    return c.json(advisoryView(advisory));
+  });
+
+  // PATCH — edit fields or transition state (draft→published→closed).
+  router.patch("/api/v1/repos/:repo_ref{.+}/security-advisories/:ghsa_id", async (c) => {
+    const access = await requireWriter(c);
+    if (access instanceof Response) return access;
+    const advisories = await readRepoAdvisories(c.env, access.route.doName);
+    const advisory = advisories.find((a) => a.ghsaId === c.req.param("ghsa_id"));
+    if (!advisory) return gNotFound(c, "advisory");
+    const body = (await c.req.json().catch(() => null)) as {
+      summary?: string;
+      description?: string;
+      severity?: string;
+      cve_id?: string;
+      state?: string;
+    } | null;
+    if (body?.summary !== undefined) advisory.summary = body.summary;
+    if (body?.description !== undefined) advisory.description = body.description;
+    if (body?.severity && SEVERITIES.includes(body.severity)) {
+      advisory.severity = body.severity as RepoAdvisory["severity"];
+    }
+    if (body?.cve_id !== undefined) advisory.cveId = body.cve_id;
+    if (body?.state === "published" && advisory.state === "draft") {
+      advisory.state = "published";
+      advisory.publishedAt = Date.now();
+    } else if (body?.state === "closed" && advisory.state !== "closed") {
+      advisory.state = "closed";
+      advisory.closedAt = Date.now();
+    }
+    advisory.updatedAt = Date.now();
+    await writeRepoAdvisories(c.env, access.route.doName, advisories);
+    return c.json(advisoryView(advisory));
   });
 }

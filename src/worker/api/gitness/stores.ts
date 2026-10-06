@@ -661,3 +661,40 @@ export async function writeScanAnalysis(env: Env, doName: string, analysis: Scan
 export async function writeScanAnalysisRecord(env: Env, doName: string, analysis: ScanAnalysis) {
   await env.ROUTES.put(`gscan:${doName}:${analysis.id}`, JSON.stringify(analysis));
 }
+
+// ---------------------------------------------------------------------------
+// Security advisories — repo-scoped GHSA-style records. Writers draft and
+// publish; public repos expose published advisories to anonymous readers
+// (drafts stay writer-only, matching GitHub).
+// ---------------------------------------------------------------------------
+
+export interface RepoAdvisory {
+  /** `GHSA-xxxx-xxxx-xxxx` — minted at creation, stable for the advisory's life. */
+  ghsaId: string;
+  summary: string;
+  description: string;
+  severity: "low" | "medium" | "high" | "critical";
+  cveId?: string;
+  state: "draft" | "published" | "closed";
+  vulnerabilities: {
+    package: string;
+    ecosystem: string;
+    vulnerableVersionRange: string;
+    patchedVersions?: string;
+  }[];
+  publishedAt?: number;
+  closedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const MAX_REPO_ADVISORIES = 100;
+
+export async function readRepoAdvisories(env: Env, doName: string): Promise<RepoAdvisory[]> {
+  const raw = await env.ROUTES.get(`gadvis:${doName}`, "json").catch(() => null);
+  return (raw as RepoAdvisory[] | null) ?? [];
+}
+
+export async function writeRepoAdvisories(env: Env, doName: string, advisories: RepoAdvisory[]) {
+  await env.ROUTES.put(`gadvis:${doName}`, JSON.stringify(advisories));
+}
