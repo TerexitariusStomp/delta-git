@@ -80,6 +80,7 @@ import {
   RepoDiscussionNewPage,
   RepoDiscussionsPage,
 } from "./pages-v2/repo/repo-discussions-page";
+import { RepoWikiEditPage, RepoWikiPage } from "./pages-v2/repo/repo-wiki-page";
 import { LandingPage } from "./pages-v2/landing-page-container";
 import { Logout } from "./pages-v2/logout";
 import { SettingsProfileGeneralPage } from "./pages-v2/profile-settings/profile-settings-general-container";
@@ -764,11 +765,36 @@ export const repoRoutes: CustomRouteObject[] = [
           },
           {
             path: "wiki",
-            element: <RepoStubPage surface="wiki" />,
+            element: <RepoWikiPage />,
             handle: {
               breadcrumb: () => <span>Wiki</span>,
               pageTitle: "Wiki",
               publicAccess: true,
+            },
+          },
+          {
+            path: "wiki/new",
+            element: <RepoWikiEditPage />,
+            handle: {
+              breadcrumb: () => <span>New wiki page</span>,
+              pageTitle: "New wiki page",
+            },
+          },
+          {
+            path: "wiki/:page",
+            element: <RepoWikiPage />,
+            handle: {
+              breadcrumb: () => <span>Wiki</span>,
+              pageTitle: "Wiki",
+              publicAccess: true,
+            },
+          },
+          {
+            path: "wiki/:page/edit",
+            element: <RepoWikiEditPage />,
+            handle: {
+              breadcrumb: () => <span>Edit wiki page</span>,
+              pageTitle: "Edit wiki page",
             },
           },
           {

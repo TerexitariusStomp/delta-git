@@ -536,3 +536,56 @@ export const useDiscussionReaction = (spaceId: string, repoId: string, number: n
       method: vars.add ? 'PUT' : 'DELETE'
     })
   )
+
+// --- wiki (markdown pages on refs/heads/wiki, session-authed via /api/v1) ---
+
+export interface WikiPage {
+  name: string
+  oid: string
+}
+
+export interface WikiPageContent extends WikiPage {
+  content: string
+}
+
+export interface WikiHistoryEntry {
+  oid: string
+  message: string
+  author?: { name: string; email: string; when: number }
+}
+
+export const useWikiPages = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'wiki', spaceId, repoId],
+    () => dgFetch<WikiPage[]>(`${v1Path(spaceId, repoId)}/wiki`),
+    { select: data => data ?? [] }
+  )
+
+export const useWikiPage = (spaceId: string, repoId: string, page: string, enabled = true) =>
+  useQuery(
+    ['delta', 'wiki', spaceId, repoId, page],
+    () => dgFetch<WikiPageContent>(`${v1Path(spaceId, repoId)}/wiki/${encodeURIComponent(page)}`),
+    { enabled }
+  )
+
+export const useWikiHistory = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'wiki-history', spaceId, repoId],
+    () => dgFetch<WikiHistoryEntry[]>(`${v1Path(spaceId, repoId)}/wiki-history`),
+    { select: data => data ?? [] }
+  )
+
+export const useSaveWikiPage = (spaceId: string, repoId: string) =>
+  useMutation((vars: { page: string; content: string; message?: string }) =>
+    dgFetch<{ name: string; commit_id: string }>(
+      `${v1Path(spaceId, repoId)}/wiki/${encodeURIComponent(vars.page)}`,
+      { method: 'PUT', body: JSON.stringify({ content: vars.content, message: vars.message }) }
+    )
+  )
+
+export const useDeleteWikiPage = (spaceId: string, repoId: string) =>
+  useMutation((page: string) =>
+    dgFetch<{ name: string }>(`${v1Path(spaceId, repoId)}/wiki/${encodeURIComponent(page)}`, {
+      method: 'DELETE'
+    })
+  )
