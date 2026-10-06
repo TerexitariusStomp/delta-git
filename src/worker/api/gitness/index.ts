@@ -42,6 +42,7 @@ import { registerGitnessCodeScan } from "./codescan";
 import { registerGitnessModeration } from "./moderation";
 import { registerGitnessWorkflows } from "./workflows";
 import { registerGitnessGists } from "./gists";
+import { registerGitnessGhImport } from "./ghimport";
 import { registerGitnessReleases } from "./releases";
 import { registerGitnessWiki } from "./wiki";
 import { registerGitnessRepos } from "./repos";
@@ -126,6 +127,7 @@ export function registerGitnessApi(router: AppRouter) {
   // Actions — .github/workflows → pipeline materialization.
   registerGitnessWorkflows(router);
   registerGitnessGists(router);
+  registerGitnessGhImport(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);

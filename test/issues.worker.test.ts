@@ -814,3 +814,77 @@ describe("moderation: reports + namespace blocks", () => {
     expect(after.status).toBe(201);
   });
 });
+
+describe("issues: github metadata import", () => {
+  it("imports issues + labels + comments with number_map and attribution", async () => {
+    const repo = await setupRepoForTests(env, uniq("imp-ns"), "imprepo");
+    const rbase = `/api/v1/repos/${repo.namespaceSlug}/imprepo/+`;
+
+    const res = await call("POST", `${rbase}/import-metadata`, {
+      cookie: repo.cookieHeader,
+      body: {
+        source: "github",
+        issues: [
+          {
+            number: 7,
+            title: "Crash on startup",
+            body: "stack overflow",
+            state: "open",
+            user: { login: "octocat" },
+            labels: [{ name: "bug", color: "d73a4a" }, "triage"],
+            created_at: "2024-05-01T00:00:00Z",
+          },
+          {
+            number: 8,
+            title: "Add dark mode",
+            state: "closed",
+            user: { login: "hubot" },
+          },
+          {
+            number: 9,
+            title: "PR: fix the thing",
+            pull_request: { url: "https://api.github.com/x" },
+          },
+        ],
+        comments: {
+          "7": [
+            { body: "repro'd on linux", user: { login: "monalisa" }, created_at: "2024-05-02" },
+          ],
+        },
+      },
+    });
+    expect(res.status).toBe(201);
+    const out = res.body as {
+      issues_created: number;
+      comments_imported: number;
+      skipped_pull_requests: number;
+      number_map: Record<string, number>;
+    };
+    expect(out.issues_created).toBe(2);
+    expect(out.skipped_pull_requests).toBe(1);
+    expect(out.comments_imported).toBe(1);
+    expect(out.number_map["7"]).toBeTruthy();
+    expect(out.number_map["8"]).toBeTruthy();
+
+    const list = await call("GET", `${rbase}/issues?state=all`, { cookie: repo.cookieHeader });
+    const issues = list.body as IssueJson[];
+    const crash = issues.find((i) => i.title === "Crash on startup")!;
+    expect(crash).toBeTruthy();
+    expect(crash.number).toBe(out.number_map["7"]);
+    expect(crash.labels.map((l) => l.name).sort()).toEqual(["bug", "triage"]);
+    expect(crash.labels.find((l) => l.name === "bug")?.color).toBe("d73a4a");
+    expect(crash.body).toContain("Imported from GitHub");
+    expect(crash.body).toContain("@octocat");
+    expect(crash.comments).toBe(1);
+
+    const dark = issues.find((i) => i.title === "Add dark mode")!;
+    expect(dark.state).toBe("closed");
+
+    const comments = await call("GET", `${rbase}/issues/${crash.number}/comments`, {
+      cookie: repo.cookieHeader,
+    });
+    const commentList = comments.body as CommentJson[];
+    expect(commentList[0].body).toContain("@monalisa");
+    expect(commentList[0].body).toContain("repro'd on linux");
+  });
+});
