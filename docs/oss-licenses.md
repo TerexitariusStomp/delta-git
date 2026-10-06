@@ -23,10 +23,12 @@ pipeline is original delta-git code.
 - **Hosted use** — running software for users without distributing binaries.
   GPL obligations trigger on _distribution_, not hosted use.
 
-## delta-git runtime dependencies (all permissive)
+## delta-git runtime dependencies
 
-Every production npm dependency verified permissive — no copyleft anywhere in
-the shipping bundle.
+All production npm dependencies are permissive except `openpgp` (LGPL-3.0+),
+which is unmodified and dynamically loaded — hosted use does not trigger
+LGPL distribution obligations, and the library is swappable behind its
+call sites if a permissive alternative lands.
 
 | Component                                               | License                     | Context                         |
 | ------------------------------------------------------- | --------------------------- | ------------------------------- |
@@ -49,6 +51,8 @@ the shipping bundle.
 | modern-tar                                              | MIT                         | Archive writer; wpcloud reader  |
 | badge-maker                                             | CC0-1.0                     | shields.io SVG badge generator  |
 | @simplewebauthn/server                                  | MIT                         | WebAuthn passkey ceremonies     |
+| graphql                                                 | MIT                         | /api/graphql v4-shaped subset   |
+| openpgp                                                 | LGPL-3.0+ (copyleft, ok)    | OpenPGP commit-signature verify |
 
 ## Build/dev tooling (not distributed)
 
