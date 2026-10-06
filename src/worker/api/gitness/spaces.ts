@@ -32,8 +32,10 @@ import {
   listNamespacesForUser,
   searchNamespacesBySlug,
   updateMembershipRole,
+  updateNamespaceProfile,
 } from "@/worker/db/d1/dal/namespaces";
 import { insertUserIfNew } from "@/worker/db/d1/dal/users";
+import { enforceInNamespace, principalForUser } from "@/worker/rbac";
 import { listRepositoriesForNamespace } from "@/worker/db/d1/dal/repositories";
 import type { NamespaceRow } from "@/worker/db/d1/schema/namespaces";
 import type { RepositoryRow } from "@/worker/db/d1/schema/repositories";
@@ -61,7 +63,9 @@ function toGitnessSpace(ns: NamespaceRow) {
     id: numericId(ns.id),
     identifier: ns.slug,
     path: ns.slug,
-    description: "",
+    description: ns.description ?? "",
+    website: ns.website ?? null,
+    avatar_url: ns.avatarUrl ?? null,
     is_public: true,
     parent_id: 0,
     created: ns.createdAt,
@@ -367,6 +371,39 @@ export function registerGitnessSpaces(router: AppRouter) {
       await updateMembershipRole(c.var.db, ns.id, targetNs.createdBy, body.role);
     }
     return c.json(await memberView(c, targetNs.createdBy, member.createdAt));
+  });
+
+  // Permission level — GitHub `/collaborators/:user/permission` parity.
+  // Answers "what can this member do" with the role tier and the casbin
+  // write verdict side by side (they can differ when custom rules narrow
+  // a role).
+  router.get("/api/v1/spaces/:space_ref{.+}/members/:user_uid/permission", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const ns = await resolveSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
+      return gErr(c, 403, "not a member of this space");
+    }
+    const targetNs = await findNamespaceBySlug(c.var.db, c.req.param("user_uid"));
+    if (!targetNs) return gNotFound(c, "member");
+    const member = await findMembership(c.var.db, ns.id, targetNs.createdBy);
+    if (!member) return gNotFound(c, "member");
+    const canWrite = await enforceInNamespace(
+      c.var.db,
+      ns.id,
+      principalForUser(targetNs.createdBy),
+      `space:${ns.id}`,
+      "write"
+    );
+    return c.json({
+      user: targetNs.slug,
+      role: member.role,
+      // Role tier → GitHub's permission vocabulary; the casbin verdict is
+      // the effective write bit when custom rules diverge.
+      permission: member.role === "owner" ? "admin" : member.role === "viewer" ? "read" : "write",
+      can_write: canWrite,
+    });
   });
 
   // Space CRUD — real namespace records.
@@ -749,6 +786,22 @@ export function registerGitnessSpaceDetail(router: AppRouter) {
     if (ns instanceof Response) return ns;
     if (!(await findMembership(c.var.db, ns.id, viewer.userId))) {
       return gErr(c, 403, "not a member of this space");
+    }
+    // Slugs are identity — patch touches the org-profile fields only.
+    const body = (await c.req.json().catch(() => null)) as {
+      description?: string | null;
+      website?: string | null;
+      avatar_url?: string | null;
+    } | null;
+    if (body) {
+      await updateNamespaceProfile(c.var.db, ns.id, {
+        description: body.description,
+        website: body.website,
+        avatarUrl: body.avatar_url,
+      });
+      if (body.description !== undefined) ns.description = body.description;
+      if (body.website !== undefined) ns.website = body.website;
+      if (body.avatar_url !== undefined) ns.avatarUrl = body.avatar_url;
     }
     return c.json(toGitnessSpace(ns));
   });

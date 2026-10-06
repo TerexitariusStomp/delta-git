@@ -15,6 +15,10 @@ export const namespaces = sqliteTable("namespaces", {
   // The atproto DID that claimed this namespace via DID sign-in, when
   // applicable. Enables handle→namespace URL resolution and DID-session ACL.
   ownerDid: text("owner_did"),
+  // Org-profile fields — surfaced on the space page (GitHub org parity).
+  description: text("description"),
+  website: text("website"),
+  avatarUrl: text("avatar_url"),
   createdAt: integer("created_at").notNull(),
 });
 

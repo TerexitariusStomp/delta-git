@@ -168,3 +168,18 @@ export async function searchNamespacesBySlug(
     .where(like(namespaces.slug, `${pattern}%`))
     .limit(limit);
 }
+
+/** Org-profile fields — PATCH-writable, surfaced on the space JSON. */
+export async function updateNamespaceProfile(
+  db: Db,
+  namespaceId: string,
+  fields: { description?: string | null; website?: string | null; avatarUrl?: string | null }
+): Promise<boolean> {
+  const set: Record<string, string | null> = {};
+  if (fields.description !== undefined) set.description = fields.description;
+  if (fields.website !== undefined) set.website = fields.website;
+  if (fields.avatarUrl !== undefined) set.avatarUrl = fields.avatarUrl;
+  if (Object.keys(set).length === 0) return true;
+  const res = await db.update(namespaces).set(set).where(eq(namespaces.id, namespaceId)).run();
+  return (res.meta?.changes ?? 0) > 0;
+}

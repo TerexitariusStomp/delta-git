@@ -890,4 +890,30 @@ describe("gitness /api/v1 write paths", () => {
     const byId = await workerExports.default.fetch(`https://example.com${v3}/check-runs/${run.id}`);
     expect(byId.status).toBe(200);
   });
+
+  it("space profile PATCH + member permission level", async () => {
+    const patched = await patch(
+      `/api/v1/spaces/${w.namespaceSlug}`,
+      { description: "test org", website: "https://example.org" },
+      w.cookieHeader
+    );
+    expect(patched.status).toBe(200);
+    const space = patched.body as { description: string; website: string };
+    expect(space.description).toBe("test org");
+    expect(space.website).toBe("https://example.org");
+
+    const got = await get(`/api/v1/spaces/${w.namespaceSlug}`, w.cookieHeader);
+    expect((got.body as { description: string }).description).toBe("test org");
+
+    // The seeded owner reads as admin with a real write verdict.
+    const perm = await get(
+      `/api/v1/spaces/${w.namespaceSlug}/members/${w.namespaceSlug}/permission`,
+      w.cookieHeader
+    );
+    expect(perm.status).toBe(200);
+    const level = perm.body as { role: string; permission: string; can_write: boolean };
+    expect(level.role).toBe("owner");
+    expect(level.permission).toBe("admin");
+    expect(level.can_write).toBe(true);
+  });
 });
