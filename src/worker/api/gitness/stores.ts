@@ -698,3 +698,46 @@ export async function readRepoAdvisories(env: Env, doName: string): Promise<Repo
 export async function writeRepoAdvisories(env: Env, doName: string, advisories: RepoAdvisory[]) {
   await env.ROUTES.put(`gadvis:${doName}`, JSON.stringify(advisories));
 }
+
+// ---------------------------------------------------------------------------
+// Abuse reports — global low-volume list; the admin surface reads across
+// repos so a single KV record beats per-repo scatter.
+// ---------------------------------------------------------------------------
+
+export interface AbuseReport {
+  id: string;
+  reporterUserId: string;
+  doName: string;
+  targetKind: "issue" | "comment" | "pullreq" | "repo";
+  /** Issue/PR number or comment id. */
+  targetId: string;
+  reason: string;
+  state: "open" | "resolved";
+  createdAt: number;
+}
+
+export const MAX_ABUSE_REPORTS = 500;
+
+export async function readAbuseReports(env: Env): Promise<AbuseReport[]> {
+  const raw = await env.ROUTES.get("greports", "json").catch(() => null);
+  return (raw as AbuseReport[] | null) ?? [];
+}
+
+export async function writeAbuseReports(env: Env, reports: AbuseReport[]) {
+  await env.ROUTES.put("greports", JSON.stringify(reports));
+}
+
+// ---------------------------------------------------------------------------
+// Namespace user blocks — owner-moderated write ban. A blocked member keeps
+// membership (read stays fine) but every write path short-circuits 403 —
+// the GitHub "block user from organization" equivalent.
+// ---------------------------------------------------------------------------
+
+export async function readNamespaceBlocks(env: Env, namespaceId: string): Promise<string[]> {
+  const raw = await env.ROUTES.get(`gban:${namespaceId}`, "json").catch(() => null);
+  return (raw as string[] | null) ?? [];
+}
+
+export async function writeNamespaceBlocks(env: Env, namespaceId: string, userIds: string[]) {
+  await env.ROUTES.put(`gban:${namespaceId}`, JSON.stringify(userIds));
+}

@@ -730,3 +730,87 @@ describe("issues: /api/v3 github-compat surface", () => {
     expect(status).toBe(404);
   });
 });
+
+describe("moderation: reports + namespace blocks", () => {
+  it("report → admin triage; owner block cuts member writes until lifted", async () => {
+    const db = createDb(env.DB);
+    const memberId = newPrefixedId("user");
+    await insertUserIfNew(db, {
+      id: memberId,
+      tesseraSub: `seed-${memberId}`,
+      createdAt: Date.now(),
+    });
+    // Default membership role is "owner" — passes the write RBAC bar.
+    await insertMembershipIfMissing(db, {
+      namespaceId: seeded.namespaceId,
+      userId: memberId,
+      createdAt: Date.now(),
+    });
+    const memberCookie = await mintSessionCookie(env, memberId);
+
+    // Any signed-in viewer files a report against the repo.
+    const report = await call("POST", `${base}/reports`, {
+      cookie: memberCookie,
+      body: { target_kind: "issue", target_id: "1", reason: "spam" },
+    });
+    expect(report.status).toBe(201);
+    const reportId = (report.body as { id: string }).id;
+
+    // Admin triage — DG_ADMIN_ACTORS matches the seeded owner.
+    const adminsEnv = env as { DG_ADMIN_ACTORS?: string };
+    const prevAdmins = adminsEnv.DG_ADMIN_ACTORS;
+    adminsEnv.DG_ADMIN_ACTORS = seeded.userId;
+    try {
+      const denied = await call("GET", "/api/v1/admin/reports", { cookie: memberCookie });
+      expect(denied.status).toBe(403);
+      const open = await call("GET", "/api/v1/admin/reports", {
+        cookie: seeded.cookieHeader,
+      });
+      expect(open.status).toBe(200);
+      expect(
+        (open.body as { id: string; reason: string }[]).some(
+          (r) => r.id === reportId && r.reason === "spam"
+        )
+      ).toBe(true);
+      const resolved = await call("PATCH", `/api/v1/admin/reports/${reportId}`, {
+        cookie: seeded.cookieHeader,
+        body: { state: "resolved" },
+      });
+      expect(resolved.status).toBe(200);
+    } finally {
+      adminsEnv.DG_ADMIN_ACTORS = prevAdmins;
+    }
+
+    // Member writes fine until blocked.
+    const before = await call("POST", `${base}/issues`, {
+      cookie: memberCookie,
+      body: { title: "pre-block" },
+    });
+    expect(before.status).toBe(201);
+
+    const block = await call("PUT", `/api/v1/spaces/${seeded.namespaceSlug}/+/blocks/${memberId}`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(block.status).toBe(200);
+
+    const during = await call("POST", `${base}/issues`, {
+      cookie: memberCookie,
+      body: { title: "during-block" },
+    });
+    expect(during.status).toBe(403);
+    expect((during.body as { message: string }).message).toContain("blocked");
+
+    const unblock = await call(
+      "DELETE",
+      `/api/v1/spaces/${seeded.namespaceSlug}/+/blocks/${memberId}`,
+      { cookie: seeded.cookieHeader }
+    );
+    expect(unblock.status).toBe(200);
+
+    const after = await call("POST", `${base}/issues`, {
+      cookie: memberCookie,
+      body: { title: "post-block" },
+    });
+    expect(after.status).toBe(201);
+  });
+});

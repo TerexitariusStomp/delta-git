@@ -27,7 +27,7 @@ import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { insertNotification } from "@/worker/db/d1/dal/modules";
 import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
 import { listWatchers } from "@/worker/db/d1/dal/social";
-import { readUserFavorites } from "./stores";
+import { readNamespaceBlocks, readUserFavorites } from "./stores";
 
 export type GitnessContext = AppContext;
 
@@ -281,6 +281,11 @@ export async function requireWriter(
   if (!(await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId))) {
     return gErr(c, 403, "not a member of this space");
   }
+  // Namespace block list: blocked members keep read access but every write
+  // path short-circuits here — the "block user from organization" parity.
+  if ((await readNamespaceBlocks(c.env, row.namespaceId)).includes(access.viewer.userId)) {
+    return gErr(c, 403, "blocked by this space");
+  }
   // RBAC: writes need a developer-or-owner role in this namespace (casbin
   // evaluates memberships + group expansion + custom rules).
   const allowed = await enforceInNamespace(
@@ -306,6 +311,9 @@ export async function viewerCanWrite(c: GitnessContext, access: RepoAccessOk): P
   const row = await findRepositoryByDoName(c.var.db, access.route.doName);
   if (!row) return false;
   if (!(await viewerIsNamespaceMember(c.var.db, access.viewer.userId, row.namespaceId))) {
+    return false;
+  }
+  if ((await readNamespaceBlocks(c.env, row.namespaceId)).includes(access.viewer.userId)) {
     return false;
   }
   return await enforceInNamespace(

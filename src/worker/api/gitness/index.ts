@@ -37,6 +37,7 @@ import { registerGitnessSocial } from "./social";
 import { registerGitnessInsights } from "./insights";
 import { registerGitnessProjects } from "./projects";
 import { registerGitnessCodeScan } from "./codescan";
+import { registerGitnessModeration } from "./moderation";
 import { registerGitnessReleases } from "./releases";
 import { registerGitnessWiki } from "./wiki";
 import { registerGitnessRepos } from "./repos";
@@ -116,6 +117,8 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessProjects(router);
   // Code scanning — SARIF upload + alerts, literal tails before gitdata.
   registerGitnessCodeScan(router);
+  // Moderation — reports, admin triage, space blocks; literal tails.
+  registerGitnessModeration(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);
