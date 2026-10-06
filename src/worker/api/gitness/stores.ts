@@ -741,3 +741,13 @@ export async function readNamespaceBlocks(env: Env, namespaceId: string): Promis
 export async function writeNamespaceBlocks(env: Env, namespaceId: string, userIds: string[]) {
   await env.ROUTES.put(`gban:${namespaceId}`, JSON.stringify(userIds));
 }
+
+/** branch_scope: comma list of names or `*`-suffix prefixes; empty = all. */
+export function branchMatches(scope: string | undefined, branch: string): boolean {
+  if (!scope?.trim()) return true;
+  return scope
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .some((p) => (p.endsWith("*") ? branch.startsWith(p.slice(0, -1)) : branch === p));
+}

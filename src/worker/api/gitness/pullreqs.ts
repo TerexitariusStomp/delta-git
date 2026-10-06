@@ -30,6 +30,7 @@ import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { readPayload, resolvePathEntry, setTreePath } from "@/worker/agent/patch";
 import { diffCommitsText } from "./gitdata";
 import { suggestCodeOwnerReviewers } from "./codeowners";
+import { spawnPullRequestPipelines } from "./workflows";
 import { readRepoLabels, readRepoRules, requiredCheckContexts } from "./stores";
 import { mergeIntentToPullReq } from "./pullreq";
 import {
@@ -505,6 +506,14 @@ export function registerGitnessPullreqs(router: AppRouter) {
       body: `${gate.actor} opened a pull request`,
       excludeUserId: gate.viewer?.userId,
       link: `/${gate.route.routeNamespaceSlug}/repos/${gate.route.routeRepoSlug}/pulls/${prNumber}`,
+    });
+    // on: pull_request workflows — pending executions spawn for matching
+    // pipelines, claimed by delegate runners like push-triggered ones.
+    spawnPullRequestPipelines(c, gate.route.doName, {
+      targetBranch: body.target_branch.replace(/^refs\/heads\//, ""),
+      sourceRef,
+      prNumber,
+      actor: gate.actor,
     });
     return c.json({
       ...mergeIntentToPullReq({

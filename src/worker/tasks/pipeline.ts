@@ -6,17 +6,10 @@
 import { createLogger } from "@/worker/common/logger";
 import { readRepoPipelines } from "@/worker/api/gitness/stores";
 import { createExecution } from "@/worker/api/gitness/executions";
+import { syncWorkflowPipelines } from "@/worker/api/gitness/workflows";
 import type { RepoQueueMessageHandle, PipelineTriggerQueueMessage } from "./types";
 
-/** branch_scope: comma list of names or `*`-suffix prefixes; empty = all. */
-export function branchMatches(scope: string | undefined, branch: string): boolean {
-  if (!scope?.trim()) return true;
-  return scope
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .some((p) => (p.endsWith("*") ? branch.startsWith(p.slice(0, -1)) : branch === p));
-}
+import { branchMatches } from "@/worker/api/gitness/stores";
 
 export async function enqueuePipelineTrigger(
   env: Env,
@@ -44,6 +37,11 @@ export async function handlePipelineTriggerMessage(
     repoId: body.repoId,
   });
   const branch = body.ref.replace(/^refs\/heads\//, "");
+  // Sync workflow files at the pushed sha first — a newly added on-push
+  // workflow fires on the very push that introduced it (GitHub semantic).
+  await syncWorkflowPipelines(env, body.repoId, body.sha).catch((err) =>
+    log.warn("pipeline:workflow-sync-failed", { sha: body.sha, error: String(err) })
+  );
   const pipes = await readRepoPipelines(env, body.repoId).catch(() => []);
   let spawned = 0;
   for (const pipe of pipes) {

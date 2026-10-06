@@ -38,6 +38,7 @@ import { registerGitnessInsights } from "./insights";
 import { registerGitnessProjects } from "./projects";
 import { registerGitnessCodeScan } from "./codescan";
 import { registerGitnessModeration } from "./moderation";
+import { registerGitnessWorkflows } from "./workflows";
 import { registerGitnessReleases } from "./releases";
 import { registerGitnessWiki } from "./wiki";
 import { registerGitnessRepos } from "./repos";
@@ -119,6 +120,8 @@ export function registerGitnessApi(router: AppRouter) {
   registerGitnessCodeScan(router);
   // Moderation — reports, admin triage, space blocks; literal tails.
   registerGitnessModeration(router);
+  // Actions — .github/workflows → pipeline materialization.
+  registerGitnessWorkflows(router);
   registerGitnessGitdata(router);
   // Repo meta + the greedy bare-repo GET — keep last.
   registerGitnessRepos(router);

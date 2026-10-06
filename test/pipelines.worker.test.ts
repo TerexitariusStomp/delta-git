@@ -1,8 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { env, exports as workerExports } from "cloudflare:workers";
 
+import { concatChunks, flushPkt, pktLine } from "@/worker/git/core";
+import { encodeGitObject } from "@/worker/git/core/objects";
+import { buildPack } from "./util/git-pack";
+import { buildTreePayload } from "./util/packed-repo";
+import { toRequestBody } from "./util/test-helpers";
 import { ensureD1Migrations } from "./util/d1Setup";
-import { setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
+import { lookupPushAuth, setupRepoForTests, type SetupRepoForTestsResult } from "./util/repoSeed";
 
 // Pipeline/execution surface: pipeline CRUD + view, trigger CRUD (the
 // repo_push synthetic view of the legacy on_push flag), execution
@@ -174,5 +179,133 @@ describe("gitness pipelines + executions", () => {
     expect(del.status).toBe(200);
     const list = await api("GET", pipeBase(), w.cookieHeader);
     expect((list.body as unknown[]).length).toBe(0);
+  });
+});
+
+describe("actions: .github/workflows materialize into pipelines", () => {
+  let w: SetupRepoForTestsResult;
+  let ref: string;
+  const pipeBase = () => `/api/v1/repos/${ref}/pipelines`;
+
+  const WF_YAML = [
+    "name: CI",
+    "on:",
+    "  push:",
+    "    branches: [main]",
+    "  pull_request:",
+    "    branches: [main]",
+    "  schedule:",
+    '    - cron: "0 2 * * *"',
+    "jobs:",
+    "  test:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - run: echo ok",
+    "",
+  ].join("\n");
+
+  beforeAll(async () => {
+    await ensureD1Migrations(env);
+    w = await setupRepoForTests(env, uniq("wf-ns"), "wfrepo");
+    ref = `${w.namespaceSlug}/wfrepo/+`;
+
+    // Push .github/workflows/ci.yml onto main (nested trees) + a `feat`
+    // branch at the same commit for the PR-trigger half.
+    const wfPayload = new TextEncoder().encode(WF_YAML);
+    const wfBlob = await encodeGitObject("blob", wfPayload);
+    const wfDirPayload = buildTreePayload([{ mode: "100644", name: "ci.yml", oid: wfBlob.oid }]);
+    const wfDir = await encodeGitObject("tree", wfDirPayload);
+    const dotGithubPayload = buildTreePayload([
+      { mode: "40000", name: "workflows", oid: wfDir.oid },
+    ]);
+    const dotGithub = await encodeGitObject("tree", dotGithubPayload);
+    const rootPayload = buildTreePayload([{ mode: "40000", name: ".github", oid: dotGithub.oid }]);
+    const root = await encodeGitObject("tree", rootPayload);
+    const author = "You <you@example.com> 0 +0000";
+    const commitPayload = new TextEncoder().encode(
+      `tree ${root.oid}\nauthor ${author}\ncommitter ${author}\n\nadd workflow\n`
+    );
+    const commit = await encodeGitObject("commit", commitPayload);
+    const pack = await buildPack([
+      { type: "blob", payload: wfPayload },
+      { type: "tree", payload: wfDirPayload },
+      { type: "tree", payload: dotGithubPayload },
+      { type: "tree", payload: rootPayload },
+      { type: "commit", payload: commitPayload },
+    ]);
+    const push = await workerExports.default.fetch(
+      `https://example.com/${w.namespaceSlug}/wfrepo/git-receive-pack`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-git-receive-pack-request",
+          Authorization: lookupPushAuth(w.namespaceSlug, "wfrepo")!,
+        },
+        body: toRequestBody(
+          concatChunks([
+            pktLine(
+              `${"0".repeat(40)} ${commit.oid} refs/heads/main\0 report-status ofs-delta agent=test\n`
+            ),
+            pktLine(`${"0".repeat(40)} ${commit.oid} refs/heads/feat`),
+            flushPkt(),
+            pack,
+          ])
+        ),
+      } as any
+    );
+    expect(push.status).toBe(200);
+  });
+
+  it("sync upserts pipeline + triggers from the workflow file", async () => {
+    const synced = await api("POST", `${pipeBase()}/sync`, w.cookieHeader);
+    expect(synced.status).toBe(200);
+    const body = synced.body as {
+      synced: number;
+      pipelines: Array<{
+        identifier: string;
+        config_path: string;
+        on_push?: boolean;
+        branches?: string[];
+        triggers?: { identifier: string; event: string; cron?: string }[];
+      }>;
+    };
+    expect(body.synced).toBe(1);
+    const ci = body.pipelines.find((p) => p.identifier === "ci");
+    expect(ci).toBeTruthy();
+    expect(ci!.config_path).toBe(".github/workflows/ci.yml");
+    expect(ci!.on_push).toBe(true);
+    expect(ci!.branches).toEqual(["main"]);
+    const events = (ci!.triggers ?? []).map((t) => `${t.identifier}:${t.event}`);
+    expect(events).toContain("pull_request:pull_request");
+    expect(events).toContain("schedule_1:cron");
+
+    // Idempotent — resync keeps one pipeline for the file.
+    const again = await api("POST", `${pipeBase()}/sync`, w.cookieHeader);
+    const list = await api("GET", pipeBase(), w.cookieHeader);
+    expect((list.body as unknown[]).length).toBe(1);
+    expect((again.body as { synced: number }).synced).toBe(1);
+  });
+
+  it("PR create spawns a pull_request-event execution", async () => {
+    const pr = await api("POST", `/api/v1/repos/${ref}/pullreq`, w.cookieHeader, {
+      source_branch: "feat",
+      target_branch: "main",
+      title: "trigger the workflow",
+    });
+    expect(pr.status).toBe(200);
+
+    // spawnPullRequestPipelines runs in waitUntil — poll briefly.
+    const deadline = Date.now() + 5000;
+    let found = false;
+    while (Date.now() < deadline && !found) {
+      const execs = await api("GET", `${pipeBase()}/ci/executions`, w.cookieHeader);
+      found =
+        execs.status === 200 &&
+        (execs.body as { event: string; status: string }[]).some(
+          (e) => e.event === "pull_request" && e.status === "pending"
+        );
+      if (!found) await new Promise((r) => setTimeout(r, 150));
+    }
+    expect(found).toBe(true);
   });
 });
