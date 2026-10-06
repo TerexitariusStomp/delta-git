@@ -12,6 +12,12 @@ import {
 import { loadPeeledTagTargets } from "@/worker/git/object-store";
 import { handleFetchV2Streaming } from "@/worker/git/operations/uploadStream";
 import { handleBundleGet, handleBundleUriCommand } from "@/worker/git/operations/bundle";
+import {
+  hasHttpSignature,
+  HTTP_SIG_MAX_BODY_BYTES,
+  signatureChallenge,
+  verifyHttpSignature,
+} from "@/worker/auth/httpSignature";
 import { handleStreamingReceivePackPOST } from "@/worker/git/receive/streamReceivePack";
 import { asBodyInit, gunzip } from "@/worker/common";
 import { buildCacheKeyFrom, cacheOrLoadJSONForRequest } from "@/worker/cache";
@@ -631,6 +637,48 @@ export function registerGitRoutes(router: AppRouter) {
     const route = resolved.route;
     const encRefusal = encryptedRepoRefusal(route);
     if (encRefusal) return withGitCors(c.req.raw, encRefusal);
+
+    // RFC 9421 / GLIP-01 lane: did:key-signed pushes authenticate the agent
+    // directly — no PAT, no Basic. The signature covers the body digest, so
+    // we buffer here (capped) and hand the streaming receive a rebuilt
+    // Request. Verified agents inherit merge-intent push semantics: their
+    // updates become intents adjudicated like any other divergent push.
+    if (hasHttpSignature(c.req.raw)) {
+      const log = c.var.logFor({ service: "GitAcl", repoId: route.doName });
+      const body = new Uint8Array(await c.req.raw.arrayBuffer());
+      if (body.length > HTTP_SIG_MAX_BODY_BYTES) {
+        return withGitCors(c.req.raw, new Response("signed body too large\n", { status: 413 }));
+      }
+      const verified = await verifyHttpSignature({ request: c.req.raw, body, db: c.var.db });
+      if (verified.kind === "rejected") {
+        log.info("git-acl:http-sig-rejected", { reason: verified.reason });
+        return withGitCors(
+          c.req.raw,
+          verified.reason === "unknown-did" || verified.reason === "agent-banned"
+            ? forbidden()
+            : signatureChallenge()
+        );
+      }
+      log.info("git-acl:http-sig-ok", { did: verified.did });
+      const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+      if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
+      const rebuilt = new Request(c.req.raw.url, {
+        method: c.req.raw.method,
+        headers: c.req.raw.headers,
+        body,
+      });
+      const res = await handleReceivePackPOST(
+        c.env,
+        route,
+        rebuilt,
+        workerExecutionContext(c),
+        c.var.db,
+        c.var.logFor({ service: "ReceiveAcl", repoId: route.doName }),
+        verified.did
+      );
+      return withGitCors(c.req.raw, res);
+    }
+
     const authorized = await authorizeGitRouteForRequest(
       c,
       route,
