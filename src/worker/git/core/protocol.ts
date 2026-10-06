@@ -29,6 +29,8 @@ export async function capabilityAdvertisement(
     chunks.push(pktLine("ls-refs\n"));
     // Advertise fetch and supported features
     chunks.push(pktLine("fetch\n"));
+    // baseline-clone bundles over plain GET (protocol-v2 bundle-uri)
+    chunks.push(pktLine("bundle-uri\n"));
     // We stream pack data over sideband; advertise side-band-64k for client awareness
     chunks.push(pktLine("side-band-64k\n"));
     chunks.push(pktLine("ofs-delta\n"));

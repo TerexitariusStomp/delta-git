@@ -11,6 +11,7 @@ import {
 } from "@/worker/git";
 import { loadPeeledTagTargets } from "@/worker/git/object-store";
 import { handleFetchV2Streaming } from "@/worker/git/operations/uploadStream";
+import { handleBundleGet, handleBundleUriCommand } from "@/worker/git/operations/bundle";
 import { handleStreamingReceivePackPOST } from "@/worker/git/receive/streamReceivePack";
 import { asBodyInit, gunzip } from "@/worker/common";
 import { buildCacheKeyFrom, cacheOrLoadJSONForRequest } from "@/worker/cache";
@@ -210,6 +211,10 @@ async function handleUploadPackPOST(
 
   if (command === "fetch") {
     return handleFetchV2Streaming(env, route.doName, body, request.signal, cacheCtx);
+  }
+
+  if (command === "bundle-uri") {
+    return handleBundleUriCommand(env, route, request, cacheCtx);
   }
 
   return new Response("Unsupported command or malformed request\n", { status: 400 });
@@ -499,8 +504,7 @@ async function authorizeGitRouteForRequest(
   return {
     kind: "ok",
     cacheCtx,
-    actor:
-      auth.kind === "pat" || auth.kind === "oauth" ? auth.verified.userId : undefined,
+    actor: auth.kind === "pat" || auth.kind === "oauth" ? auth.verified.userId : undefined,
   };
 }
 
@@ -582,6 +586,39 @@ export function registerGitRoutes(router: AppRouter) {
     return withGitCors(
       c.req.raw,
       await handleUploadPackPOST(c.env, route, c.req.raw, authorized.cacheCtx)
+    );
+  });
+
+  // protocol-v2 bundle-uri downloads — same read gate as upload-pack, since
+  // a bundle is a complete clone of every reachable object.
+  router.get(`/:owner/:repo/bundle/:token`, async (c) => {
+    const owner = c.req.param("owner");
+    const repo = normalizeGitRouteRepoSlug(c.req.param("repo"));
+    if (!validateRouteSlugs(owner, repo)) return gitNotFound();
+    const resolved = await resolveGitRouteForRequest(c, owner, repo, "git-upload-pack", false);
+    if (resolved.kind === "response") return resolved.response;
+    const route = resolved.route;
+    const encRefusal = encryptedRepoRefusal(route);
+    if (encRefusal) return withGitCors(c.req.raw, encRefusal);
+    const authorized = await authorizeGitRouteForRequest(
+      c,
+      route,
+      "git-upload-pack",
+      false,
+      "read"
+    );
+    if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
+    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
+    return withGitCors(
+      c.req.raw,
+      await handleBundleGet(
+        c.env,
+        route,
+        c.req.param("token"),
+        c.req.raw.signal,
+        authorized.cacheCtx
+      )
     );
   });
 
