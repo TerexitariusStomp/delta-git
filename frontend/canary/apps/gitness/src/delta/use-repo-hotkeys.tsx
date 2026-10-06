@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useGetBranchQuery } from '@harnessio/code-service-client'
-import { Dialog, Table, Tag, Text } from '@harnessio/ui/components'
+import { useQuery } from '@tanstack/react-query'
+import { Dialog, Layout, Table, Tag, Text, TextInput } from '@harnessio/ui/components'
 import { tinykeys } from 'tinykeys'
 
 import { useRoutes } from '../framework/context/NavigationContext'
@@ -46,6 +47,11 @@ export function useRepoHotkeys() {
   const repoRef = useGetRepoRef()
   const { fullGitRef, gitRefName, fullResourcePath } = useGitRef()
   const [showCheatsheet, setShowCheatsheet] = useState(false)
+  // File finder (`t`) — fuzzy filter over the repo's flat path list.
+  const [showFinder, setShowFinder] = useState(false)
+  const [finderQuery, setFinderQuery] = useState('')
+  const [finderIndex, setFinderIndex] = useState(0)
+  const finderInputRef = useRef<HTMLInputElement | null>(null)
 
   // Latest commit sha for `y` permalink — resolved on demand via the branch.
   const { data: { body: branchData } = {} } = useGetBranchQuery(
@@ -58,6 +64,51 @@ export function useRepoHotkeys() {
   )
   const headSha = branchData?.commit?.sha
 
+  const { data: pathsData } = useQuery({
+    queryKey: ['repo-paths', repoRef, gitRefName],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/v1/repos/${encodeURIComponent(repoRef)}/paths?git_ref=${encodeURIComponent(gitRefName || 'main')}`,
+        { credentials: 'same-origin' }
+      )
+      if (!res.ok) throw new Error('paths failed')
+      return res.json() as Promise<{ files: string[]; directories: string[] }>
+    },
+    enabled: showFinder && !!repoRef,
+    staleTime: 60_000
+  })
+
+  const finderResults = useMemo(() => {
+    const files = pathsData?.files ?? []
+    const q = finderQuery.trim().toLowerCase()
+    if (!q) return files.slice(0, 50)
+    // Subsequence match (GitHub-style fuzzy): every query char in order.
+    const matches: string[] = []
+    for (const path of files) {
+      const lower = path.toLowerCase()
+      let pos = 0
+      let ok = true
+      for (const ch of q) {
+        pos = lower.indexOf(ch, pos)
+        if (pos < 0) {
+          ok = false
+          break
+        }
+        pos++
+      }
+      if (ok) {
+        matches.push(path)
+        if (matches.length >= 50) break
+      }
+    }
+    return matches
+  }, [pathsData, finderQuery])
+
+  const openFile = (path: string) => {
+    setShowFinder(false)
+    navigate(`${routes.toRepoFiles({ spaceId, repoId })}/${fullGitRef || ''}/~/${path}`)
+  }
+
   useEffect(() => {
     if (!spaceId || !repoId) return
 
@@ -67,12 +118,9 @@ export function useRepoHotkeys() {
         t: e => {
           if (isEditableTarget(e.target)) return
           e.preventDefault()
-          const input = document.querySelector<HTMLInputElement>('[data-dg-file-search] input')
-          if (input) {
-            input.focus()
-          } else {
-            navigate(`${routes.toRepoFiles({ spaceId, repoId })}/${fullGitRef || ''}`)
-          }
+          setFinderQuery('')
+          setFinderIndex(0)
+          setShowFinder(true)
         },
         y: e => {
           if (isEditableTarget(e.target)) return
@@ -154,6 +202,63 @@ export function useRepoHotkeys() {
 
   return {
     cheatsheet: (
+      <>
+      <Dialog.Root open={showFinder} onOpenChange={setShowFinder}>
+        <Dialog.Content>
+          <Dialog.Header>
+            <Dialog.Title>File finder</Dialog.Title>
+          </Dialog.Header>
+          <Dialog.Body>
+            <Layout.Vertical gap="sm">
+              <TextInput
+                ref={finderInputRef}
+                autoFocus
+                placeholder="Type to filter files…"
+                value={finderQuery}
+                onChange={e => {
+                  setFinderQuery(e.target.value)
+                  setFinderIndex(0)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setFinderIndex(i => Math.min(i + 1, finderResults.length - 1))
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setFinderIndex(i => Math.max(i - 1, 0))
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const pick = finderResults[Math.max(0, Math.min(finderIndex, finderResults.length - 1))]
+                    if (pick) openFile(pick)
+                  }
+                }}
+              />
+              <Layout.Vertical gap="2xs" className="max-h-80 overflow-y-auto">
+                {finderResults.length === 0 && (
+                  <Text variant="body-normal" color="foreground-3">
+                    {pathsData ? 'No files match.' : 'Loading…'}
+                  </Text>
+                )}
+                {finderResults.map((path, idx) => (
+                  <button
+                    key={path}
+                    type="button"
+                    className={`w-full rounded px-2 py-1 text-left text-sm ${
+                      idx === finderIndex ? 'bg-cn-background-3' : 'hover:bg-cn-background-2'
+                    }`}
+                    onMouseEnter={() => setFinderIndex(idx)}
+                    onClick={() => openFile(path)}
+                  >
+                    <Text variant="body-normal" color="foreground-1" as="span">
+                      {path}
+                    </Text>
+                  </button>
+                ))}
+              </Layout.Vertical>
+            </Layout.Vertical>
+          </Dialog.Body>
+        </Dialog.Content>
+      </Dialog.Root>
       <Dialog.Root open={showCheatsheet} onOpenChange={setShowCheatsheet}>
         <Dialog.Content>
           <Dialog.Header>
@@ -179,6 +284,7 @@ export function useRepoHotkeys() {
           </Dialog.Body>
         </Dialog.Content>
       </Dialog.Root>
+      </>
     )
   }
 }
