@@ -1,4 +1,4 @@
-import { MarkGithubIcon, SignInIcon, PersonIcon, SignOutIcon } from "@primer/octicons-react";
+import { SignInIcon, PersonIcon, SignOutIcon } from "@primer/octicons-react";
 
 import { IslandHost } from "@/client/server/IslandHost";
 import { ThemeToggleIsland } from "@/client/islands/theme-toggle";
@@ -65,20 +65,19 @@ export function Header({ currentView, viewer }: HeaderProps) {
           >
             <span
               className="transition-transform duration-200 group-hover:-rotate-6"
-              style={{ color: "var(--header-fgColor-logo)" }}
               aria-hidden="true"
             >
-              <MarkGithubIcon size={32} />
+              <img src="/gitflare-icon.png" alt="" width="64" height="27" className="block h-8 w-auto" />
             </span>
             <span className="hidden sm:block">
               <strong
                 className="block text-sm font-semibold"
                 style={{ color: "var(--header-fgColor-logo)" }}
               >
-                git-on-cloudflare
+                Gitflare
               </strong>
               <small className="block text-xs" style={{ color: "var(--header-fgColor-default)" }}>
-                Git hosting on Cloudflare
+                GitHub on Cloudflare
               </small>
             </span>
           </a>

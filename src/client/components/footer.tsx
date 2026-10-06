@@ -1,5 +1,3 @@
-import { MarkGithubIcon } from "@primer/octicons-react";
-
 export function Footer() {
   return (
     <footer className="shrink-0 border-t" style={{ borderColor: "var(--borderColor-muted)" }}>
@@ -9,8 +7,8 @@ export function Footer() {
           className="m-0 flex items-center gap-1.5 text-xs no-underline hover:no-underline"
           style={{ color: "var(--fgColor-muted)" }}
         >
-          <MarkGithubIcon size={20} aria-hidden="true" />
-          <span>git-on-cloudflare</span>
+          <img src="/gitflare-icon.png" alt="" width="48" height="20" className="block h-5 w-auto" aria-hidden="true" />
+          <span>Gitflare</span>
         </a>
         <nav
           className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs"

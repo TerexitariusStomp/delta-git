@@ -31,7 +31,8 @@ export const SignIn: FC = () => {
   return (
     <div className="flex min-h-screen items-center justify-center bg-cn-1">
       <div className="w-full max-w-sm rounded-lg border border-cn-2 bg-cn-2 p-8">
-        <h1 className="mb-2 text-xl font-semibold text-cn-1">Sign in to delta-git</h1>
+        <img src="/gitflare-icon.png" alt="Gitflare" className="mb-6 h-10 w-auto" />
+        <h1 className="mb-2 text-xl font-semibold text-cn-1">Sign in to Gitflare</h1>
         <p className="mb-6 text-sm text-cn-2">
           Authenticate with your Bluesky handle — OAuth runs entirely in your browser; your tokens
           and keys never reach our servers.

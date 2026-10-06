@@ -4,7 +4,6 @@ import { noop } from 'lodash-es'
 
 import {
   AppSidebarUser,
-  HarnessLogo,
   LanguageCode,
   LanguageDialog,
   LanguageInterface,
@@ -54,7 +53,7 @@ const AppSidebar: FC<{ children: ReactNode }> = ({ children }) => {
           <Sidebar.Header>
             <SearchProvider>
               <Layout.Grid gapY="md">
-                <HarnessLogo />
+                <img src="/gitflare-icon.png" alt="Gitflare" className="h-7 w-auto" />
                 <SidebarSearch />
               </Layout.Grid>
             </SearchProvider>

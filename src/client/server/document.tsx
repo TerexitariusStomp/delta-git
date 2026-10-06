@@ -15,7 +15,7 @@ const themeBootstrap = `(function(){try{var saved=localStorage.getItem("theme");
 const reactRefreshPreamble = `import RefreshRuntime from "/@react-refresh";RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;`;
 
 export function Document({ title, assets, needsHighlight = false, children }: DocumentProps) {
-  const pageTitle = title || "git-on-cloudflare";
+  const pageTitle = title || "Gitflare";
 
   return (
     <html
@@ -29,6 +29,7 @@ export function Document({ title, assets, needsHighlight = false, children }: Do
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="color-scheme" content="light dark" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
         <title>{pageTitle}</title>
 
         {needsHighlight && initialHighlightThemeHref ? (
