@@ -357,6 +357,21 @@ export async function writeSavedViews(env: Env, doName: string, views: SavedView
 }
 
 // ---------------------------------------------------------------------------
+// Issue types — free-form per-issue type names ("Bug", "Feature", "Task")
+// stored as a number → name map, same shape as the locks map. Lives in KV
+// rather than the DO so no schema migration is needed for a display field.
+// ---------------------------------------------------------------------------
+
+export async function readIssueTypes(env: Env, doName: string): Promise<Record<number, string>> {
+  const raw = await env.ROUTES.get(`gitypes:${doName}`, "json").catch(() => null);
+  return (raw as Record<number, string> | null) ?? {};
+}
+
+export async function writeIssueTypes(env: Env, doName: string, types: Record<number, string>) {
+  await env.ROUTES.put(`gitypes:${doName}`, JSON.stringify(types));
+}
+
+// ---------------------------------------------------------------------------
 // Locked conversations — every commenter here is a namespace member (the
 // forge's collaborator equivalent), so GitHub's "collaborators exempt" lock
 // would never bite. Our lock is a full freeze: no new comments until a

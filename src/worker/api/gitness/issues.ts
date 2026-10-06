@@ -26,9 +26,11 @@ import {
   readIssueLocks,
   readPinnedIssues,
   readSavedViews,
+  readIssueTypes,
   writeIssueLocks,
   writePinnedIssues,
   writeSavedViews,
+  writeIssueTypes,
   type SavedView,
 } from "./stores";
 
@@ -98,6 +100,27 @@ function reactionSummary(rows: ReactionRow[]) {
   return out;
 }
 
+/**
+ * Pull `type:`/`type:"Name"` tokens out of the raw `q` string — types are a
+ * worker-side KV overlay, so the DO-side parser must not see them (it would
+ * treat them as free-text terms). Returns the wanted type (if any) and the
+ * remaining query for `parseIssueQuery`.
+ */
+function extractTypeQualifier(raw: string): { type?: string; rest: string } {
+  let type: string | undefined;
+  const rest = raw
+    .replace(/type:"([^"]*)"/g, (_m, name: string) => {
+      type = name;
+      return " ";
+    })
+    .replace(/type:([^\s]+)/g, (_m, name: string) => {
+      type = name;
+      return " ";
+    })
+    .trim();
+  return { type, rest };
+}
+
 export function registerGitnessIssues(router: AppRouter) {
   router.get("/api/v1/repos/:repo_ref{.+}/issues", async (c) => {
     const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
@@ -105,7 +128,10 @@ export function registerGitnessIssues(router: AppRouter) {
     const stub = getRepoStub(c.env, access.route.doName);
     const state = c.req.query("state");
     const rawQuery = c.req.query("q");
-    const query = rawQuery?.trim() ? parseIssueQuery(rawQuery) : undefined;
+    const { type: wantedType, rest } = rawQuery?.trim()
+      ? extractTypeQualifier(rawQuery)
+      : { type: undefined, rest: "" };
+    const query = rest ? parseIssueQuery(rest) : undefined;
     const issues = await stub.listIssues({
       state: state === "open" || state === "closed" ? state : undefined,
       query,
@@ -114,11 +140,14 @@ export function registerGitnessIssues(router: AppRouter) {
     // everything else keeps the catalog's default ordering.
     const pins = await readPinnedIssues(c.env, access.route.doName);
     const locks = await readIssueLocks(c.env, access.route.doName);
+    const types = await readIssueTypes(c.env, access.route.doName);
     const pinRank = new Map(pins.map((n, i) => [n, i]));
     const ranked = issues
+      .filter((i) => wantedType === undefined || types[i.number] === wantedType)
       .map((i) => ({
         view: {
           ...issueView(i),
+          type: types[i.number] ?? null,
           pinned: pinRank.has(i.number),
           locked: locks[i.number] !== undefined,
           active_lock_reason: locks[i.number]?.reason ?? null,
@@ -144,6 +173,7 @@ export function registerGitnessIssues(router: AppRouter) {
       labels?: string[];
       assignees?: string[];
       milestone?: number;
+      type?: string;
     } | null;
     if (!body?.title?.trim()) return gErr(c, 422, "title required");
 
@@ -169,6 +199,11 @@ export function registerGitnessIssues(router: AppRouter) {
       labelIds,
     });
     if (result.status !== "created") return gErr(c, 422, result.reason);
+    if (body.type?.trim()) {
+      const types = await readIssueTypes(c.env, access.route.doName);
+      types[result.issue.number] = body.type.trim();
+      await writeIssueTypes(c.env, access.route.doName, types);
+    }
     emitRepoEvent(c, access, "issues", {
       action: "opened",
       number: result.issue.number,
@@ -235,8 +270,10 @@ export function registerGitnessIssues(router: AppRouter) {
     const result = await stub.getIssue(number);
     if (result.status !== "ok") return gNotFound(c, "issue");
     const lock = (await readIssueLocks(c.env, access.route.doName))[number];
+    const type = (await readIssueTypes(c.env, access.route.doName))[number];
     return c.json({
       ...issueView(result.issue),
+      type: type ?? null,
       locked: lock !== undefined,
       active_lock_reason: lock?.reason ?? null,
     });
@@ -255,6 +292,7 @@ export function registerGitnessIssues(router: AppRouter) {
       labels?: string[];
       assignees?: string[];
       milestone?: number | null;
+      type?: string | null;
     } | null;
 
     const stub = getRepoStub(c.env, access.route.doName);
@@ -294,13 +332,19 @@ export function registerGitnessIssues(router: AppRouter) {
     const result = await stub.updateIssue({ number, patch, actor: access.actor });
     if (result.status === "not-found") return gNotFound(c, "issue");
     if (result.status === "invalid") return gErr(c, 422, result.reason);
+    const types = await readIssueTypes(c.env, access.route.doName);
+    if (body?.type !== undefined) {
+      if (body.type?.trim()) types[number] = body.type.trim();
+      else delete types[number];
+      await writeIssueTypes(c.env, access.route.doName, types);
+    }
     emitRepoEvent(c, access, "issues", {
       action: body?.state === "closed" ? "closed" : body?.state === "open" ? "reopened" : "edited",
       number,
       title: result.issue.title,
       actor: access.actor,
     });
-    return c.json(issueView(result.issue));
+    return c.json({ ...issueView(result.issue), type: types[number] ?? null });
   });
 
   // Pin/unpin — writer-gated; pin order is insertion order, capped at

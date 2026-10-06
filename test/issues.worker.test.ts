@@ -135,6 +135,41 @@ describe("issues: /api/v1 session facade", () => {
     expect((reopened.body as IssueJson).state).toBe("open");
   });
 
+  it("issue types set/patch/clear and filter via q=type:", async () => {
+    const created = await call("POST", `${base}/issues`, {
+      cookie: seeded.cookieHeader,
+      body: { title: "Typed issue", type: "Bug" },
+    });
+    expect(created.status).toBe(201);
+    const n = (created.body as IssueJson).number;
+
+    const detail = await call("GET", `${base}/issues/${n}`, { cookie: seeded.cookieHeader });
+    expect((detail.body as IssueJson & { type: string }).type).toBe("Bug");
+
+    // q=type: filters against the overlay (not DO-side qualifiers).
+    const filtered = await call("GET", `${base}/issues?q=${encodeURIComponent("type:Bug")}`, {
+      cookie: seeded.cookieHeader,
+    });
+    const rows = filtered.body as (IssueJson & { type: string | null })[];
+    expect(rows.some((i) => i.number === n)).toBe(true);
+    const other = await call("GET", `${base}/issues?q=${encodeURIComponent("type:Feature")}`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect((other.body as IssueJson[]).some((i) => i.number === n)).toBe(false);
+
+    // PATCH renames; null clears.
+    const patched = await call("PATCH", `${base}/issues/${n}`, {
+      cookie: seeded.cookieHeader,
+      body: { type: "Feature" },
+    });
+    expect((patched.body as IssueJson & { type: string }).type).toBe("Feature");
+    const cleared = await call("PATCH", `${base}/issues/${n}`, {
+      cookie: seeded.cookieHeader,
+      body: { type: null },
+    });
+    expect((cleared.body as IssueJson & { type: string | null }).type).toBeNull();
+  });
+
   it("supports the comment lifecycle", async () => {
     const created = await call("POST", `${base}/issues/1/comments`, {
       cookie: seeded.cookieHeader,
