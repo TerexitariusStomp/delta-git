@@ -12,7 +12,8 @@ import { isRequestPrivate } from "@/worker/cache";
 import { loadViewer, generateUserId, generateNamespaceId } from "@/worker/auth/session";
 import { insertPatWithGrants, listPatsForUser, revokePatById } from "@/worker/db/d1/dal/tokens";
 import { insertSecurityEvent, listSecurityEventsForUser } from "@/worker/db/d1/dal/securityEvents";
-import { insertUserIfNew, deleteUserRow } from "@/worker/db/d1/dal/users";
+import { insertUserIfNew, deleteUserRow, findUserById } from "@/worker/db/d1/dal/users";
+import { listLiveDidSessions, revokeDidSessionIfOwned } from "@/worker/db/d1/dal/identities";
 import {
   claimNamespace,
   insertMembershipIfMissing,
@@ -285,6 +286,35 @@ export function registerGitnessApi(router: AppRouter) {
         created_at: new Date(r.createdAt).toISOString(),
       }))
     );
+  });
+
+  // Live sessions (GitHub's "Sessions" settings). DID sign-ins carry a
+  // revocable did_sessions row keyed by jti; OIDC sessions are sealed
+  // stateless cookies with no server record, so they don't appear here.
+  router.get("/api/v1/user/sessions", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const user = await findUserById(c.var.db, viewer.userId);
+    if (!user) return gNotFound(c, "user");
+    const rows = await listLiveDidSessions(c.var.db, user.tesseraSub);
+    return c.json(
+      rows.map((r) => ({
+        session_id: r.jti,
+        created_at: r.createdAt,
+        expires_at: r.expiresAt,
+        dpop_bound: r.dpopJkt !== null,
+      }))
+    );
+  });
+
+  router.delete("/api/v1/user/sessions/:jti", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const user = await findUserById(c.var.db, viewer.userId);
+    if (!user) return gNotFound(c, "user");
+    const revoked = await revokeDidSessionIfOwned(c.var.db, c.req.param("jti"), user.tesseraSub);
+    if (!revoked) return gNotFound(c, "session");
+    return c.json({ revoked: true });
   });
 
   // SSH public keys — real KV records per user. They aren't an auth factor

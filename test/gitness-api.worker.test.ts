@@ -1800,9 +1800,10 @@ describe("webhook event fan-out", () => {
     // poll briefly for the sends to land.
     const sent: { kind: string }[] = [];
     const orig = env.REPO_TASKS_QUEUE.send.bind(env.REPO_TASKS_QUEUE);
-    env.REPO_TASKS_QUEUE.send = (async (m: { event: { kind: string } }) => {
-      sent.push({ kind: m.event.kind });
-    }) as typeof env.REPO_TASKS_QUEUE.send;
+    env.REPO_TASKS_QUEUE.send = ((m: unknown) => {
+      sent.push({ kind: (m as { event: { kind: string } }).event.kind });
+      return Promise.resolve();
+    }) as unknown as typeof env.REPO_TASKS_QUEUE.send;
     try {
       const star = await workerExports.default.fetch(`https://example.com${base}/star`, {
         method: "PUT",

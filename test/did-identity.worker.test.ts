@@ -126,3 +126,64 @@ describe("atproto DID auth", () => {
     expect([200, 404]).toContain(res.status);
   });
 });
+
+describe("user sessions surface", () => {
+  it("lists live DID sessions and revokes by jti", async () => {
+    const { did, sign } = await makeDidKeySigner();
+    const challenge = await getChallenge(did);
+    const { nonce, payload, iat, exp } = challenge.body as {
+      nonce: string;
+      payload: string;
+      iat: number;
+      exp: number;
+    };
+    const verified = await postVerify({
+      did,
+      nonce,
+      sig: await sign(payload),
+      iat,
+      exp,
+    });
+    expect(verified.status).toBe(200);
+    const cookie = verified.cookie.split(";")[0];
+
+    const list = async () => {
+      const res = await workerExports.default.fetch("https://example.com/api/v1/user/sessions", {
+        headers: { Cookie: cookie },
+      });
+      return { status: res.status, body: (await res.json()) as { session_id: string }[] };
+    };
+
+    // The sign-in created one live session for this DID.
+    const first = await list();
+    expect(first.status).toBe(200);
+    expect(first.body.length).toBe(1);
+    const jti = first.body[0].session_id;
+
+    // Revoke it — the cookie's JWT is still valid but the row is dead.
+    const del = await workerExports.default.fetch(
+      `https://example.com/api/v1/user/sessions/${jti}`,
+      { method: "DELETE", headers: { Cookie: cookie } }
+    );
+    expect(del.status).toBe(200);
+    const after = await list();
+    expect(after.status).toBe(401); // revoked session no longer authenticates
+
+    // Foreign jti → 404 via a different identity.
+    const other = await makeDidKeySigner();
+    const ch2 = await getChallenge(other.did);
+    const c2 = ch2.body as { nonce: string; payload: string; iat: number; exp: number };
+    const v2 = await postVerify({
+      did: other.did,
+      nonce: c2.nonce,
+      sig: await other.sign(c2.payload),
+      iat: c2.iat,
+      exp: c2.exp,
+    });
+    const foreign = await workerExports.default.fetch(
+      `https://example.com/api/v1/user/sessions/${jti}`,
+      { method: "DELETE", headers: { Cookie: v2.cookie.split(";")[0] } }
+    );
+    expect(foreign.status).toBe(404);
+  });
+});

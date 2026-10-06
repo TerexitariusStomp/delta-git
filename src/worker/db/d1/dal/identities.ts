@@ -132,3 +132,23 @@ export async function findLiveDidSession(db: Db, jti: string): Promise<DidSessio
 export async function revokeDidSession(db: Db, jti: string): Promise<void> {
   await db.update(didSessions).set({ revokedAt: Date.now() }).where(eq(didSessions.jti, jti));
 }
+
+/** All live (unrevoked, unexpired) sessions for a DID — GitHub's "Sessions" list. */
+export async function listLiveDidSessions(db: Db, did: string): Promise<DidSessionRow[]> {
+  const rows = await db.select().from(didSessions).where(eq(didSessions.did, did));
+  const now = Date.now();
+  return rows.filter((r) => r.revokedAt === null && r.expiresAt > now);
+}
+
+/** Revoke only when the session belongs to `did` — ownership-scoped revoke. */
+export async function revokeDidSessionIfOwned(
+  db: Db,
+  jti: string,
+  did: string
+): Promise<DidSessionRow | undefined> {
+  const rows = await db.select().from(didSessions).where(eq(didSessions.jti, jti)).limit(1);
+  const row = rows[0];
+  if (!row || row.did !== did) return undefined;
+  await db.update(didSessions).set({ revokedAt: Date.now() }).where(eq(didSessions.jti, jti));
+  return row;
+}
