@@ -8,6 +8,7 @@ import {
   listPatsForUser,
   revokePatById,
 } from "@/worker/db/d1/dal";
+import { insertSecurityEvent } from "@/worker/db/d1/dal/securityEvents";
 import { sameOriginViolation } from "@/worker/auth/origin";
 import { loadViewer } from "@/worker/auth/session";
 import {
@@ -145,6 +146,15 @@ export function registerAuthTokenRoutes(router: AppRouter) {
       repoSlug,
       level,
     });
+    c.executionCtx.waitUntil(
+      insertSecurityEvent(db, {
+        id: newPrefixedId("sev"),
+        userId: viewer.userId,
+        kind: "pat.create",
+        detail: nameValidation.name,
+        createdAt: Date.now(),
+      }).catch(() => {})
+    );
     return json({ id: patId, plaintext: generated.plaintext, prefix: generated.publicPrefix });
   });
 
@@ -161,6 +171,15 @@ export function registerAuthTokenRoutes(router: AppRouter) {
     const result = await revokePatById(c.var.db, patId, viewer.userId, Date.now());
     if (result.ok) {
       log.info("pat:revoke-ok", { userId: viewer.userId, patId });
+      c.executionCtx.waitUntil(
+        insertSecurityEvent(c.var.db, {
+          id: newPrefixedId("sev"),
+          userId: viewer.userId,
+          kind: "pat.revoke",
+          detail: patId,
+          createdAt: Date.now(),
+        }).catch(() => {})
+      );
       return json({ ok: true });
     }
     if (result.reason === "not-owner") {

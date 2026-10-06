@@ -33,6 +33,8 @@ import {
   loadSessionConfig,
   loadViewer,
 } from "@/worker/auth/session";
+import { newPrefixedId } from "@/worker/common";
+import { insertSecurityEvent } from "@/worker/db/d1/dal/securityEvents";
 import type { AppRouter } from "./hono";
 import { renderUiDocumentResponse } from "./uiResponse";
 import { errorRedirect, safeRedirect } from "./authShared";
@@ -251,6 +253,15 @@ export function registerAuthOidcRoutes(router: AppRouter) {
 
     try {
       await createSessionForUser(c.env, c, userId, now);
+      c.executionCtx.waitUntil(
+        insertSecurityEvent(db, {
+          id: newPrefixedId("sev"),
+          userId,
+          kind: "session.sign_in",
+          detail: "oidc",
+          createdAt: Date.now(),
+        }).catch(() => {})
+      );
     } catch (error) {
       log.error("oidc:callback-session-create-failed", { error: String(error) });
       clearOidcTransactionCookie(c);

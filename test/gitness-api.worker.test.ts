@@ -916,4 +916,31 @@ describe("gitness /api/v1 write paths", () => {
     expect(level.permission).toBe("admin");
     expect(level.can_write).toBe(true);
   });
+
+  it("security log records PAT create + revoke", async () => {
+    const created = await post("/api/v1/user/tokens", { identifier: "audit-tok" }, w.cookieHeader);
+    expect(created.status).toBe(200);
+
+    // Emission runs in waitUntil — poll the log briefly.
+    const deadline = Date.now() + 5000;
+    const find = async (kind: string) => {
+      while (Date.now() < deadline) {
+        const log = await get("/api/v1/user/security-log", w.cookieHeader);
+        const rows = log.body as { kind: string; detail: string }[];
+        const hit = rows.find((r) => r.kind === kind && r.detail === "audit-tok");
+        if (hit) return hit;
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return null;
+    };
+    expect(await find("pat.create")).toBeTruthy();
+
+    const patId = (created.body as { token: { identifier: string } }).token.identifier;
+    const revoked = await workerExports.default.fetch(
+      `https://example.com/api/v1/user/tokens/${patId}`,
+      { method: "DELETE", headers: { Cookie: w.cookieHeader } }
+    );
+    expect(revoked.status).toBe(200);
+    expect(await find("pat.revoke")).toBeTruthy();
+  });
 });

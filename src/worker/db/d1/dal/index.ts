@@ -8,3 +8,4 @@ export * from "./reputation";
 export * from "./scanRuns";
 export * from "./modules";
 export * from "./social";
+export * from "./securityEvents";

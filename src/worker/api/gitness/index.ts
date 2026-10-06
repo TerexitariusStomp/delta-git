@@ -11,6 +11,7 @@ import type { AppRouter } from "@/worker/routes/hono";
 import { isRequestPrivate } from "@/worker/cache";
 import { loadViewer, generateUserId, generateNamespaceId } from "@/worker/auth/session";
 import { insertPatWithGrants, listPatsForUser, revokePatById } from "@/worker/db/d1/dal/tokens";
+import { insertSecurityEvent, listSecurityEventsForUser } from "@/worker/db/d1/dal/securityEvents";
 import { insertUserIfNew, deleteUserRow } from "@/worker/db/d1/dal/users";
 import {
   claimNamespace,
@@ -181,6 +182,15 @@ export function registerGitnessApi(router: AppRouter) {
       namespaceGrants: [{ patId, namespaceId: primary.id, level: "push" }],
       repoGrants: [],
     });
+    c.executionCtx.waitUntil(
+      insertSecurityEvent(c.var.db, {
+        id: newPrefixedId("sev"),
+        userId: viewer.userId,
+        kind: "pat.create",
+        detail: name,
+        createdAt: Date.now(),
+      }).catch(() => {})
+    );
     return c.json({
       identifier: name,
       access_token: generated.plaintext,
@@ -238,7 +248,31 @@ export function registerGitnessApi(router: AppRouter) {
     if (!pat) return gNotFound(c, "token");
     const result = await revokePatById(c.var.db, pat.id, viewer.userId, Date.now());
     if (!result.ok) return gErr(c, 409, `token ${result.reason}`);
+    c.executionCtx.waitUntil(
+      insertSecurityEvent(c.var.db, {
+        id: newPrefixedId("sev"),
+        userId: viewer.userId,
+        kind: "pat.revoke",
+        detail: pat.name,
+        createdAt: Date.now(),
+      }).catch(() => {})
+    );
     return c.json({});
+  });
+
+  // Security log — the user's own auth-history trail (GitHub parity).
+  router.get("/api/v1/user/security-log", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return gErr(c, 401, "unauthorized");
+    const rows = await listSecurityEventsForUser(c.var.db, viewer.userId);
+    return c.json(
+      rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        detail: r.detail,
+        created_at: new Date(r.createdAt).toISOString(),
+      }))
+    );
   });
 
   // SSH public keys — real KV records per user. They aren't an auth factor
