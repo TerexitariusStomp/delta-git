@@ -6,12 +6,12 @@ import { createDb } from "@/worker/db/d1";
 import type { Db } from "@/worker/db/d1";
 import { createLogger } from "@/worker/common/logger";
 import {
-  insertNotification,
   listAllCertificates,
   listAllEnabledMonitors,
   listOnlineDelegates,
   updateDelegate,
 } from "@/worker/db/d1/dal/modules";
+import { deliverNotification } from "@/worker/notify/notify";
 import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
 import { newPrefixedId } from "@/worker/common";
 import { runMonitorProbe } from "@/worker/api/gitness/reliability";
@@ -37,7 +37,7 @@ export async function handleScheduled(cron: string, env: Env): Promise<void> {
   // probes + reaper only. Match on cron string so a schedule tweak can't
   // silently move work between tiers.
   if (cron === "0 * * * *") {
-    await scanCertificates(db, now);
+    await scanCertificates(env, db, now);
     return;
   }
   await probeDueMonitors(db, now);
@@ -109,14 +109,14 @@ async function reapStaleDelegates(db: Db<D1Database>, now: number): Promise<void
   if (reaped > 0) log.info("scheduled:delegates-reaped", { reaped });
 }
 
-async function scanCertificates(db: Db<D1Database>, now: number): Promise<void> {
+async function scanCertificates(env: Env, db: Db<D1Database>, now: number): Promise<void> {
   const certs = await listAllCertificates(db);
   for (const cert of certs) {
     const daysLeft = Math.floor((cert.expiresAt - now) / 86_400_000);
     if (cert.expiresAt - now > CERT_NOTIFY_MS) continue;
     const members = await listMembershipsForNamespace(db, cert.namespaceId);
     for (const member of members) {
-      await insertNotification(db, {
+      await deliverNotification(env, db, {
         id: newPrefixedId("ntf"),
         userId: member.userId,
         kind: "incident",

@@ -209,6 +209,15 @@
     "DG_ADMIN_ACTORS": "",
     // Cloudflare account id — used with the CF_API_TOKEN secret by the
     // deploy-on-commit lane and per-repo Artifacts event subscriptions.
-    "CF_ACCOUNT_ID": "ddf0cf5b4491ba59765378877fe8c697"
+    "CF_ACCOUNT_ID": "ddf0cf5b4491ba59765378877fe8c697",
+    // Outbound email for notifications — Resend-compatible HTTP API
+    // (POST {url}/emails {from,to,subject,text,html?} with Bearer auth).
+    // Empty = email egress disabled; notification rows still land in-app.
+    // The key itself stays a secret (`wrangler secret put EMAIL_API_KEY`).
+    "EMAIL_API_URL": "",
+    "EMAIL_FROM": "delta-git <noreply@delta-git.workers.dev>",
+    // Canonical public origin — used to turn relative notification links
+    // into absolute URLs in outbound email.
+    "PUBLIC_ORIGIN": "https://delta-git.workers.dev"
   }
 }

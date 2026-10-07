@@ -24,7 +24,6 @@ import {
   insertIncident,
   insertIncidentUpdate,
   insertMonitor,
-  insertNotification,
   insertMonitorCheck,
   insertSlo,
   listCertificates,
@@ -42,6 +41,7 @@ import {
 } from "@/worker/db/d1/dal/modules";
 import type { MonitorRow } from "@/worker/db/d1/schema";
 import { newPrefixedId } from "@/worker/common";
+import { deliverNotification } from "@/worker/notify/notify";
 import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound } from "./shared";
 import type { GitnessContext } from "./shared";
@@ -112,7 +112,7 @@ async function notifyIncident(
   const now = Date.now();
   for (const member of members) {
     if (member.userId === actor) continue;
-    await insertNotification(c.var.db, {
+    await deliverNotification(c.env, c.var.db, {
       id: newPrefixedId("ntf"),
       userId: member.userId,
       kind: "incident",

@@ -24,7 +24,7 @@ import { viewerIsNamespaceMember } from "@/worker/auth/pat";
 import { enforceInNamespace, principalForUser } from "@/worker/rbac";
 import { getRepoStub, newPrefixedId } from "@/worker/common";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
-import { insertNotification } from "@/worker/db/d1/dal/modules";
+import { deliverNotification } from "@/worker/notify/notify";
 import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
 import { listWatchers } from "@/worker/db/d1/dal/social";
 import { readNamespaceBlocks, readUserFavorites } from "./stores";
@@ -370,7 +370,7 @@ export function notifyMembers(
       const userIds = new Set([...members.map((m) => m.userId), ...watchers.map((w) => w.userId)]);
       for (const userId of userIds) {
         if (userId === args.excludeUserId) continue;
-        await insertNotification(c.var.db, {
+        await deliverNotification(c.env, c.var.db, {
           id: newPrefixedId("ntf"),
           userId,
           kind: args.kind,

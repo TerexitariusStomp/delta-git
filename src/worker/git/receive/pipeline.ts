@@ -14,7 +14,7 @@ import { doPrefix, r2PackKey } from "@/worker/keys";
 import { createDb } from "@/worker/db/d1/client";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
-import { insertNotification } from "@/worker/db/d1/dal/modules";
+import { deliverNotification } from "@/worker/notify/notify";
 import { findScanRunForHead, scanStatusSatisfiesPolicy } from "@/worker/db/d1/dal/scanRuns";
 import { newPrefixedId } from "@/worker/common";
 import { readSecuritySettings } from "@/worker/api/gitness/stores";
@@ -622,7 +622,7 @@ export async function executeReceivePipeline(
             .join(", ");
           for (const member of members) {
             if (member.userId === args.actor) continue;
-            await insertNotification(db, {
+            await deliverNotification(args.env, db, {
               id: newPrefixedId("ntf"),
               userId: member.userId,
               kind: "push",

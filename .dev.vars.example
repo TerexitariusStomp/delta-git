@@ -50,3 +50,9 @@ ALLOWED_RETURN_HOSTS=localhost,127.0.0.1
 # Node signing key for dg-rep-cert-1 reputation certificates (JWK Ed25519
 # private key). Production: `wrangler secret put DG_NODE_ED25519_JWK`.
 DG_NODE_ED25519_JWK={"kty":"OKP","crv":"Ed25519","x":"","d":"","key_ops":["sign"]}
+
+# Bearer token for the outbound notification mail API (EMAIL_API_URL in
+# wrangler.jsonc). Production: `wrangler secret put EMAIL_API_KEY`. A static
+# placeholder is fine for local dev since EMAIL_API_URL defaults to empty
+# (email delivery disabled).
+EMAIL_API_KEY=local-email-api-key-change-me
