@@ -67,7 +67,7 @@ export async function finalizeReceiveState(args: {
   commands: ReceiveCommand[];
   /** Pusher identity recorded on divergent intents and the op log. */
   actor?: string;
-  /** `push-option` strings recorded on the `push.received` op-log entry. */
+  /** `push-options` strings recorded on the `push.received` op-log entry. */
   pushOptions?: string[];
   stagedPack?:
     | {

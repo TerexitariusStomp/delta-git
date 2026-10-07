@@ -437,11 +437,12 @@ describe("streaming receive-pack", () => {
       parentOid: seeded.nextCommit.oid,
       nextText: "push options\n",
       commitMessage: "push options",
-      capabilities: "report-status push-option ofs-delta agent=test",
+      capabilities: "report-status push-options ofs-delta agent=test",
     });
-    // `built.body` is command-line + flush + pack; git sends each -o value as
-    // its own pkt-line after the commands. Rebuild with two option lines
-    // spliced in — the pack begins at the "PACK" magic.
+    // `built.body` is command-line + flush + pack; with push-options
+    // negotiated, git sends each -o value as its own pkt-line in a second
+    // section between the command flush and the pack (gitprotocol-pack(5):
+    // command-list + flush, push-options + flush, PACK).
     const packMagic = new TextEncoder().encode("PACK");
     let packStart = -1;
     for (let i = 0; i + 4 <= built.body.byteLength; i++) {
@@ -453,8 +454,9 @@ describe("streaming receive-pack", () => {
     expect(packStart).toBeGreaterThan(0);
     const body = concatChunks([
       pktLine(
-        `${seeded.nextCommit.oid} ${built.commit.oid} refs/heads/main\0 report-status push-option ofs-delta agent=test\n`
+        `${seeded.nextCommit.oid} ${built.commit.oid} refs/heads/main\0 report-status push-options ofs-delta agent=test\n`
       ),
+      flushPkt(),
       pktLine("ci.skip\n"),
       pktLine("reviewer=alice\n"),
       flushPkt(),

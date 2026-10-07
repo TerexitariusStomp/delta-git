@@ -289,10 +289,24 @@ export async function handleStreamingReceivePackPOST(
 
   let pipelineStarted = false;
   try {
-    const { lines, bytesConsumed, packStream } = await readPktSectionStream(request.body);
+    const commandSection = await readPktSectionStream(request.body);
     throwIfReceiveAborted(request, log, "read-command-section");
 
-    const parsedRequest = parseReceiveRequest(lines);
+    const parsedRequest = parseReceiveRequest(commandSection.lines);
+
+    // With push-options negotiated, git sends the option pkt-lines as a
+    // *second* section: commands + flush + options + flush + PACK. Read the
+    // option section out of the remainder so the pack stream starts at the
+    // PACK magic.
+    let packStream = commandSection.packStream;
+    let bytesConsumed = commandSection.bytesConsumed;
+    let pushOptionLines = parsedRequest.options;
+    if (parsedRequest.capabilities.pushOption) {
+      const optionsSection = await readPktSectionStream(commandSection.packStream);
+      pushOptionLines = [...pushOptionLines, ...optionsSection.lines];
+      packStream = optionsSection.packStream;
+      bytesConsumed += optionsSection.bytesConsumed;
+    }
     const responseMode = selectReceiveResponseMode(parsedRequest.capabilities);
 
     const invalidCommand = parsedRequest.commands.find((command) => !isValidRefName(command.ref));
@@ -343,7 +357,7 @@ export async function handleStreamingReceivePackPOST(
         leaseToken: begin.lease.token,
         activeCatalog: begin.activeCatalog,
         commands: parsedRequest.commands,
-        pushOptions: parsedRequest.options,
+        pushOptions: pushOptionLines,
         capabilities: parsedRequest.capabilities,
         packStream,
         bytesConsumed,
@@ -366,7 +380,7 @@ export async function handleStreamingReceivePackPOST(
       leaseToken: begin.lease.token,
       activeCatalog: begin.activeCatalog,
       commands: parsedRequest.commands,
-      pushOptions: parsedRequest.options,
+      pushOptions: pushOptionLines,
       log,
       cacheCtx,
       limiter,

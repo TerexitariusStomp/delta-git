@@ -180,7 +180,7 @@ type ExecuteReceivePipelineArgs = {
   leaseToken: string;
   activeCatalog: PackCatalogRow[];
   commands: ReceiveCommand[];
-  /** `push-option` strings recorded on the op-log entry and webhook payload. */
+  /** `push-options` strings recorded on the op-log entry and webhook payload. */
   pushOptions?: string[];
   log: Logger;
   /** Pusher identity recorded on divergent merge intents. */

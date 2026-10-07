@@ -70,7 +70,8 @@ export async function capabilityAdvertisement(
     "ofs-delta",
     // Clients may append arbitrary key=value push options after the command
     // list; they land on the op-log entry and `push` webhook payloads.
-    "push-option",
+    // The capability name is plural — gitprotocol-capabilities(5).
+    "push-options",
     `agent=git-on-cloudflare/0.1`,
   ].join(" ");
 

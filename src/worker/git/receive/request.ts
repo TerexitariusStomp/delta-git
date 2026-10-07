@@ -14,7 +14,7 @@ export type ParsedReceiveRequest = {
   commands: ReceiveCommand[];
   capabilities: ReceiveNegotiatedCapabilities;
   /**
-   * `push-option` strings the client sent after its command list — opaque to
+   * `push-options` strings the client sent after its command list — opaque to
    * the protocol layer; recorded on the `push.received` op-log entry and
    * fanned out on `push` webhook payloads for downstream consumers.
    */
@@ -42,7 +42,7 @@ function parseCapabilities(firstLine: string): ReceiveNegotiatedCapabilities {
     quiet: tokens.includes("quiet"),
     atomic: tokens.includes("atomic"),
     ofsDelta: tokens.includes("ofs-delta"),
-    pushOption: tokens.includes("push-option"),
+    pushOption: tokens.includes("push-options"),
     agent,
   };
 }
@@ -64,7 +64,7 @@ export function parseReceiveRequest(lines: string[]): ParsedReceiveRequest {
     }
 
     const trimmed = line.trim();
-    // Option lines carry arbitrary text; they only arrive when push-option
+    // Option lines carry arbitrary text; they only arrive when push-options
     // was negotiated and are distinguished from commands by shape — a ref
     // name can itself contain spaces but never the <oid> <oid> prefix.
     if (!COMMAND_LINE_SHAPE.test(trimmed)) {
