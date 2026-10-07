@@ -1,0 +1,5 @@
+# False positives — doc/JSON-LD literals, not credentials.
+# did.ts: JSON-LD "@context" URLs (w3id.org/security/multikey/v1) trip generic-api-key.
+a94ab9fa02178464587843f851492796c83b79fa:src/worker/routes/did.ts:generic-api-key:51
+# README.md (historic): doc example `Authorization: Bearer secret123` placeholder.
+ea90bbe0a0700139f42dc4f1209e71e9cd0104a4:README.md:curl-auth-header:118

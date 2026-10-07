@@ -181,3 +181,25 @@ implementations of their mechanics:
 
 `wp-cloud/licenses.yaml` is the machine-readable source for the container
 lane and stays in sync with this document.
+
+## Custom-code share (LOC report, 2026-10-06)
+
+Line counts over `git ls-files` (cloc equivalent; blank/comment lines not
+stripped, so figures are conservative upper bounds):
+
+| Bucket                                           | Files | Lines   |
+| ------------------------------------------------ | ----- | ------- |
+| `src/` (worker + client + shared)                | 481   | 74,469  |
+| `src/vendor/widespread` (vendored, inside src)   | incl. | ~1,005  |
+| `test/`                                          | 134   | 27,475  |
+| `cli/` + `scripts/`                              | 5     | 1,993   |
+| `drizzle/` (generated migrations — not authored) | 79    | 80,813  |
+| `frontend/` (vendored Gitness SPA, Apache-2.0)   | 1,920 | 416,913 |
+| `wpcloud/` (first-party app subtree)             | 50    | 4,819   |
+
+Authored product code (`src` + `cli` + `scripts`, minus vendored
+widespread and generated drizzle) is ~75.5k lines ≈ **12% of the tracked
+code tree** — above the original <5% aspiration. The honest drivers: the
+agent-native forge surface (merge intents, adjudication, atproto lanes,
+v3/v1 facades, MCP) has no permissively-licensed upstream to vendor, and
+`frontend/` only amortizes UI. Test and generated code do not ship.

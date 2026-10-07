@@ -29,9 +29,13 @@ function serializeProps(props: unknown): string {
 export function IslandHost({ name, props, children, className }: IslandHostProps) {
   return (
     <div data-island={name} className={className}>
+      {/* serializeProps escapes <>& and U+2028/9 so the JSON literal cannot
+          break out of the script element — the standard island/boot-data
+          pattern (nosemgrep: the rule can't see the escaping above). */}
       <script
         type="application/json"
         data-island-props
+        // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
         dangerouslySetInnerHTML={{ __html: serializeProps(props) }}
       />
       <div data-island-root>{children}</div>

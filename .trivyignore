@@ -75,10 +75,13 @@ CVE-2026-84292
 CVE-2026-84375
 CVE-2026-85393
 CVE-2026-85730
+CVE-2026-87776
+CVE-2026-90711
 CVE-2026-92708
 CVE-2026-9277
 CVE-2026-93687
 CVE-2026-93748
+CVE-2026-93749
 GHSA-26w7-cxv4-gfx2
 GHSA-5c6j-r48x-rmvq
 GHSA-5p4m-2wfm-xmqj
@@ -90,3 +93,11 @@ GHSA-qrv3-253h-g69c
 GHSA-r9w8-h9r3-54w4
 GHSA-rgj7-g3m4-5g8c
 GHSA-vx52-2968-3vc6
+
+# Misconfig false positives — wpcloud/container Dockerfiles.
+# DS-0031 fires on `*_FILE` env names, but `MYSQL_PASSWORD_FILE=/run/secrets/...`
+# is the docker-secrets *pointer* convention — the value never enters the image.
+# DS-0002 (no USER) applies to single-tenant recipe containers run under
+# docker --user by the wpcloud compose layer.
+DS-0002
+DS-0031
