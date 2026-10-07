@@ -5,11 +5,13 @@ import { getRepoStub } from "@/worker/common";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { readObject } from "@/worker/git/object-store/store";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
-import { authenticateGitRequest } from "@/worker/auth/gitAuth";
+import { authenticateGitRequest, authenticateIdentity } from "@/worker/auth/gitAuth";
 import { hasOAuthScope, OAUTH_SCOPES } from "@/worker/auth/oauth";
+import { loadViewer } from "@/worker/auth/session";
 import { isValidOwnerRepo } from "@/shared/web";
 import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
-import { resolveRef } from "@/worker/git/operations/read";
+import { listCommitsFirstParentRange, resolveRef } from "@/worker/git/operations/read";
+import type { CommitInfo } from "@/worker/git/operations/read/types";
 import type { ReleaseAssetRow, ReleaseRow } from "@/worker/do/repo/db/schema";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
@@ -111,6 +113,62 @@ function b64(bytes: Uint8Array): string {
 }
 
 export function registerApiV3Routes(router: AppRouter): void {
+  // GET /api/v3/user — the authenticated user (gh auth status, gh api user).
+  // Session cookie, OAuth Bearer, and PAT (Basic/token/Bearer) lanes all map
+  // to a userId; `login` is the user's primary namespace slug.
+  router.get("/api/v3/user", async (c) => {
+    const identity = await authenticateIdentity(c.env, c.req.raw, { db: c.var.db });
+    if (identity instanceof Response) return identity;
+    let userId = identity?.userId;
+    if (!userId) {
+      const viewer = await loadViewer(c);
+      userId = viewer?.userId;
+    }
+    if (!userId) return v3Err(c, 401, "Requires authentication");
+    const namespaces = await listNamespacesForUser(c.var.db, userId);
+    const login = namespaces[0]?.slug;
+    if (!login) return v3Err(c, 404, "Not Found");
+    const origin = new URL(c.req.url).origin;
+    return c.json({
+      login,
+      id: userId,
+      type: "User",
+      html_url: `${origin}/${login}`,
+    });
+  });
+
+  // GET /api/v3/user/emails — the authenticated user's notification
+  // address. Contact fields live in the `gprofile:{userId}` KV record (the
+  // same store `/api/v1/user` writes); delta-git has no verification flow,
+  // so a set email reports `verified: false`.
+  router.get("/api/v3/user/emails", async (c) => {
+    const identity = await authenticateIdentity(c.env, c.req.raw, { db: c.var.db });
+    let userId = identity instanceof Response ? undefined : identity?.userId;
+    if (!userId) {
+      const viewer = await loadViewer(c);
+      userId = viewer?.userId;
+    }
+    if (!userId) return v3Err(c, 401, "Requires authentication");
+    const profile = (await c.env.ROUTES.get(`gprofile:${userId}`, "json").catch(() => null)) as {
+      email?: string;
+    } | null;
+    const email = profile?.email?.trim();
+    return c.json(email ? [{ email, primary: true, verified: false, visibility: "private" }] : []);
+  });
+
+  // GET /api/v3/rate_limit — gh checks this for pacing hints. We enforce
+  // quotas per-repo rather than per-token; report GitHub-shaped ceilings.
+  router.get("/api/v3/rate_limit", async (c) => {
+    const now = Math.floor(Date.now() / 1000);
+    return c.json({
+      resources: {
+        core: { limit: 5000, used: 0, remaining: 5000, reset: now + 3600 },
+        search: { limit: 30, used: 0, remaining: 30, reset: now + 60 },
+        graphql: { limit: 5000, used: 0, remaining: 5000, reset: now + 3600 },
+      },
+    });
+  });
+
   // GET /api/v3/repos/:owner/:repo — gh repo view
   router.get("/api/v3/repos/:owner/:repo", async (c) => {
     const route = await resolveRoute(c);
@@ -157,6 +215,132 @@ export function registerApiV3Routes(router: AppRouter): void {
         url: `${new URL(c.req.url).origin}/api/v3/repos/${c.req.param("owner")}/${c.req.param("repo")}/git/refs/${ref.name}`,
       }))
     );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/branches(+/:branch) — gh api branches,
+  // branch pickers. Straight projection of refs/heads/* from the DO.
+  const branchesHandler = async (c: AppContext) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const stub = getRepoStub(c.env, route.doName);
+    const { head, refs } = await stub.getHeadAndRefs();
+    const branches = refs.filter((r) => r.name.startsWith("refs/heads/"));
+    const origin = new URL(c.req.url).origin;
+    const shape = (name: string, oid: string) => ({
+      name,
+      commit: {
+        sha: oid,
+        url: `${origin}/api/v3/repos/${route.routeNamespaceSlug}/${route.routeRepoSlug}/commits/${oid}`,
+      },
+      protected: false,
+    });
+    const want = c.req.param("branch");
+    if (want === undefined) {
+      return c.json(branches.map((r) => shape(r.name.replace(/^refs\/heads\//, ""), r.oid)));
+    }
+    const match = branches.find((r) => r.name === `refs/heads/${want}`);
+    if (!match) return v3Err(c, 404, "Branch not found");
+    return c.json({
+      ...shape(want, match.oid),
+      // GitHub wraps single-branch responses differently: `commit.commit`
+      // carries the message. Keep the common fields identical.
+      default: head.target === match.name,
+    });
+  };
+  // Plain :branch — a `{.+}` catch-all here corrupts sibling /repos/* routes
+  // under Hono's RegExpRouter (same quirk family as the AGENTS.md warning).
+  router.get("/api/v3/repos/:owner/:repo/branches", branchesHandler);
+  router.get("/api/v3/repos/:owner/:repo/branches/:branch", branchesHandler);
+
+  // GET /api/v3/repos/:owner/:repo/commits?sha=&per_page=&page= — commit
+  // history (gh api repos/…/commits, log views). First-parent walk from the
+  // resolved sha/branch; pagination is offset-based over the walk.
+  router.get("/api/v3/repos/:owner/:repo/commits", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const perPage = Math.min(Math.max(Number(c.req.query("per_page")) || 30, 1), 100);
+    const page = Math.max(Number(c.req.query("page")) || 1, 1);
+    const sha = c.req.query("sha") ?? "HEAD";
+    const commits = await listCommitsFirstParentRange(
+      c.env,
+      route.doName,
+      sha,
+      (page - 1) * perPage,
+      perPage,
+      c.var.cacheCtx
+    ).catch(() => null);
+    if (!commits) {
+      // Empty repo (unborn HEAD, no refs): GitHub returns an empty list.
+      // A bad explicit sha on a non-empty repo is a 422 upstream.
+      const { refs } = await getRepoStub(c.env, route.doName).getHeadAndRefs();
+      if (refs.length === 0) return c.json([]);
+      return v3Err(c, 422, `No commit found for SHA: ${sha}`);
+    }
+    const origin = new URL(c.req.url).origin;
+    const ns = route.routeNamespaceSlug;
+    const rs = route.routeRepoSlug;
+    const person = (p?: CommitInfo["author"]) =>
+      p
+        ? {
+            name: p.name,
+            email: p.email,
+            date: new Date(p.when * 1000).toISOString(),
+          }
+        : null;
+    return c.json(
+      commits.map((ci) => ({
+        sha: ci.oid,
+        node_id: ci.oid,
+        commit: {
+          author: person(ci.author),
+          committer: person(ci.committer),
+          message: ci.message,
+          tree: { sha: ci.tree },
+          url: `${origin}/api/v3/repos/${ns}/${rs}/git/commits/${ci.oid}`,
+          comment_count: 0,
+        },
+        url: `${origin}/api/v3/repos/${ns}/${rs}/commits/${ci.oid}`,
+        html_url: `${origin}/${ns}/${rs}/commit/${ci.oid}`,
+        author: null,
+        committer: null,
+        parents: ci.parents.map((p) => ({ sha: p })),
+      }))
+    );
+  });
+
+  // GET /api/v3/repos/:owner/:repo/readme — gh repo view's second call.
+  // GitHub resolves the first matching README* at the repo root.
+  // Registered BEFORE `contents/*` — a `*` wildcard earlier in the compiled
+  // RegExpRouter table misroutes later same-prefix literal siblings.
+  router.get("/api/v3/repos/:owner/:repo/readme", async (c) => {
+    const route = await resolveRoute(c);
+    if (!route) return v3Err(c, 404, "Not Found");
+    const stub = getRepoStub(c.env, route.doName);
+    const { refs } = await stub.getHeadAndRefs();
+    const oid = commitOidForRef(refs, c.req.query("ref"));
+    if (!oid) return v3Err(c, 404, "Not Found");
+    const commit = await readPayload(c.env, route.doName, oid, c.var.cacheCtx);
+    if (!commit) return v3Err(c, 404, "Not Found");
+    const treeOid = parseCommitText(td.decode(commit.payload)).tree;
+    if (!treeOid) return v3Err(c, 404, "Not Found");
+    const treeObj = await readPayload(c.env, route.doName, treeOid, c.var.cacheCtx);
+    if (!treeObj) return v3Err(c, 404, "Not Found");
+    const entry = [...parseTree(treeObj.payload).values()].find(
+      (e) => !isTreeMode(e.mode) && /^readme(\.(md|markdown|txt|rst|org|adoc))?$/i.test(e.name)
+    );
+    if (!entry) return v3Err(c, 404, "Not Found");
+    const blob = await readObject(c.env, route.doName, entry.oid, c.var.cacheCtx);
+    if (!blob || blob.type !== "blob") return v3Err(c, 404, "Not Found");
+    const origin = new URL(c.req.url).origin;
+    return c.json({
+      name: entry.name,
+      path: entry.name,
+      sha: entry.oid,
+      type: "file",
+      encoding: "base64",
+      content: b64(blob.payload),
+      html_url: `${origin}/${route.routeNamespaceSlug}/${route.routeRepoSlug}/blob/HEAD/${entry.name}`,
+    });
   });
 
   // GET /api/v3/repos/:owner/:repo/contents/{path}?ref=

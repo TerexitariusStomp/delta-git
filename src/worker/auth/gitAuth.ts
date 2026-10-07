@@ -8,6 +8,8 @@ import {
   PAT_LAST_USED_READ_THROTTLE_MS,
   shouldTouchPatLastUsedAt,
   verifyPat,
+  verifyPatIdentity,
+  type PatIdentityOk,
   type PatLastUsedOp,
   type PatVerifyError,
   type PatVerifyOk,
@@ -115,6 +117,62 @@ export async function authenticateGitRequest(
   });
   if (verified.ok) return { kind: "pat", verified };
   return { kind: "pat-rejected", reason: verified.reason };
+}
+
+// Repo-less identity check for user-scoped API surfaces (`/api/v3/user`):
+// validates any recognized credential and returns the userId it maps to,
+// without a namespace/repo grant check. Distinguishes `null` (no credentials
+// presented — caller may still fall back to session auth) from a Response
+// (credentials presented but rejected — the client authenticated badly and
+// gets 401, not an anonymous fallback).
+export async function authenticateIdentity(
+  env: Env,
+  request: Request,
+  options: { db?: Db } = {}
+): Promise<{ userId: string; lastUsedAt: number | null; patId?: string } | null | Response> {
+  const authz = request.headers.get("Authorization")?.toLowerCase() ?? "";
+  const rawAuthz = request.headers.get("Authorization") ?? "";
+  const tokenSchemeValue = authz.startsWith("token ") ? rawAuthz.slice(6).trim() : null;
+  const bearerValue = authz.startsWith("bearer ") ? rawAuthz.slice(7).trim() : null;
+  const barePat = tokenSchemeValue ?? (bearerValue?.startsWith("goc_") ? bearerValue : null);
+  if (barePat) {
+    const verified: PatIdentityOk | null = await verifyPatIdentity(env, {
+      plaintext: barePat,
+      db: options.db,
+    });
+    if (verified)
+      return { userId: verified.userId, lastUsedAt: verified.lastUsedAt, patId: verified.patId };
+    return new Response(JSON.stringify({ message: "Bad credentials", error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (authz.startsWith("bearer ")) {
+    const principal = await resolveOAuthBearer(env, request);
+    if (!principal) {
+      return new Response(JSON.stringify({ message: "Bad credentials", error: "unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return { userId: principal.userId, lastUsedAt: null };
+  }
+  const basic = getBasicCredentials(request);
+  if (!basic) return null;
+  if (!basic.password) {
+    return new Response(JSON.stringify({ message: "Bad credentials", error: "unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const verified = await verifyPatIdentity(env, { plaintext: basic.password, db: options.db });
+  if (verified) {
+    return { userId: verified.userId, lastUsedAt: verified.lastUsedAt, patId: verified.patId };
+  }
+  return new Response(JSON.stringify({ message: "Bad credentials", error: "unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 // Returns true when the update was scheduled so tests can assert the

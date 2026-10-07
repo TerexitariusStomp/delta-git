@@ -235,6 +235,38 @@ export async function verifyPat(env: Env, args: VerifyPatArgs): Promise<PatVerif
   return { ok: false, reason: "grant-missing" };
 }
 
+export type PatIdentityOk = {
+  patId: string;
+  userId: string;
+  lastUsedAt: number | null;
+};
+
+// Identity-only PAT check for surfaces that need "who is this token" rather
+// than "may this token touch namespace X" (e.g. `/api/v3/user`). Performs the
+// same prefix lookup, hash comparison, and revocation/expiry checks as
+// verifyPat but skips the namespace/repo grant check — grants gate resource
+// access, not identity. Callers must still apply their own authorization.
+export async function verifyPatIdentity(
+  env: Env,
+  args: { plaintext: string; now?: number; db?: Db }
+): Promise<PatIdentityOk | null> {
+  const now = args.now ?? Date.now();
+  const parsed = parsePatPlaintext(args.plaintext);
+  if (!parsed.ok) return null;
+
+  const db = args.db ?? createDb(env.DB);
+  const pat = await findPatByPrefix(db, parsed.publicPrefix);
+  if (!pat) return null;
+  if (pat.revokedAt !== null) return null;
+  if (pat.expiresAt !== null && pat.expiresAt <= now) return null;
+
+  const expectedHash = pat.hash;
+  const presentedHash = await hashPatPlaintext(args.plaintext);
+  if (!(await constantTimeEquals(expectedHash, presentedHash))) return null;
+
+  return { patId: pat.id, userId: pat.userId, lastUsedAt: pat.lastUsedAt };
+}
+
 // Writes always update; reads only when the prior value is older than this
 // window (or null) so D1 is not written on every clone.
 export const PAT_LAST_USED_READ_THROTTLE_MS = 15 * 60 * 1000;

@@ -30,10 +30,16 @@ const SCHEMA = /* GraphQL */ `
     login: String!
   }
 
+  type RepositoryOwner {
+    id: ID!
+    login: String!
+  }
+
   type Repository {
     id: ID!
     name: String!
     nameWithOwner: String!
+    owner: RepositoryOwner!
     description: String
     isPrivate: Boolean!
     url: String!
@@ -147,6 +153,7 @@ function repoResolvers(rc: RepoCtx, row: RepositoryRow) {
     id: String(row.id),
     name: row.slug,
     nameWithOwner: `${rc.route.routeNamespaceSlug}/${rc.route.routeRepoSlug}`,
+    owner: { id: rc.route.namespaceId, login: rc.route.routeNamespaceSlug },
     description: row.description ?? null,
     isPrivate: rc.route.visibility !== "public",
     url: `/${rc.route.routeNamespaceSlug}/${rc.route.routeRepoSlug}`,
