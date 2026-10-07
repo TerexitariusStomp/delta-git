@@ -316,3 +316,40 @@ export async function listFamilyRollup(db: Db, limit = 25): Promise<AgentRollup[
 export async function listModelRollup(db: Db, limit = 25): Promise<AgentRollup[]> {
   return await rollupAgents(db, agents.model, limit);
 }
+
+// ---------------------------------------------------------------------------
+// Leaderboard
+// ---------------------------------------------------------------------------
+
+export interface LeaderboardEntry {
+  did: string;
+  label: string | null;
+  kind: "agent" | "identity";
+  rep: number;
+}
+
+/** Unified rep leaderboard — agents and human identities ranked in one
+ *  list since both carry the same rep currency. Non-negative rep only; a
+ *  zero/negative balance has no leaderboard meaning. */
+export async function listRepLeaderboard(db: Db, limit = 50): Promise<LeaderboardEntry[]> {
+  const [agentRows, identityRows] = await Promise.all([
+    db
+      .select({ did: agents.did, label: agents.label, rep: agents.rep })
+      .from(agents)
+      .where(and(eq(agents.banned, 0), gt(agents.rep, 0)))
+      .orderBy(desc(agents.rep))
+      .limit(limit),
+    db
+      .select({ did: identities.did, label: identities.handle, rep: identities.rep })
+      .from(identities)
+      .where(gt(identities.rep, 0))
+      .orderBy(desc(identities.rep))
+      .limit(limit),
+  ]);
+  return [
+    ...agentRows.map((r) => ({ ...r, kind: "agent" as const })),
+    ...identityRows.map((r) => ({ ...r, kind: "identity" as const })),
+  ]
+    .sort((a, b) => b.rep - a.rep)
+    .slice(0, limit);
+}

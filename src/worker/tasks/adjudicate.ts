@@ -10,6 +10,7 @@ import { doPrefix } from "@/worker/keys";
 import { createDb } from "@/worker/db/d1/client";
 import { findRepositoryById } from "@/worker/db/d1/dal/repositories";
 import { findNamespaceById } from "@/worker/db/d1/dal/namespaces";
+import { insertEvalSample } from "@/worker/db/d1/dal/evalCorpus";
 import { poolInfer, repoPoolProject } from "@/worker/compute/pool";
 
 // Workers-AI adjudicator seat.
@@ -109,6 +110,9 @@ export async function runWorkersAiAdjudication(
 
   const conflicts: string[] = intent.conflicts ? JSON.parse(intent.conflicts) : [];
   const files: Record<string, { content_b64?: string; delete?: boolean }> = {};
+  // Eval-corpus sample — inputs collected alongside the merge loop so the
+  // offline harness can replay real conflicts. Public repos only.
+  const corpusInputs: { path: string; ours: string; theirs: string }[] = [];
   let unresolved = 0;
   let poolMerged = 0;
 
@@ -120,6 +124,9 @@ export async function runWorkersAiAdjudication(
     if (ours === undefined || theirs === undefined) {
       files[path] = { delete: ours === undefined };
       continue;
+    }
+    if (poolVisibility === "public") {
+      corpusInputs.push({ path, ours: ours.slice(0, 6000), theirs: theirs.slice(0, 6000) });
     }
     const messages = [
       {
@@ -196,6 +203,39 @@ export async function runWorkersAiAdjudication(
     status: outcome.status,
     resolved: outcome.status === "accepted" ? outcome.resolved : false,
   });
+  // Eval-corpus write — only when the repo is public (same visibility gate
+  // as pool dispatch; private/E2E content never leaves the DO). The row is
+  // the offline harness's replay material: conflict inputs + merged output
+  // + engine mix. `outcome` backfills on resolution via markEvalOutcome.
+  if (repoId && corpusInputs.length > 0) {
+    const engine =
+      poolMerged === 0
+        ? "workers-ai"
+        : poolMerged === corpusInputs.length
+          ? "compute-pool"
+          : "mixed";
+    insertEvalSample(db, {
+      id: crypto.randomUUID(),
+      repositoryId: repoId,
+      intentId,
+      engine,
+      input: JSON.stringify(corpusInputs),
+      output: JSON.stringify(
+        Object.fromEntries(
+          Object.entries(files).map(([p, f]) => [p, f.content_b64 ? "b64" : "delete"])
+        )
+      ),
+      outcome:
+        outcome.status === "accepted"
+          ? "merged"
+          : outcome.status === "rejected"
+            ? "rejected"
+            : null,
+      createdAt: Date.now(),
+    }).catch((error) =>
+      log.warn("adjudicate:corpus-write-failed", { intentId, error: String(error) })
+    );
+  }
   return {
     voted: true,
     resolved: outcome.status === "accepted" ? outcome.resolved : false,

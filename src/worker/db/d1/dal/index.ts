@@ -9,3 +9,4 @@ export * from "./scanRuns";
 export * from "./modules";
 export * from "./social";
 export * from "./securityEvents";
+export * from "./evalCorpus";

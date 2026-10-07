@@ -16,6 +16,7 @@ import {
   insertVouch,
   listEpochAllocations,
   listOpenEpochs,
+  listRepLeaderboard,
   listVouches,
   upsertEpochAllocation,
 } from "@/worker/db/d1/dal";
@@ -167,6 +168,16 @@ export function registerReputationRoutes(router: AppRouter): void {
         rep_delta: v.repDelta,
         created_at: v.createdAt,
       })),
+    });
+  });
+
+  // GET /api/dg/leaderboard — unified rep ranking across agents and human
+  // identities (same rep currency). Public; powers the rep surface.
+  router.get("/api/dg/leaderboard", async (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query("limit")) || 50, 1), 200);
+    const rows = await listRepLeaderboard(c.var.db, limit);
+    return json(c, {
+      entries: rows.map((r) => ({ did: r.did, label: r.label, kind: r.kind, rep: r.rep })),
     });
   });
 

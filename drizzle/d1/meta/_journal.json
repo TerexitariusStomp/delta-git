@@ -183,6 +183,13 @@
       "when": 1791326175335,
       "tag": "0025_tidy_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1791395373145,
+      "tag": "0026_natural_klaw",
+      "breakpoints": true
     }
   ]
 }

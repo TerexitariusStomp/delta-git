@@ -127,6 +127,23 @@ export async function poolEarnings(env: Env, project: string): Promise<PoolEarni
 }
 
 /**
+ * Pool output is untrusted — a volunteer node (or a compromised one) could
+ * return instruction-like content meant to hijack a downstream prompt when
+ * the merged file is later re-read as context. We strip the common
+ * injection shapes before the text is used as merge content or embedded in
+ * another prompt. This is a heuristic screen, not a parser: over-stripping
+ * legitimate prose is possible, so callers get the count to audit.
+ */
+const INSTRUCTION_LINE =
+  /^\s*(?:system\s*:|assistant\s*:|ignore\s+(?:all\s+|the\s+)?(?:previous|prior|above)\s+instructions?|you\s+are\s+now|disregard\s+(?:all\s+)?(?:previous|prior))/i;
+
+export function sanitizePoolResult(text: string): { text: string; stripped: number } {
+  const lines = text.split("\n");
+  const kept = lines.filter((l) => !INSTRUCTION_LINE.test(l));
+  return { text: kept.join("\n").trim(), stripped: lines.length - kept.length };
+}
+
+/**
  * OpenAI-compatible inference through the pool. Returns the assistant text
  * on success; null on any failure (unconfigured, empty pool, timeout, schema
  * mismatch) so callers fall back to Workers AI.
@@ -157,7 +174,12 @@ export async function poolInfer(env: Env, args: PoolInferArgs): Promise<string |
     const parsed = chatCompletionResponse.safeParse(await res.json());
     const text = parsed.success ? parsed.data.choices[0]?.message.content.trim() : undefined;
     if (!text) return null;
-    return text;
+    const clean = sanitizePoolResult(text);
+    if (clean.stripped > 0) {
+      log.warn("pool:stripped-instructions", { project: args.project, stripped: clean.stripped });
+    }
+    if (!clean.text) return null;
+    return clean.text;
   } catch (error) {
     log.warn("pool:infer-failed", { project: args.project, error: String(error) });
     return null;
