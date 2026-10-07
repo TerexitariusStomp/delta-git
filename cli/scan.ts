@@ -566,9 +566,11 @@ export function isDeltaGitRemote(url: string, host?: string): boolean {
     .replace(/^https?:\/\//, "")
     .replace(/\/.*/, "");
   try {
-    const { hostname } = new URL(url);
-    if (configured && hostname === configured) return true;
-    return hostname === "delta-git.workers.dev" || hostname.endsWith(".delta-git.workers.dev");
+    const u = new URL(url);
+    // Compare host:port first (dev hosts like localhost:8787 carry a port),
+    // then hostname for bare-domain configs.
+    if (configured && (u.host === configured || u.hostname === configured)) return true;
+    return u.hostname === "delta-git.workers.dev" || u.hostname.endsWith(".delta-git.workers.dev");
   } catch {
     return configured !== "" && url.includes(configured);
   }

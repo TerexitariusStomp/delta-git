@@ -142,6 +142,15 @@ async function main() {
   ]);
   console.log(`seeded ${OWNER}/${REPO} (pat ${pat.publicPrefix}…)`);
 
+  // --seed-only: stop after seeding and hand the PAT back on stdout — used to
+  // drive external clients (gh, dgit, git credential flows) against the dev
+  // server without re-running the smoke suite.
+  if (process.argv.includes("--seed-only")) {
+    console.log(`PAT=${pat.plaintext}`);
+    console.log(`REPO_URL=${BASE}/${OWNER}/${REPO}`);
+    return;
+  }
+
   const authed = BASE.replace("://", `://${OWNER}:${pat.plaintext}@`);
   const cloneUrl = `${authed}/${OWNER}/${REPO}`;
   const tmp = mkdtempSync(join(tmpdir(), "dg-smoke-"));

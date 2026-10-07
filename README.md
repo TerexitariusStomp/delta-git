@@ -249,7 +249,7 @@ See `.dev.vars.example` and `wrangler.jsonc` for the complete configuration.
 ## Limitations
 
 - 30s CPU limit per request on fetch and receive paths
-- HTTP(S) only, no SSH protocol support
+- HTTP(S) only, no SSH protocol support (Workers ingress is HTTP-only — use a PAT via `credential.helper` or `url."https://host/".insteadOf "git@host:"`; see docs/github-parity.md)
 - No server-side hooks yet
 - Thin-pack is not advertised; clients receive thick packs (side-band-64k, ofs-delta)
 
