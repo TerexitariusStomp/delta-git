@@ -6,7 +6,7 @@ import { NotFoundPage, RepoHeader, RepoSubheader, SubHeaderWrapper } from '@harn
 
 import { PublicAccessGuard } from '../../components-v2/public-access'
 import { useRepoHotkeys } from '../../delta/use-repo-hotkeys'
-import { useRepoStar, useToggleStar } from '../delta/delta-api'
+import { useRepoFunding, useRepoStar, useToggleStar } from '../delta/delta-api'
 import { useRoutes } from '../../framework/context/NavigationContext'
 import { useGetRepoRef } from '../../framework/hooks/useGetRepoPath'
 import { useIsMFE } from '../../framework/hooks/useIsMFE'
@@ -34,6 +34,9 @@ const RepoLayout = () => {
   // cross-repo social graph, not the legacy KV favorites lane.
   const { data: star, refetch: refetchStar } = useRepoStar(spaceId ?? '', repoId ?? '')
   const toggleStar = useToggleStar(spaceId ?? '', repoId ?? '')
+  // GitHub's FUNDING.yml convention — parsed server-side, renders the
+  // Sponsor button beside the star toggle when the repo declares links.
+  const { data: fundingLinks } = useRepoFunding(spaceId ?? '', repoId ?? '')
 
   const { mutate: syncLinkedRepo, isLoading: isSyncing } = useLinkedSyncRepositoryMutation(
     { repo_ref: repoRef },
@@ -87,6 +90,7 @@ const RepoLayout = () => {
             isLoading={isLoading}
             isFavorite={star?.starred ?? repoData?.is_favorite}
             starCount={star?.stargazers_count}
+            sponsors={fundingLinks}
             onFavoriteToggle={onFavoriteToggle}
             onSyncLinked={isOnBranch ? onSyncLinked : undefined}
             isSyncing={isSyncing}

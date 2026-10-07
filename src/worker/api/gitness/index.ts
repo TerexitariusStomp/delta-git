@@ -36,6 +36,7 @@ import { registerGitnessPullreqs } from "./pullreqs";
 import { registerGitnessDiscussions } from "./discussions";
 import { registerGitnessIssues } from "./issues";
 import { registerGitnessCodeowners } from "./codeowners";
+import { registerGitnessFunding } from "./funding";
 import { registerGitnessSocial } from "./social";
 import { registerGitnessInsights } from "./insights";
 import { registerGitnessProjects } from "./projects";
@@ -110,6 +111,9 @@ export function registerGitnessApi(router: AppRouter) {
   // CODEOWNERS — parsed rules + per-path owner resolution for reviewer
   // suggestions; literal tails before the greedy gitdata suffixes.
   registerGitnessCodeowners(router);
+  // Sponsors — parsed FUNDING.yml links; literal tail before the greedy
+  // gitdata suffixes, same as codeowners.
+  registerGitnessFunding(router);
   // Discussions — literal tails before the greedy gitdata/repos suffixes.
   registerGitnessDiscussions(router);
   // Social (`/+/star`, `/+/topics`, `/spaces/:s/+/follow`, `/explore`,

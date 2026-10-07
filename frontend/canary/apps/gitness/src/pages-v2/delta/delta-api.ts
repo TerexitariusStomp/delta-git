@@ -466,6 +466,21 @@ export const useExplore = (topic?: string) =>
     dgFetch<ExploreResult>(`/api/v1/explore${topic ? `?topic=${encodeURIComponent(topic)}` : ''}`)
   )
 
+// --- sponsors (GitHub's FUNDING.yml convention, parsed over /api/v1) --------
+
+export interface FundingLink {
+  platform: string
+  value: string
+  url: string
+}
+
+export const useRepoFunding = (spaceId: string, repoId: string) =>
+  useQuery(
+    ['delta', 'funding', spaceId, repoId],
+    () => dgFetch<{ links: FundingLink[] }>(`${v1Path(spaceId, repoId)}/+/funding`),
+    { select: data => data?.links ?? [] }
+  )
+
 // --- discussions (GitHub-shaped, DO-backed, session-authed via /api/v1) -----
 
 export type DiscussionCategory = 'general' | 'announcements' | 'ideas' | 'q-a' | 'show-and-tell' | 'polls'

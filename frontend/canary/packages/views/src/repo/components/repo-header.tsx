@@ -1,9 +1,26 @@
-import { Alert, Button, Favorite, IconV2, Layout, Skeleton, StatusBadge, Text } from '@harnessio/ui/components'
+import {
+  Alert,
+  Button,
+  Favorite,
+  IconV2,
+  Layout,
+  Link,
+  Popover,
+  Skeleton,
+  StatusBadge,
+  Text
+} from '@harnessio/ui/components'
 import { useTranslation } from '@harnessio/ui/context'
 import { cn, formatDate } from '@harnessio/ui/utils'
 
 import { RepositoryType } from '../repo.types'
 import { ForkedFrom } from './forked-from'
+
+interface SponsorLink {
+  platform: string
+  value: string
+  url: string
+}
 
 interface RepoHeaderProps {
   name: string
@@ -16,6 +33,8 @@ interface RepoHeaderProps {
   onFavoriteToggle: (isFavorite: boolean) => void
   /** GitHub-style star count shown beside the favorite toggle. */
   starCount?: number
+  /** Parsed FUNDING.yml links — renders the GitHub-style Sponsor button. */
+  sponsors?: SponsorLink[]
   onSyncLinked?: () => void
   isSyncing?: boolean
   archivedDate?: number
@@ -33,6 +52,7 @@ export const RepoHeader = ({
   isFavorite,
   onFavoriteToggle,
   starCount,
+  sponsors,
   onSyncLinked,
   isSyncing,
   archivedDate,
@@ -78,6 +98,49 @@ export const RepoHeader = ({
                 <Text variant="body-normal" color="foreground-3">
                   {starCount} {starCount === 1 ? 'star' : 'stars'}
                 </Text>
+              )}
+
+              {sponsors !== undefined && sponsors.length === 1 && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link
+                    external
+                    noHoverUnderline
+                    href={sponsors[0].url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <IconV2 name="heart" size="xs" />
+                    {t('views:repos.sponsor', 'Sponsor')}
+                  </Link>
+                </Button>
+              )}
+              {sponsors !== undefined && sponsors.length > 1 && (
+                <Popover.Root>
+                  <Popover.Trigger asChild>
+                    <Button variant="outline" size="sm">
+                      <IconV2 name="heart" size="xs" />
+                      {t('views:repos.sponsor', 'Sponsor')}
+                      <IconV2 className="chevron-down" name="nav-arrow-down" size="2xs" />
+                    </Button>
+                  </Popover.Trigger>
+                  <Popover.Content align="start" className="w-64" hideArrow>
+                    <Layout.Grid gapY="2xs">
+                      {sponsors.map(link => (
+                        <Button key={link.url} variant="ghost" size="sm" className="justify-start" asChild>
+                          <Link
+                            external
+                            noHoverUnderline
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {link.platform === 'custom' ? link.url : `${link.platform}: ${link.value}`}
+                          </Link>
+                        </Button>
+                      ))}
+                    </Layout.Grid>
+                  </Popover.Content>
+                </Popover.Root>
               )}
             </>
           )}
