@@ -21,6 +21,10 @@ import {
 } from "@/worker/auth/httpSignature";
 import { handleStreamingReceivePackPOST } from "@/worker/git/receive/streamReceivePack";
 import { asBodyInit, gunzip } from "@/worker/common";
+import { bytesToHex } from "@/worker/common/hex";
+import { createDigestStream } from "@/worker/common/webtypes";
+import { doPrefix } from "@/worker/keys";
+import { chargeStorageQuota } from "@/worker/agent/abuse";
 import { buildCacheKeyFrom, cacheDeleteJSON, cacheOrLoadJSONForRequest } from "@/worker/cache";
 import { markRequestPrivate, responseCacheControl } from "@/worker/cache/policy";
 import { isValidOwnerRepo } from "@/shared/web";
@@ -88,6 +92,17 @@ function gitNotFound(): Response {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-store",
     },
+  });
+}
+
+// Git LFS speaks JSON (`Accept: application/vnd.git-lfs+json`); errors and
+// 401 challenges use the same media type so git-lfs surfaces the message.
+const LFS_MEDIATYPE = "application/vnd.git-lfs+json; charset=utf-8";
+
+function lfsError(status: number, message: string): Response {
+  return new Response(JSON.stringify({ message }), {
+    status,
+    headers: { "Content-Type": LFS_MEDIATYPE, "Cache-Control": "no-store" },
   });
 }
 
@@ -712,5 +727,168 @@ export function registerGitRoutes(router: AppRouter) {
       authorized.actor
     );
     return withGitCors(c.req.raw, res);
+  });
+
+  // --- Git LFS -------------------------------------------------------------
+  // git-lfs discovers the endpoint at `<remote>.git/info/lfs` and negotiates
+  // uploads/downloads through the Batch API (`/objects/batch`), then PUTs or
+  // GETs each object href. Objects live in R2 under `do/<doId>/lfs/<oid>` —
+  // opaque bytes keyed by their SHA-256, verified on upload. Auth mirrors the
+  // git transport gates: downloads follow the read gate (anonymous on public
+  // repos), uploads the push gate (PAT level=push / OAuth write+member).
+  // Encrypted repos still work — LFS objects are opaque server-side either
+  // way; strict-E2E clients push pre-encrypted blobs.
+
+  const lfsObjectHref = (origin: string, owner: string, repo: string, oid: string) =>
+    `${origin}/${owner}/${repo}.git/info/lfs/objects/${oid}`;
+
+  const lfsObjectKey = (env: Env, route: RepositoryRoute, oid: string) =>
+    `${doPrefix(env.REPO_DO.idFromName(route.doName).toString())}/lfs/${oid}`;
+
+  // Resolve + authorize an LFS request. Upload maps onto the receive-pack
+  // gate (push creds), download onto the upload-pack gate (read creds).
+  // Returns the route when authorized, else the Response to emit — the
+  // service-threaded challenge/404 behavior matches what a git client gets
+  // on the smart-HTTP endpoints, which is what git-lfs expects to retry on.
+  async function authorizeLfs(
+    c: AppContext,
+    operation: "upload" | "download"
+  ): Promise<{ route: RepositoryRoute } | { response: Response }> {
+    const owner = c.req.param("owner") ?? "";
+    const repo = normalizeGitRouteRepoSlug(c.req.param("repo") ?? "");
+    if (!validateRouteSlugs(owner, repo)) return { response: lfsError(404, "Not Found") };
+    const service: GitService = operation === "upload" ? "git-receive-pack" : "git-upload-pack";
+    const resolved = await resolveGitRouteForRequest(c, owner, repo, service, false);
+    if (resolved.kind === "response") return { response: resolved.response };
+    const authorized = await authorizeGitRouteForRequest(
+      c,
+      resolved.route,
+      service,
+      false,
+      operation === "upload" ? "write" : "read"
+    );
+    if (authorized.kind === "response") return { response: authorized.response };
+    return { route: resolved.route };
+  }
+
+  // POST /{o}/{r}[.git]/info/lfs/objects/batch — the negotiation step.
+  // Request: {operation, transfers?, objects:[{oid,size}]}; we only offer
+  // the "basic" transfer (same-origin PUT/GET — auth headers carry over).
+  router.post(`/:owner/:repo/info/lfs/objects/batch`, async (c) => {
+    const body = (await c.req.raw.json().catch(() => null)) as {
+      operation?: string;
+      objects?: { oid?: string; size?: number }[];
+    } | null;
+    const operation = body?.operation;
+    if ((operation !== "upload" && operation !== "download") || !Array.isArray(body?.objects)) {
+      return lfsError(400, "expected {operation: upload|download, objects:[{oid,size}]}");
+    }
+    const authorized = await authorizeLfs(c, operation);
+    if ("response" in authorized) return authorized.response;
+    const route = authorized.route;
+
+    const origin = new URL(c.req.url).origin;
+    const owner = c.req.param("owner") ?? "";
+    const repo = normalizeGitRouteRepoSlug(c.req.param("repo") ?? "");
+    const authz = c.req.raw.headers.get("Authorization");
+    // Echo the client credential on same-origin hrefs so LFS clients that
+    // do not re-resolve per-host auth still authenticate the transfer.
+    const header = authz ? { Authorization: authz } : {};
+
+    const objects = [];
+    for (const o of body.objects) {
+      const oid = String(o.oid ?? "").toLowerCase();
+      const size = Number(o.size ?? NaN);
+      if (!/^[0-9a-f]{64}$/.test(oid) || !Number.isSafeInteger(size) || size < 0) {
+        objects.push({ oid, size, error: { code: 422, message: "invalid object descriptor" } });
+        continue;
+      }
+      const head = await c.env.REPO_BUCKET.head(lfsObjectKey(c.env, route, oid));
+      if (operation === "upload") {
+        // Already stored → no actions: the client treats it as done.
+        if (head) {
+          objects.push({ oid, size });
+          continue;
+        }
+        objects.push({
+          oid,
+          size,
+          actions: {
+            upload: { href: lfsObjectHref(origin, owner, repo, oid), header, expires_in: 3600 },
+          },
+        });
+      } else {
+        if (!head) {
+          objects.push({ oid, size, error: { code: 404, message: "object not found" } });
+          continue;
+        }
+        objects.push({
+          oid,
+          size: head.size,
+          actions: {
+            download: { href: lfsObjectHref(origin, owner, repo, oid), header, expires_in: 3600 },
+          },
+        });
+      }
+    }
+    return new Response(JSON.stringify({ transfer: "basic", objects }), {
+      status: 200,
+      headers: { "Content-Type": LFS_MEDIATYPE, "Cache-Control": "no-store" },
+    });
+  });
+
+  // PUT /{o}/{r}[.git]/info/lfs/objects/{oid} — upload the content addressable
+  // blob. Streamed through a DigestStream into R2 so large objects never
+  // land in isolate memory; the stored object is deleted on hash mismatch.
+  router.put(`/:owner/:repo/info/lfs/objects/:oid`, async (c) => {
+    const authorized = await authorizeLfs(c, "upload");
+    if ("response" in authorized) return authorized.response;
+    const route = authorized.route;
+    const oid = c.req.param("oid").toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(oid)) return lfsError(422, "invalid object id");
+    const body = c.req.raw.body;
+    if (!body) return lfsError(400, "missing object body");
+
+    const digest = createDigestStream("SHA-256");
+    const [hashBranch, storeBranch] = body.tee();
+    const hashing = hashBranch.pipeTo(digest);
+    const key = lfsObjectKey(c.env, route, oid);
+    await c.env.REPO_BUCKET.put(key, storeBranch);
+    await hashing;
+    const stored = await c.env.REPO_BUCKET.head(key);
+    if (!stored || bytesToHex(new Uint8Array(await digest.digest)) !== oid) {
+      await c.env.REPO_BUCKET.delete(key);
+      return lfsError(422, "content does not match oid");
+    }
+    // Charge the namespace storage quota after the fact — the object is
+    // already durable, so a quota rejection deletes it rather than losing
+    // a paid-for upload mid-stream.
+    const charged = await chargeStorageQuota(c.env.ROUTES, route.namespaceId, stored.size);
+    if (!charged) {
+      await c.env.REPO_BUCKET.delete(key);
+      return lfsError(413, "storage quota exceeded for this namespace");
+    }
+    c.var.logFor({ service: "LFS", repoId: route.doName }).info("lfs:object-stored", {
+      oid,
+      size: stored.size,
+    });
+    return new Response(null, { status: 200 });
+  });
+
+  // GET /{o}/{r}[.git]/info/lfs/objects/{oid} — the download href.
+  router.get(`/:owner/:repo/info/lfs/objects/:oid`, async (c) => {
+    const authorized = await authorizeLfs(c, "download");
+    if ("response" in authorized) return authorized.response;
+    const oid = c.req.param("oid").toLowerCase();
+    const obj = await c.env.REPO_BUCKET.get(lfsObjectKey(c.env, authorized.route, oid));
+    if (!obj) return lfsError(404, "object not found");
+    return new Response(obj.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(obj.size),
+        "Cache-Control": "private, no-store",
+      },
+    });
   });
 }
