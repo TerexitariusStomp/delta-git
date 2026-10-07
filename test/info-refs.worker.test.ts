@@ -17,9 +17,10 @@ it("advertises upload-pack v2 over info/refs", async () => {
   const bytes = new Uint8Array(await res.arrayBuffer());
   // The v2 prelude should start with an announcement and a flush, then version/agent lines
   const textLines = decodePktLinePayloads(bytes);
-  // Look for "version 2" and "fetch" capability
+  // Look for "version 2" and the "fetch" command advertised with its
+  // protocol-v2 features (shallow/deepen-not/filter/wait-for-done).
   expect(textLines.some((l) => l === "version 2\n")).toBe(true);
-  expect(textLines.some((l) => l === "fetch\n")).toBe(true);
+  expect(textLines.some((l) => l.startsWith("fetch="))).toBe(true);
   // And the features we advertise
   expect(textLines.some((l) => l === "ofs-delta\n")).toBe(true);
   expect(textLines.some((l) => l === "side-band-64k\n")).toBe(true);

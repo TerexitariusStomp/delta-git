@@ -9,7 +9,7 @@ beforeAll(async () => {
   // module's eager markdown glob makes it slow enough to exceed the 5s
   // default per-test timeout, so warm the isolate outside test timing.
   await workerExports.default.fetch("https://example.com/healthz");
-}, 30000);
+}, 60000);
 
 describe("docs: /docs self-hosted renderer", () => {
   it("indexes docs and renders a page as HTML", async () => {
