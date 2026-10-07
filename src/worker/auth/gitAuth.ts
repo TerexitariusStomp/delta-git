@@ -64,10 +64,32 @@ export async function authenticateGitRequest(
   route: RepositoryRoute,
   options: { db?: Db; enforceDpop?: boolean } = {}
 ): Promise<GitAuthResult> {
+  // GitHub/gh CLI conventions: `Authorization: token <pat>` and
+  // `Authorization: Bearer <pat>` both carry a bare PAT with no username.
+  // The namespace binding falls back to the route's owner slug, matching
+  // GitHub semantics where the token authenticates globally and the grant
+  // check scopes it to this repo. OAuth access tokens never look like
+  // `goc_*` so shape-routing cannot confuse the two lanes.
+  const authz = request.headers.get("Authorization")?.toLowerCase() ?? "";
+  const rawAuthz = request.headers.get("Authorization") ?? "";
+  const tokenSchemeValue = authz.startsWith("token ") ? rawAuthz.slice(6).trim() : null;
+  const bearerValue = authz.startsWith("bearer ") ? rawAuthz.slice(7).trim() : null;
+  const barePat = tokenSchemeValue ?? (bearerValue?.startsWith("goc_") ? bearerValue : null);
+  if (barePat) {
+    const verified = await verifyPat(env, {
+      username: route.routeNamespaceSlug,
+      plaintext: barePat,
+      namespaceId: route.namespaceId,
+      repositoryId: route.repositoryId,
+      db: options.db,
+    });
+    if (verified.ok) return { kind: "pat", verified };
+    return { kind: "pat-rejected", reason: verified.reason };
+  }
   // Bearer lane: OAuth access tokens issued by our own authorization
   // server. A present-but-invalid Bearer is a rejection, not a fallthrough
   // to anonymous — the client clearly attempted authentication.
-  if (request.headers.get("Authorization")?.toLowerCase().startsWith("bearer ")) {
+  if (authz.startsWith("bearer ")) {
     const principal = await resolveOAuthBearer(env, request, {
       enforceDpop: options.enforceDpop,
     });
