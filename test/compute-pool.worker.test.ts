@@ -60,4 +60,42 @@ describe("compute pool surface", () => {
     const body = await res.text();
     expect(body).toContain("chimera");
   });
+
+  it("intent dispatch rejects anonymous callers", async () => {
+    const repo = uniqueRepoId("pool");
+    const seeded = await setupRepoForTests(env, "pool-ns", repo);
+    const res = await workerExports.default.fetch(
+      `https://t/api/${seeded.namespaceSlug}/${seeded.repoSlug}/dg/work/work-nope/dispatch`,
+      { method: "POST" }
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("intent dispatch refuses private repos before anything else", async () => {
+    const repo = uniqueRepoId("pool");
+    const seeded = await setupRepoForTests(env, "pool-ns", repo, { visibility: "private" });
+    const res = await workerExports.default.fetch(
+      `https://t/api/${seeded.namespaceSlug}/${seeded.repoSlug}/dg/work/work-nope/dispatch`,
+      {
+        method: "POST",
+        headers: { authorization: seeded.pushAuthHeader, "content-type": "application/json" },
+        body: "{}",
+      }
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("intent dispatch 503s when the pool is unconfigured", async () => {
+    const repo = uniqueRepoId("pool");
+    const seeded = await setupRepoForTests(env, "pool-ns", repo);
+    const res = await workerExports.default.fetch(
+      `https://t/api/${seeded.namespaceSlug}/${seeded.repoSlug}/dg/work/work-nope/dispatch`,
+      {
+        method: "POST",
+        headers: { authorization: seeded.pushAuthHeader, "content-type": "application/json" },
+        body: "{}",
+      }
+    );
+    expect(res.status).toBe(503);
+  });
 });

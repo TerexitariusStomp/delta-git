@@ -490,6 +490,9 @@ export interface RepoPool {
   supporters: number
   idle: number
   pendingJobs: number
+  jobsSettled: number
+  /** Micro-USDC string — format to dollars for display. */
+  earnedWei: string
   coordinatorWs?: string
   scriptUrl: string
 }

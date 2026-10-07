@@ -46,7 +46,9 @@ export function RepoPowerCard({ spaceId, repoId }: { spaceId: string; repoId: st
     >
       <Text color="foreground-3" className="text-cn-size-1">
         ⚡ {data.supporters} supporter{data.supporters === 1 ? '' : 's'} power this project&apos;s
-        agent work — merges, indexing, and research run on volunteered browser compute.
+        agent work — {data.jobsSettled} job{data.jobsSettled === 1 ? '' : 's'} run on volunteered
+        browser compute
+        {Number(data.earnedWei) > 0 && `, ≈ $${(Number(data.earnedWei) / 1e18).toFixed(2)} earned`}.
       </Text>
       {!injected && (
         <Button size="sm" variant="outline" onClick={inject}>

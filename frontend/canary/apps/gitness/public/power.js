@@ -13,7 +13,11 @@
   const SITE = cfg.site || "";
   const COORD = cfg.coordinator || "";
   const PROJECT = cfg.project || "";
-  const REFERRER = cfg.ref || "";
+  // Referral attribution — data-ref wins; otherwise a ?ref=<id> landing URL
+  // (from a coordinator /r/<id> redirect) attributes this visitor.
+  const REFERRER = cfg.ref ||
+    new URLSearchParams(location.search).get("ref") ||
+    "";
   const LABEL = cfg.label || "Earn while you browse";
   const SCOPE = PROJECT || SITE;            // consent/identity is pool-scoped
   const OPTOUT_KEY = `chimera-optout:${SCOPE}`;
@@ -120,6 +124,13 @@
   let volunteerId = localStorage.getItem(ID_KEY) || crypto.randomUUID();
   localStorage.setItem(ID_KEY, volunteerId);
   let jobsDone = 0, earnedWei = 0n, earningsPoll = null, heartbeat = null;
+  let sessionStart = 0;
+  const LAST_SESSION_KEY = `chimera-lastsession:${SCOPE}`;
+
+  // Rough watt-hour estimate — browsers can't measure watts, so this is a
+  // device-class estimate (≈4W per active core + 5W baseline) and is labeled
+  // as an estimate everywhere it is shown. Matches the coordinator's estWh.
+  const estWh = (ms) => ((cores * 4 + 5) * ms / 3600000);
 
   // Job-type → handler. Canonical 0 + wp-cloud 100-103 + project 200-203 go
   // through the local models; 1 = STORAGE pin, 205 = WEB_FETCH,
@@ -133,13 +144,12 @@
   const netTypes = [1, 205];   // fetch/pin URLs chosen by projects → opt-in
   const taskTypes = () => computeTypes.concat(netJobs ? netTypes : []);
 
-  // Model tier by capability — defaults sit in/around the 135–360M band;
-  // data-model overrides. transformers.js lazily loads on first infer job
-  // (and only when not metered).
+  // Model tier by capability — instruct-tuned SmolLM2 defaults in the
+  // 135–360M band (plan default: 135M); data-model overrides. transformers.js
+  // lazily loads on first infer job (and only when not metered).
   const defaultModel = () => {
-    if (mem >= 8 && cores >= 6) return "Xenova/gpt2-medium";   // ~355M
-    if (mem >= 4 && cores >= 4) return "Xenova/gpt2";          // ~124M
-    return "Xenova/distilgpt2";                                // ~82M weak devices
+    if (mem >= 8 && cores >= 6) return "onnx-community/SmolLM2-360M-Instruct";
+    return "onnx-community/SmolLM2-135M-Instruct";             // ~135M default
   };
   let pipe = null, pipeLoading = null;
   async function ensureModel() {
@@ -217,10 +227,24 @@
     [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))]
       .map((b) => b.toString(16).padStart(2, "0")).join("");
 
-  // WEB_FETCH (205): plain fetch — CORS-bound, which is a feature: failures
-  // reject rather than fabricate results. https-only, ≤1MB, 10s timeout.
-  async function webFetchJob(payload) {
-    const { url } = JSON.parse(payload);
+  // WEB_FETCH (205): two modes —
+  //  • direct: plain fetch — CORS-bound, which is a feature: failures reject
+  //    rather than fabricate results. https-only, ≤1MB, 10s timeout.
+  //  • brokered: payload declares `inject` headers → we POST /proxy/fetch to
+  //    the coordinator, which attaches sealed credentials at the outbound
+  //    boundary. Secrets never touch this page.
+  async function webFetchJob(payload, jobId) {
+    const spec = JSON.parse(payload);
+    if (spec.inject) {
+      const r = await fetch(`${COORD.replace(/^ws/, "http")}/proxy/fetch`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobId, volunteerId }),
+      }).then((x) => x.json());
+      if (r.error) throw new Error(`proxy: ${r.error}`);
+      return JSON.stringify({ bodyHash: r.bodyHash, bytes: r.bytes });
+    }
+    const { url } = spec;
     const u = new URL(url);
     if (u.protocol !== "https:") throw new Error("https-only");
     const ctrl = new AbortController();
@@ -267,7 +291,7 @@
       let result;
       if (msg.taskType === 206) result = JSON.parse(msg.requestHash).nonce;  // canary echo
       else if (msg.taskType === 1) result = await pinJob(msg.requestHash);
-      else if (msg.taskType === 205) result = await webFetchJob(msg.requestHash);
+      else if (msg.taskType === 205) result = await webFetchJob(msg.requestHash, msg.jobId);
       else if (msg.taskType === 200) result = await infer(msg.requestHash);          // AGENT_INFER — raw text
       else if (msg.taskType === 201) result = await researchJob(msg.requestHash);    // {summary}
       else if (msg.taskType === 202) result = await indexJob(msg.requestHash);       // {vectors}
@@ -340,6 +364,8 @@
 
   function start() {
     running = true;
+    sessionStart = Date.now();
+    jobsDone = 0; earnedWei = 0n;
     localStorage.setItem(CONSENT_KEY, "1");   // persistent consent → auto-resume
     const b = card.querySelector("#ce-start");
     b.textContent = "Stop";
@@ -350,13 +376,22 @@
 
   function sessionRecap() {
     const usd = (Number(earnedWei) / 1e18).toFixed(4);
-    return `Session: ${jobsDone} job${jobsDone === 1 ? "" : "s"} · ≈ $${usd} earned`;
+    const wh = sessionStart ? estWh(Date.now() - sessionStart).toFixed(3) : "0";
+    return `Session: ${jobsDone} job${jobsDone === 1 ? "" : "s"} · ≈ $${usd} earned · ~${wh} Wh (est.)`;
+  }
+
+  // Persist a one-line recap so the next visit's card can show it — browsers
+  // can't render during pagehide, but storage survives.
+  function saveRecap() {
+    if (!sessionStart || !jobsDone) return;
+    try { localStorage.setItem(LAST_SESSION_KEY, sessionRecap()); } catch { /* full/blocked */ }
   }
 
   function stop() {
     running = false;
     clearInterval(heartbeat); clearInterval(earningsPoll);
     ws?.close();
+    saveRecap();
     setState(`${sessionRecap()} — stopped; consent kept for next visit`);
     const b = card.querySelector("#ce-start");
     b.textContent = "Start earning";
@@ -374,6 +409,8 @@
     localStorage.removeItem(CONSENT_KEY);
     localStorage.removeItem(ID_KEY);
     localStorage.removeItem(INTENSITY_KEY);
+    localStorage.removeItem(NETJOBS_KEY);
+    localStorage.removeItem(LAST_SESSION_KEY);
     card.remove();
   }
 
@@ -383,12 +420,19 @@
       ? "Paused — tab hidden (compute only runs onscreen)"
       : "Earning — jobs run only while this tab is visible");
   });
+  addEventListener("pagehide", saveRecap);
 
   // Boot: stored consent = auto-resume (the card still shows state; nothing
   // is hidden). No consent = the ask card.
   render("ask");
+  const lastSession = localStorage.getItem(LAST_SESSION_KEY);
+  if (lastSession) {
+    setStats(`Last visit — ${lastSession.replace(/^Session: /, "")}`);
+    localStorage.removeItem(LAST_SESSION_KEY);
+  }
   if (localStorage.getItem(CONSENT_KEY)) {
     running = true;
+    sessionStart = Date.now();
     render("run");
     connect();
   }

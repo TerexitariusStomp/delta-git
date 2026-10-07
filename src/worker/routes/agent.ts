@@ -65,6 +65,8 @@ import {
 import { bytesToHex } from "@/worker/common/hex";
 import { toBase64Url } from "@atcute/multibase";
 import { computeEnabled, poolInfer, repoPoolProject } from "@/worker/compute/pool";
+import { deliverNotification } from "@/worker/notify/notify";
+import type { Db } from "@/worker/db/d1/client";
 import { loadNodeKey } from "@/worker/agent/repCert";
 import { arenaShuffleKey, clampStake, voteGateError } from "@/shared/arena";
 
@@ -102,6 +104,9 @@ function dispatchIntentToPool(
     intentId: string;
     title: string;
     body: string | null;
+    // Optional notification target — the manual dispatch endpoint notifies
+    // the triggering member when the pool's draft lands on the intent.
+    notify?: { db: Db; userId: string };
   }
 ): void {
   const { route, intentId, title, body } = args;
@@ -132,6 +137,18 @@ function dispatchIntentToPool(
           actor: `pool:${project}`,
         })
         .catch(() => {});
+      if (args.notify) {
+        await deliverNotification(env, args.notify.db, {
+          id: newPrefixedId("ntf"),
+          userId: args.notify.userId,
+          kind: "pool_result",
+          title: `Pool draft landed on intent ${intentId}`,
+          body: title.slice(0, 200),
+          link: `/${route.routeNamespaceSlug}/repos/${route.routeRepoSlug}`,
+          createdAt: Date.now(),
+          readAt: null,
+        }).catch(() => {});
+      }
     })()
   );
 }
@@ -1134,6 +1151,33 @@ export function registerAgentRoutes(router: AppRouter): void {
     });
     if (outcome.status !== "closed") return bad(c, "work-unavailable", 409);
     return json(c, { closed: true });
+  });
+
+  // Manual intent → pool dispatch — write-gated (push PAT / repo-write
+  // scope / signed agent). The trigger returns immediately; the pool draft
+  // lands on the intent's `result` when it completes and the trigger user
+  // gets a notification. Public, non-E2E repos only.
+  router.post("/api/:owner/:repo/dg/work/:id/dispatch", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const body = new Uint8Array(await c.req.raw.arrayBuffer());
+    const principal = await authenticateWrite(c, body, route);
+    if (principal instanceof Response) return principal;
+    if (route.visibility !== "public" || route.encrypted) {
+      return bad(c, "private repos never dispatch to the public pool", 403);
+    }
+    if (!computeEnabled(c.env)) return bad(c, "compute pool not configured", 503);
+    const stub = getRepoStub(c.env, route.doName);
+    const intent = await stub.getWorkIntent(c.req.param("id"));
+    if (!intent || intent.status !== "open") return bad(c, "work-unavailable", 409);
+    dispatchIntentToPool(c.env, c.executionCtx, {
+      route,
+      intentId: intent.id,
+      title: intent.title,
+      body: intent.body,
+      notify: { db: c.var.db, userId: principal.actor },
+    });
+    return json(c, { dispatched: true, id: intent.id });
   });
 
   // --- ideas: free-text proposals that agents turn into work -------------------

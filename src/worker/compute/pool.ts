@@ -98,6 +98,34 @@ export async function poolStatus(env: Env, project: string): Promise<PoolStatus 
   }
 }
 
+const poolEarningsResponse = z.object({
+  totalWei: z.string().optional(),
+  jobs: z.number().optional(),
+});
+
+export type PoolEarnings = z.infer<typeof poolEarningsResponse>;
+
+/**
+ * Pool earnings ledger (`/earnings?project=`) — supporters' accrued
+ * micro-USDC + completed-job count for the pool card. Null when unreachable.
+ */
+export async function poolEarnings(env: Env, project: string): Promise<PoolEarnings | null> {
+  if (!env.COMPUTE_COORDINATOR) return null;
+  const log = createLogger(env.LOG_LEVEL, { service: "ComputePool" });
+  try {
+    const res = await fetch(
+      coordinatorUrl(env, `/earnings?project=${encodeURIComponent(project)}`),
+      { signal: AbortSignal.timeout(5_000) }
+    );
+    if (!res.ok) return null;
+    const parsed = poolEarningsResponse.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch (error) {
+    log.warn("pool:earnings-failed", { project, error: String(error) });
+    return null;
+  }
+}
+
 /**
  * OpenAI-compatible inference through the pool. Returns the assistant text
  * on success; null on any failure (unconfigured, empty pool, timeout, schema
