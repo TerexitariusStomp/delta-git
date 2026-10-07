@@ -158,6 +158,21 @@ export async function cachePutJSON(
 }
 
 /**
+ * Evict a JSON payload previously stored under `keyReq`. Used by mutating
+ * paths (receive-pack) so a freshly pushed ref snapshot is not hidden behind
+ * the read cache's TTL. Best-effort: eviction failure only costs one stale
+ * TTL window.
+ */
+export async function cacheDeleteJSON(keyReq: Request): Promise<void> {
+  try {
+    const cache = await getZoneCache();
+    await cache.delete(keyReq);
+  } catch {
+    // best-effort only
+  }
+}
+
+/**
  * Build a cache key for a git object.
  * Git objects are content-addressable and immutable, so we can use long TTLs.
  *

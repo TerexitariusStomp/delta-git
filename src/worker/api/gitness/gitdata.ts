@@ -13,6 +13,7 @@
 import { createTwoFilesPatch } from "diff";
 import type { AppRouter } from "@/worker/routes/hono";
 import type { CacheContext } from "@/worker/cache";
+import { buildCacheKeyFrom, cacheDeleteJSON } from "@/worker/cache";
 import {
   getHeadAndRefs,
   resolveRef,
@@ -1163,7 +1164,7 @@ export function registerGitnessGitdata(router: AppRouter) {
     const fullName = `refs/heads/${body.name}`;
     const oid = await resolveRef(c.env, gate.route.doName, body.target || "main", gate.cacheCtx);
     if (!oid) return gErr(c, 400, `target not found: ${body.target ?? "main"}`);
-    const result = await addRefViaStub(c.env, gate.route.doName, fullName, oid);
+    const result = await addRefViaStub(c.env, c.req.raw, gate.route.doName, fullName, oid);
     if (result === "exists") return gErr(c, 409, `branch ${body.name} already exists`);
     emitRepoEvent(c, gate, "create", {
       ref: body.name,
@@ -1178,7 +1179,12 @@ export function registerGitnessGitdata(router: AppRouter) {
     if (gate instanceof Response) return gate;
     const name = c.req.param("branch_name");
     if (name === "main") return gErr(c, 400, "cannot delete the default branch");
-    const removed = await removeRefViaStub(c.env, gate.route.doName, `refs/heads/${name}`);
+    const removed = await removeRefViaStub(
+      c.env,
+      c.req.raw,
+      gate.route.doName,
+      `refs/heads/${name}`
+    );
     if (removed === "protected") return gErr(c, 403, `branch ${name} is protected`);
     if (removed === "missing") return gNotFound(c, "branch");
     emitRepoEvent(c, gate, "delete", {
@@ -1201,7 +1207,13 @@ export function registerGitnessGitdata(router: AppRouter) {
     }
     const oid = await resolveRef(c.env, gate.route.doName, body.target || "main", gate.cacheCtx);
     if (!oid) return gErr(c, 400, `target not found: ${body.target ?? "main"}`);
-    const result = await addRefViaStub(c.env, gate.route.doName, `refs/tags/${body.name}`, oid);
+    const result = await addRefViaStub(
+      c.env,
+      c.req.raw,
+      gate.route.doName,
+      `refs/tags/${body.name}`,
+      oid
+    );
     if (result === "exists") return gErr(c, 409, `tag ${body.name} already exists`);
     emitRepoEvent(c, gate, "create", { ref: body.name, ref_type: "tag", actor: gate.actor });
     return c.json({ name: body.name, sha: oid, is_annotated: false });
@@ -1212,6 +1224,7 @@ export function registerGitnessGitdata(router: AppRouter) {
     if (gate instanceof Response) return gate;
     const removed = await removeRefViaStub(
       c.env,
+      c.req.raw,
       gate.route.doName,
       `refs/tags/${c.req.param("tag_name")}`
     );
@@ -1327,7 +1340,7 @@ export function registerGitnessGitdata(router: AppRouter) {
       const baseOid = await resolveRef(c.env, gate.route.doName, baseRef, gate.cacheCtx);
       if (!baseOid) return gErr(c, 400, `base branch not found: ${req.branch ?? "main"}`);
       if (!isValidRef(targetRef)) return gErr(c, 400, "invalid branch name");
-      const added = await addRefViaStub(c.env, gate.route.doName, targetRef, baseOid);
+      const added = await addRefViaStub(c.env, c.req.raw, gate.route.doName, targetRef, baseOid);
       if (added === "exists") return gErr(c, 409, `branch ${req.new_branch} already exists`);
     }
 
@@ -1399,9 +1412,17 @@ export function registerGitnessGitdata(router: AppRouter) {
  * Ref create/delete ride `setRefs`, which rewrites the whole refs array.
  * Read-modify-write through the stub keeps delta refs and concurrent intent
  * ref additions intact — getHeadAndRefs returns the freshest DO state.
+ *
+ * Every mutation evicts the 60s ls-refs zone-cache snapshot — otherwise API
+ * branch/tag changes stay invisible to `git ls-remote` for up to a minute.
  */
+async function evictRefsCache(req: Request, doName: string): Promise<void> {
+  await cacheDeleteJSON(buildCacheKeyFrom(req, "/_cache/refs", { repo: doName }));
+}
+
 async function addRefViaStub(
   env: Env,
+  req: Request,
   doName: string,
   name: string,
   oid: string
@@ -1410,11 +1431,13 @@ async function addRefViaStub(
   const { refs } = await stub.getHeadAndRefs();
   if (refs.some((r) => r.name === name)) return "exists";
   await stub.setRefs([...refs, { name, oid }]);
+  await evictRefsCache(req, doName);
   return "ok";
 }
 
 async function removeRefViaStub(
   env: Env,
+  req: Request,
   doName: string,
   name: string
 ): Promise<"ok" | "missing" | "protected"> {
@@ -1427,5 +1450,6 @@ async function removeRefViaStub(
   const next = refs.filter((r) => r.name !== name);
   if (next.length === refs.length) return "missing";
   await stub.setRefs(next);
+  await evictRefsCache(req, doName);
   return "ok";
 }

@@ -21,7 +21,7 @@ import {
 } from "@/worker/auth/httpSignature";
 import { handleStreamingReceivePackPOST } from "@/worker/git/receive/streamReceivePack";
 import { asBodyInit, gunzip } from "@/worker/common";
-import { buildCacheKeyFrom, cacheOrLoadJSONForRequest } from "@/worker/cache";
+import { buildCacheKeyFrom, cacheDeleteJSON, cacheOrLoadJSONForRequest } from "@/worker/cache";
 import { markRequestPrivate, responseCacheControl } from "@/worker/cache/policy";
 import { isValidOwnerRepo } from "@/shared/web";
 import { resolveRepositoryRoute, type RepositoryRoute } from "@/worker/repositories/route";
@@ -247,6 +247,9 @@ async function handleReceivePackPOST(
     actor,
     onRepoStateChanged: async ({ changed }) => {
       if (!changed) return;
+      // A landed push must invalidate the 60s ls-refs snapshot — otherwise a
+      // clone racing the push replays the pre-push ref list for a minute.
+      await cacheDeleteJSON(buildCacheKeyFrom(request, "/_cache/refs", { repo: route.doName }));
       try {
         await touchRepositoryUpdatedAt(db, route.repositoryId, Date.now());
         log.debug("receive:repo-updated-at-touched", { repositoryId: route.repositoryId });
