@@ -56,3 +56,10 @@ DG_NODE_ED25519_JWK={"kty":"OKP","crv":"Ed25519","x":"","d":"","key_ops":["sign"
 # placeholder is fine for local dev since EMAIL_API_URL defaults to empty
 # (email delivery disabled).
 EMAIL_API_KEY=local-email-api-key-change-me
+
+# Bearer token the compute pool uses to dispatch jobs to the localchimera
+# coordinator (COMPUTE_COORDINATOR in wrangler.jsonc). Matches a slug in the
+# coordinator's PROJECT_TOKENS map. Production: `wrangler secret put
+# COMPUTE_DISPATCH_TOKEN`. Placeholder is fine locally — the pool path is
+# inert while COMPUTE_COORDINATOR is empty.
+COMPUTE_DISPATCH_TOKEN=local-compute-token-change-me

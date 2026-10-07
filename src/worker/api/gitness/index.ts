@@ -37,6 +37,7 @@ import { registerGitnessDiscussions } from "./discussions";
 import { registerGitnessIssues } from "./issues";
 import { registerGitnessCodeowners } from "./codeowners";
 import { registerGitnessFunding } from "./funding";
+import { registerGitnessPool } from "./pool";
 import { registerGitnessSocial } from "./social";
 import { registerGitnessInsights } from "./insights";
 import { registerGitnessProjects } from "./projects";
@@ -114,6 +115,9 @@ export function registerGitnessApi(router: AppRouter) {
   // Sponsors — parsed FUNDING.yml links; literal tail before the greedy
   // gitdata suffixes, same as codeowners.
   registerGitnessFunding(router);
+  // Compute pool — supporter counts + consent-script URL for the power
+  // card; literal `/+/pool` tail before the greedy gitdata suffixes.
+  registerGitnessPool(router);
   // Discussions — literal tails before the greedy gitdata/repos suffixes.
   registerGitnessDiscussions(router);
   // Social (`/+/star`, `/+/topics`, `/spaces/:s/+/follow`, `/explore`,

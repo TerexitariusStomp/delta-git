@@ -218,6 +218,17 @@
     "EMAIL_FROM": "delta-git <noreply@delta-git.workers.dev>",
     // Canonical public origin — used to turn relative notification links
     // into absolute URLs in outbound email.
-    "PUBLIC_ORIGIN": "https://delta-git.workers.dev"
+    "PUBLIC_ORIGIN": "https://delta-git.workers.dev",
+    // Proof-of-interest compute pool — localchimera coordinator base URL.
+    // When set, PUBLIC repos route inference-shaped work (adjudication,
+    // research, indexing) to the volunteer pool first and fall back to
+    // Workers AI; private repos never emit content there regardless.
+    // The per-project dispatch bearer token stays a secret
+    // (`wrangler secret put COMPUTE_DISPATCH_TOKEN`).
+    "COMPUTE_COORDINATOR": "",
+    // "0" disables the pool path even when the coordinator is configured.
+    "COMPUTE_ENABLED": "1",
+    // Inline result-wait budget for pool inference before Workers-AI fallback.
+    "COMPUTE_TIMEOUT_MS": "45000"
   }
 }

@@ -481,6 +481,24 @@ export const useRepoFunding = (spaceId: string, repoId: string) =>
     { select: data => data?.links ?? [] }
   )
 
+// --- compute pool ("power this project") — volunteer-compute status + the
+// consent script mount point -------------------------------------------------
+
+export interface RepoPool {
+  project: string
+  enabled: boolean
+  supporters: number
+  idle: number
+  pendingJobs: number
+  coordinatorWs?: string
+  scriptUrl: string
+}
+
+export const useRepoPool = (spaceId: string, repoId: string) =>
+  useQuery(['delta', 'pool', spaceId, repoId], () =>
+    dgFetch<RepoPool>(`${v1Path(spaceId, repoId)}/+/pool`)
+  )
+
 // --- discussions (GitHub-shaped, DO-backed, session-authed via /api/v1) -----
 
 export type DiscussionCategory = 'general' | 'announcements' | 'ideas' | 'q-a' | 'show-and-tell' | 'polls'

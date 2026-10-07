@@ -7,6 +7,7 @@ import { NotFoundPage, RepoHeader, RepoSubheader, SubHeaderWrapper } from '@harn
 import { PublicAccessGuard } from '../../components-v2/public-access'
 import { useRepoHotkeys } from '../../delta/use-repo-hotkeys'
 import { useRepoFunding, useRepoStar, useToggleStar } from '../delta/delta-api'
+import { RepoPowerCard } from '../delta/repo-power-card'
 import { useRoutes } from '../../framework/context/NavigationContext'
 import { useGetRepoRef } from '../../framework/hooks/useGetRepoPath'
 import { useIsMFE } from '../../framework/hooks/useIsMFE'
@@ -116,6 +117,10 @@ const RepoLayout = () => {
               }}
             />
           </SubHeaderWrapper>
+
+          {/* Volunteer-compute enlistment — mounts under the repo tabs on
+              every repo page; renders null when the pool is disabled. */}
+          {spaceId && repoId && <RepoPowerCard spaceId={spaceId} repoId={repoId} />}
         </>
       )}
 

@@ -10,6 +10,7 @@ import { parseCommitText } from "@/worker/git/core";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { LICENSE_NAME, LICENSE_SIGNATURES } from "@/worker/git/operations/read/license";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
+import { poolStatus, repoPoolProject } from "@/worker/compute/pool";
 import { makeBadge } from "badge-maker";
 
 // Shields.io-compatible badge endpoint — README badges are a core piece of
@@ -17,7 +18,8 @@ import { makeBadge } from "badge-maker";
 //
 //   GET /badge/:owner/:repo/:metric
 //
-// Metrics: branches, tags, intents (open merge intents), license, last-commit.
+// Metrics: branches, tags, intents (open merge intents), license, last-commit,
+// community (volunteer-compute supporters in the repo's pool).
 // Public repos only — private repos answer 404 unconditionally so a badge URL
 // can never leak existence into a README/embed context.
 //
@@ -134,6 +136,17 @@ export function registerBadgeRoutes(router: AppRouter) {
           const headChunk = td.decode(blob.payload.slice(0, 8 * 1024));
           const spdx = LICENSE_SIGNATURES.find(([re]) => re.test(headChunk))?.[1];
           return svgBadge("license", spdx ?? entry.name, spdx ? "blue" : "yellow");
+        }
+        case "community": {
+          // Supporters currently online in the repo's `dg:<owner>/<repo>`
+          // compute pool. Unreachable coordinator → "0", not "unavailable" —
+          // an empty pool is a normal state.
+          const status = await poolStatus(
+            c.env,
+            repoPoolProject(route.routeNamespaceSlug, route.routeRepoSlug)
+          );
+          const n = status?.volunteers ?? 0;
+          return svgBadge("supporters", String(n), n ? "brightgreen" : "lightgrey");
         }
         default:
           return notFound();

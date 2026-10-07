@@ -64,6 +64,7 @@ import {
 } from "@/worker/agent/abuse";
 import { bytesToHex } from "@/worker/common/hex";
 import { toBase64Url } from "@atcute/multibase";
+import { computeEnabled, poolInfer, repoPoolProject } from "@/worker/compute/pool";
 import { loadNodeKey } from "@/worker/agent/repCert";
 import { arenaShuffleKey, clampStake, voteGateError } from "@/shared/arena";
 
@@ -86,6 +87,53 @@ function json(c: AppContext, body: unknown, status = 200): Response {
 
 function bad(c: AppContext, reason: string, status = 400): Response {
   return json(c, { error: reason }, status);
+}
+
+// Work-intent → pool bridge. Public repos hand each new intent to the
+// volunteer pool as a research draft; the node's summary lands back on the
+// intent's `result` field when it returns. Fire-and-forget under waitUntil —
+// intent creation never blocks on pool capacity, and private/E2E repos skip
+// the pool entirely (visibility gate is also enforced inside poolInfer).
+function dispatchIntentToPool(
+  env: Env,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  args: {
+    route: RepositoryRoute;
+    intentId: string;
+    title: string;
+    body: string | null;
+  }
+): void {
+  const { route, intentId, title, body } = args;
+  if (route.visibility !== "public" || route.encrypted || !computeEnabled(env)) return;
+  const project = repoPoolProject(route.routeNamespaceSlug, route.routeRepoSlug);
+  ctx.waitUntil(
+    (async () => {
+      const text = await poolInfer(env, {
+        project,
+        visibility: route.visibility,
+        maxTokens: 2048,
+        messages: [
+          {
+            role: "user",
+            content:
+              `You are a community researcher contributing to the repository "${project}". ` +
+              `Draft a concise, actionable proposal for this work intent.\n\n` +
+              `TITLE: ${title}\n\n${body ?? ""}`.slice(0, 6000),
+          },
+        ],
+      });
+      if (!text) return;
+      const stub = getRepoStub(env, route.doName);
+      await stub
+        .updateWorkIntentResult({
+          id: intentId,
+          result: `pool-draft: ${text.slice(0, 8000)}`,
+          actor: `pool:${project}`,
+        })
+        .catch(() => {});
+    })()
+  );
 }
 
 // Request-body schemas — zod replaces `JSON.parse(...) as {...}` casts so
@@ -1048,6 +1096,12 @@ export function registerAgentRoutes(router: AppRouter): void {
         closedAt: null,
       },
       actor: principal.actor,
+    });
+    dispatchIntentToPool(c.env, c.executionCtx, {
+      route,
+      intentId: row.id,
+      title: row.title,
+      body: row.body,
     });
     return json(c, { id: row.id, status: row.status });
   });

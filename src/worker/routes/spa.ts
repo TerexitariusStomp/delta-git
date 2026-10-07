@@ -84,6 +84,22 @@ function isNonSpaPath(pathname: string): boolean {
 }
 
 export function registerSpaRoutes(router: AppRouter) {
+  // Unhashed helper asset — the compute-pool consent script the repo page's
+  // power card lazy-loads. Lives in the SPA public dir so copy-spa ships it
+  // verbatim; without this route the `*` fallback would serve index.html.
+  router.get("/power.js", async (c) => {
+    const res = await c.env.ASSETS.fetch(new Request(new URL("/power.js", c.req.url), c.req.raw));
+    if (!res.ok) return c.notFound();
+    return new Response(res.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/javascript; charset=utf-8",
+        // Volunteers' browsers pin the file — revalidate on every load.
+        "Cache-Control": "no-cache",
+      },
+    });
+  });
+
   // Bookmarks from the migration window when the SPA lived under /app.
   // Registered before `/:owner/:repo` so `app` isn't parsed as an owner.
   router.get("/app", (c) => c.redirect("/", 301));

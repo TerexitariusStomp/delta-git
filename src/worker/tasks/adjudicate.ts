@@ -8,6 +8,9 @@ import { parseCommitText } from "@/worker/git/core";
 import { registerAgent } from "@/worker/agent/auth";
 import { doPrefix } from "@/worker/keys";
 import { createDb } from "@/worker/db/d1/client";
+import { findRepositoryById } from "@/worker/db/d1/dal/repositories";
+import { findNamespaceById } from "@/worker/db/d1/dal/namespaces";
+import { poolInfer, repoPoolProject } from "@/worker/compute/pool";
 
 // Workers-AI adjudicator seat.
 //
@@ -60,14 +63,19 @@ export interface AdjudicationOutcome {
 }
 
 /**
- * Single adjudication pass: reads the intent, merges conflicts via Workers
- * AI, stores the resolution payload in R2, and casts a quorum vote. Shared
- * by the queue handler and the AdjudicatorAgent runtime DO.
+ * Single adjudication pass: reads the intent, merges conflicts, stores the
+ * resolution payload in R2, and casts a quorum vote. Shared by the queue
+ * handler and the AdjudicatorAgent runtime DO.
+ *
+ * Merge engine: the compute pool runs first for PUBLIC repositories (repo
+ * row looked up by `repoId` — private/E2E repos never emit content to
+ * volunteer nodes) and Workers AI is the fallback floor.
  */
 export async function runWorkersAiAdjudication(
   env: Env,
   doId: string,
-  intentId: string
+  intentId: string,
+  repoId?: string
 ): Promise<AdjudicationOutcome> {
   const log = createLogger(env.LOG_LEVEL, { service: "WorkersAiAdjudicator" });
   const stub = getRepoStubByDoId(env, doId);
@@ -77,6 +85,20 @@ export async function runWorkersAiAdjudication(
   }
 
   const db = createDb(env.DB);
+
+  // Pool routing context — resolved once per intent. Missing repoId or a
+  // private repo leaves `poolProject` undefined, which gates every
+  // poolInfer call off before it reaches the network.
+  let poolProject: string | undefined;
+  let poolVisibility = "private";
+  if (repoId) {
+    const repo = await findRepositoryById(db, repoId).catch(() => undefined);
+    if (repo) {
+      poolVisibility = repo.visibility;
+      const ns = await findNamespaceById(db, repo.namespaceId).catch(() => undefined);
+      if (repo.visibility === "public" && ns) poolProject = repoPoolProject(ns.slug, repo.slug);
+    }
+  }
   const registered = await registerAgent(db, {
     pubkeyHex: WORKERS_AI_DID_PUBKEY,
     label: "workers-ai",
@@ -88,6 +110,7 @@ export async function runWorkersAiAdjudication(
   const conflicts: string[] = intent.conflicts ? JSON.parse(intent.conflicts) : [];
   const files: Record<string, { content_b64?: string; delete?: boolean }> = {};
   let unresolved = 0;
+  let poolMerged = 0;
 
   for (const path of conflicts.slice(0, 8)) {
     const [ours, theirs] = await Promise.all([
@@ -98,22 +121,40 @@ export async function runWorkersAiAdjudication(
       files[path] = { delete: ours === undefined };
       continue;
     }
+    const messages = [
+      {
+        role: "system",
+        content:
+          "You are a merge adjudicator. Given OURS and THEIRS versions of a file, output ONLY the merged file contents — no fences, no commentary.",
+      },
+      {
+        role: "user",
+        content: `FILE: ${path}\n\n=== OURS ===\n${ours.slice(0, 6000)}\n\n=== THEIRS ===\n${theirs.slice(0, 6000)}`,
+      },
+    ];
     try {
-      const res = (await env.AI.run(MODEL, {
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a merge adjudicator. Given OURS and THEIRS versions of a file, output ONLY the merged file contents — no fences, no commentary.",
-          },
-          {
-            role: "user",
-            content: `FILE: ${path}\n\n=== OURS ===\n${ours.slice(0, 6000)}\n\n=== THEIRS ===\n${theirs.slice(0, 6000)}`,
-          },
-        ],
-        max_tokens: 4096,
-      })) as { response?: string };
-      const merged = res.response?.trim();
+      let merged: string | undefined;
+      if (poolProject) {
+        // Volunteer pool first — public content only, enforced both here
+        // (visibility arg) and coordinator-side (PUBLIC classification gate).
+        const pooled = await poolInfer(env, {
+          project: poolProject,
+          messages,
+          maxTokens: 4096,
+          visibility: poolVisibility,
+        });
+        if (pooled) {
+          merged = pooled;
+          poolMerged++;
+        }
+      }
+      if (!merged) {
+        const res = (await env.AI.run(MODEL, {
+          messages,
+          max_tokens: 4096,
+        })) as { response?: string };
+        merged = res.response?.trim();
+      }
       if (!merged) {
         unresolved++;
         continue;
@@ -143,7 +184,10 @@ export async function runWorkersAiAdjudication(
     intentId,
     voterDid: did,
     resolutionDigest: digest,
-    rationale: `workers-ai ${MODEL} semantic merge`,
+    rationale:
+      poolMerged > 0
+        ? `compute-pool(${poolMerged})+workers-ai ${MODEL} semantic merge`
+        : `workers-ai ${MODEL} semantic merge`,
     signature: `workers-ai:${digest.slice(0, 16)}`,
     quorumK: DEFAULT_QUORUM_K,
   });

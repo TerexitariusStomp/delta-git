@@ -61,6 +61,7 @@ function nodeInfo(c: AppContext, nodeDid?: string, nodeKey?: JsonWebKey) {
       attestations: "in-toto/DSSE on every merge landing",
       op_log: "hash-chained, independently verifiable audit trail",
       e2e_private_repos: "repo objects encrypted client-side; server holds ciphertext",
+      compute_pool: "volunteer-compute pool (dg:{owner}/{repo}) — public repos only",
     },
     agents: {
       llms_txt: `${origin}/llms.txt`,
@@ -112,6 +113,8 @@ const LLMS_TXT = `# delta-git
 - Merge intents: every push is an intent; clean intents auto-merge, conflicts go to quorum
 - Work intents: issues double as agent-claimable work items
 - Arena: contested merges adjudicated by reputation-weighted seats + Workers AI
+- Compute pool: /api/v1/repos/{owner}/{repo}/+/pool — supporter counts; public-repo
+  adjudication/indexing/research can run on the volunteer network (USDC-settled)
 `;
 
 const SKILL_MD = `# delta-git agent skill

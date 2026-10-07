@@ -143,7 +143,7 @@ export class AdjudicatorAgent extends AgentRuntime {
   async process(kind: string, body: unknown): Promise<QueueTaskResult> {
     if (kind !== "adjudicate") return { action: "ack", detail: `ignored:${kind}` };
     const msg = body as AdjudicateQueueMessage;
-    const outcome = await runWorkersAiAdjudication(this.env, msg.doId, msg.intentId);
+    const outcome = await runWorkersAiAdjudication(this.env, msg.doId, msg.intentId, msg.repoId);
     await this.remember({
       lastIntentId: msg.intentId,
       lastOutcome: outcome.status,
