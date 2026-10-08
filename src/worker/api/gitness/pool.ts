@@ -1,6 +1,7 @@
 import type { AppRouter } from "@/worker/routes/hono";
 
 import { computeEnabled, poolEarnings, poolStatus, repoPoolProject } from "@/worker/compute/pool";
+import { listEvalSamples } from "@/worker/db/d1/dal/evalCorpus";
 import { resolveGitnessRepo } from "./shared";
 
 // Compute pool surface — the "power this project" card's data source.
@@ -42,6 +43,39 @@ export function registerGitnessPool(router: AppRouter) {
       // Script the SPA lazy-loads for the consent card — vendored copy of
       // the coordinator's visitor node; the card itself owns consent.
       scriptUrl: "/power.js",
+    });
+  });
+
+  // Eval corpus read surface — the self-improvement loop's visibility.
+  //
+  //   GET /api/v1/repos/{ref}/+/eval
+  //
+  // Lists the adjudication samples this public repo contributed: conflict
+  // inputs, which engine merged (pool / workers-ai / mixed), and how the
+  // intent resolved. Corpus rows only exist for public repos — the write
+  // path in the adjudication task applies the same visibility gate, so a
+  // private repo can never have rows to leak. Still, the read is gated too
+  // rather than relying on write-side discipline alone.
+  router.get("/api/v1/repos/:repo_ref{.+}/eval", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const { route } = access;
+    if (route.visibility !== "public") {
+      return c.json({ enabled: false, samples: [] }, 403);
+    }
+    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50) || 50, 1), 200);
+    const rows = await listEvalSamples(c.var.db, route.repositoryId, limit);
+    return c.json({
+      enabled: true,
+      samples: rows.map((row) => ({
+        id: row.id,
+        intentId: row.intentId,
+        engine: row.engine,
+        input: JSON.parse(row.input),
+        output: row.output ? JSON.parse(row.output) : null,
+        outcome: row.outcome,
+        createdAt: row.createdAt,
+      })),
     });
   });
 }

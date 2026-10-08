@@ -16,6 +16,7 @@ import type { ReleaseAssetRow, ReleaseRow } from "@/worker/do/repo/db/schema";
 import { isTreeMode, parseTree } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 import { listNamespacesForUser } from "@/worker/db/d1/dal/namespaces";
+import { markEvalOutcome } from "@/worker/db/d1/dal/evalCorpus";
 import {
   findRepositoryById,
   isStarred,
@@ -869,6 +870,12 @@ export function registerApiV3Routes(router: AppRouter): void {
       if (result.status === "not_rejectable") {
         return v3Err(c, 409, `pull request is ${result.state}`);
       }
+      // Corpus backfill — a user-closed intent records outcome "rejected".
+      void markEvalOutcome(c.var.db, intent.id, "rejected").catch((error) =>
+        c.var
+          .logFor({ service: "ApiV3" })
+          .warn("apiv3:eval-outcome-mark-failed", { intentId: intent.id, error: String(error) })
+      );
     }
     if (body?.title !== undefined || body?.body !== undefined) {
       const meta = await readPrMeta(c.env, route.doName, intent.id);

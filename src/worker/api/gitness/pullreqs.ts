@@ -16,6 +16,7 @@
 
 import type { AppRouter } from "@/worker/routes/hono";
 import type { MergeIntentRow } from "@/worker/do/repo/db/schema";
+import { markEvalOutcome } from "@/worker/db/d1/dal/evalCorpus";
 import type { NewObject } from "@/worker/merge/packWriter";
 import { getRepoStub } from "@/worker/common";
 import {
@@ -545,6 +546,12 @@ export function registerGitnessPullreqs(router: AppRouter) {
     if (result.status === "not_rejectable") {
       return gErr(c, 409, `pull request is ${result.state}`);
     }
+    // Corpus backfill — a user-closed intent settles as "rejected" for eval.
+    void markEvalOutcome(c.var.db, intent.id, "rejected").catch((error) =>
+      c.var
+        .logFor({ service: "GitnessPullReqs" })
+        .warn("pullreqs:eval-outcome-mark-failed", { intentId: intent.id, error: String(error) })
+    );
     const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
     emitRepoEvent(c, gate, "pull_request", {
       action: "closed",
@@ -1203,6 +1210,13 @@ export function registerGitnessPullreqs(router: AppRouter) {
         mergeIntentToPullReq({ intent: accepted.intent, number: num > 0 ? num : all.length })
       );
     }
+    // Retarget supersedes the original intent — the corpus row for it (if
+    // the adjudication wrote one) settles as "rejected".
+    void markEvalOutcome(c.var.db, intent.id, "rejected").catch((error) =>
+      c.var
+        .logFor({ service: "GitnessPullReqs" })
+        .warn("pullreqs:eval-outcome-mark-failed", { intentId: intent.id, error: String(error) })
+    );
     // Carry human meta forward so the retargeted PR keeps its title.
     const meta = await readPrMeta(c.env, gate.route.doName, intent.id);
     if (meta.title || meta.description || meta.comments.length > 0) {

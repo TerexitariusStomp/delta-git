@@ -29,6 +29,7 @@ import {
   listArenaMatchIndex,
 } from "@/worker/db/d1/dal/arena";
 import { adjustRep, findRepTarget } from "@/worker/db/d1/dal/reputation";
+import { markEvalOutcome } from "@/worker/db/d1/dal/evalCorpus";
 import { applyUnifiedPatch } from "@/worker/agent/patch";
 import { scanTextForSecrets } from "@/worker/agent/secretscan";
 import { attemptMerge, mergeDryRun } from "@/worker/merge/engine";
@@ -553,6 +554,13 @@ export function registerAgentRoutes(router: AppRouter): void {
 
     // Quorum reached: reward winners, slash minority voters.
     if (outcome.resolved && outcome.winningDigest) {
+      // Corpus backfill — the adjudication wrote its sample with outcome
+      // pending; this vote settled it as merged.
+      void markEvalOutcome(c.var.db, intentId, "merged").catch((error) =>
+        c.var
+          .logFor({ service: "AgentRoutes" })
+          .warn("agent:eval-outcome-mark-failed", { intentId, error: String(error) })
+      );
       const votes = await stub.listMergeVotes(intentId);
       for (const vote of votes) {
         const delta = vote.resolutionDigest === outcome.winningDigest ? 5 : -3;

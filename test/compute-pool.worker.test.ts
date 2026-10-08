@@ -9,6 +9,9 @@
 import { describe, expect, it } from "vitest";
 import { env, exports as workerExports } from "cloudflare:workers";
 
+import { createDb } from "@/worker/db/d1/client";
+import { insertEvalSample } from "@/worker/db/d1/dal/evalCorpus";
+import { ensureD1Migrations } from "./util/d1Setup";
 import { setupRepoForTests } from "./util/repoSeed";
 import { uniqueRepoId } from "./util/test-helpers";
 
@@ -97,5 +100,47 @@ describe("compute pool surface", () => {
       }
     );
     expect(res.status).toBe(503);
+  });
+
+  it("GET /+/eval lists corpus samples for a public repo", async () => {
+    await ensureD1Migrations(env);
+    const repo = uniqueRepoId("eval");
+    const seeded = await setupRepoForTests(env, "eval-ns", repo);
+    const db = createDb(env.DB);
+    await insertEvalSample(db, {
+      id: crypto.randomUUID(),
+      repositoryId: seeded.repositoryId,
+      intentId: "intent-test-1",
+      engine: "compute-pool",
+      input: JSON.stringify([{ path: "a.ts", ours: "x", theirs: "y" }]),
+      output: JSON.stringify({ "a.ts": "b64" }),
+      outcome: "merged",
+      createdAt: Date.now(),
+    });
+    const res = await workerExports.default.fetch(
+      `https://t/api/v1/repos/${seeded.namespaceSlug}/${seeded.repoSlug}/+/eval`
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      enabled: boolean;
+      samples: { intentId: string | null; engine: string; outcome: string | null }[];
+    };
+    expect(body.enabled).toBe(true);
+    const row = body.samples.find((s) => s.intentId === "intent-test-1");
+    expect(row).toBeDefined();
+    expect(row?.engine).toBe("compute-pool");
+    expect(row?.outcome).toBe("merged");
+  });
+
+  it("GET /+/eval does not expose private repos", async () => {
+    await ensureD1Migrations(env);
+    const repo = uniqueRepoId("eval");
+    const seeded = await setupRepoForTests(env, "eval-ns", repo, { visibility: "private" });
+    // Anonymous viewers get 404 — private repo existence is hidden before
+    // the eval surface ever runs.
+    const res = await workerExports.default.fetch(
+      `https://t/api/v1/repos/${seeded.namespaceSlug}/${seeded.repoSlug}/+/eval`
+    );
+    expect(res.status).toBe(404);
   });
 });
