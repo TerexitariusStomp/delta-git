@@ -537,7 +537,7 @@ export function registerGitnessDr(router: AppRouter) {
       counts: {
         repositories: snapshots.length,
         encrypted: snapshots.filter((s) => s.encrypted).length,
-        private: snapshots.filter((s) => s.visibility === "private").length,
+        private: snapshots.filter((s) => s.visibility !== "public").length,
       },
     });
   });

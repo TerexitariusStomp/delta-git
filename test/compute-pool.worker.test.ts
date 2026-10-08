@@ -88,6 +88,33 @@ describe("compute pool surface", () => {
     expect(res.status).toBe(403);
   });
 
+  it("intent dispatch on an internal repo passes the visibility gate", async () => {
+    // internal repos are pool-eligible — their jobs carry the INTERNAL
+    // classification so the coordinator only routes them to durable+DID
+    // nodes. Unconfigured pool → 503 (not the private-repo 403).
+    const repo = uniqueRepoId("pool");
+    const seeded = await setupRepoForTests(env, "pool-ns", repo, { visibility: "internal" });
+    const res = await workerExports.default.fetch(
+      `https://t/api/${seeded.namespaceSlug}/${seeded.repoSlug}/dg/work/work-nope/dispatch`,
+      {
+        method: "POST",
+        headers: { authorization: seeded.pushAuthHeader, "content-type": "application/json" },
+        body: "{}",
+      }
+    );
+    expect(res.status).toBe(503);
+  });
+
+  it("internal repos stay hidden from anonymous callers", async () => {
+    const repo = uniqueRepoId("pool");
+    const seeded = await setupRepoForTests(env, "pool-ns", repo, { visibility: "internal" });
+    // Anonymous eval read → 404 like private (non-enumerable).
+    const res = await workerExports.default.fetch(
+      `https://t/api/v1/repos/${seeded.namespaceSlug}/${seeded.repoSlug}/+/eval`
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("intent dispatch 503s when the pool is unconfigured", async () => {
     const repo = uniqueRepoId("pool");
     const seeded = await setupRepoForTests(env, "pool-ns", repo);

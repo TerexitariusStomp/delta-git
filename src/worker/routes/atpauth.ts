@@ -544,7 +544,13 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
     const slugRaw = parsed?.slug ?? parsed?.repo;
     const slugCheck = slugRaw ? validateSlugForRoute(slugRaw) : null;
     if (!slugCheck?.ok) return bad(c, "invalid-slug");
-    const visibility = parsed?.visibility === "private" ? "private" : "public";
+    // "internal" repos are member-gated like private ones but pool-eligible:
+    // their compute jobs carry the INTERNAL classification (durable+DID-only
+    // nodes at the coordinator). "private" (incl. E2E-encrypted) never pools.
+    const visibility =
+      parsed?.visibility === "private" || parsed?.visibility === "internal"
+        ? parsed.visibility
+        : "public";
     const mirrors = Array.isArray(parsed?.mirrors)
       ? parsed!
           .mirrors!.filter(

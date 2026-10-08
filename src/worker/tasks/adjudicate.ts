@@ -89,7 +89,8 @@ export async function runWorkersAiAdjudication(
 
   // Pool routing context — resolved once per intent. Missing repoId or a
   // private repo leaves `poolProject` undefined, which gates every
-  // poolInfer call off before it reaches the network.
+  // poolInfer call off before it reaches the network. Internal repos ride
+  // the INTERNAL lane — durable+DID-bound nodes only, coordinator-enforced.
   let poolProject: string | undefined;
   let poolVisibility = "private";
   if (repoId) {
@@ -97,7 +98,9 @@ export async function runWorkersAiAdjudication(
     if (repo) {
       poolVisibility = repo.visibility;
       const ns = await findNamespaceById(db, repo.namespaceId).catch(() => undefined);
-      if (repo.visibility === "public" && ns) poolProject = repoPoolProject(ns.slug, repo.slug);
+      if ((repo.visibility === "public" || repo.visibility === "internal") && ns) {
+        poolProject = repoPoolProject(ns.slug, repo.slug);
+      }
     }
   }
   const registered = await registerAgent(db, {

@@ -188,7 +188,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       id: route.repositoryId,
       name: c.req.param("repo"),
       full_name: `${c.req.param("owner")}/${c.req.param("repo")}`,
-      private: route.visibility === "private",
+      private: route.visibility !== "public",
       owner: { login: c.req.param("owner"), type: "User" },
       html_url: `${new URL(c.req.url).origin}/${c.req.param("owner")}/${c.req.param("repo")}`,
       clone_url: `${new URL(c.req.url).origin}/${c.req.param("owner")}/${c.req.param("repo")}.git`,

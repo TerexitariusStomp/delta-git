@@ -26,10 +26,10 @@ const LowercaseSlugInputSchema = z.preprocess(
   z.string()
 );
 
-const RepositoryVisibilitySchema = z.enum(["public", "private"]);
+const RepositoryVisibilitySchema = z.enum(["public", "private", "internal"]);
 
 const NullableRepositoryVisibilitySchema = z.preprocess(
-  (value) => (value === "public" || value === "private" ? value : null),
+  (value) => (value === "public" || value === "private" || value === "internal" ? value : null),
   RepositoryVisibilitySchema.nullable()
 );
 

@@ -52,9 +52,9 @@ async function resolveDoName(
     : null;
   if (auth?.kind === "oauth") {
     const { member, scopes } = auth.verified;
-    // Private repos: oauth reads need membership + repo:read — mirror the
+    // Non-public repos: oauth reads need membership + repo:read — mirror the
     // anonymous-404 contract rather than leaking existence.
-    if (route.visibility === "private" && (!member || !scopes.includes(OAUTH_SCOPES.REPO_READ))) {
+    if (route.visibility !== "public" && (!member || !scopes.includes(OAUTH_SCOPES.REPO_READ))) {
       return null;
     }
     return {

@@ -19,7 +19,9 @@ export function registerGitnessPool(router: AppRouter) {
     if (access.kind !== "ok") return access.response;
     const { route } = access;
     const project = repoPoolProject(route.routeNamespaceSlug, route.routeRepoSlug);
-    const enabled = computeEnabled(c.env) && route.visibility === "public";
+    // Public and internal repos are pool-eligible (internal rides the
+    // INTERNAL lane — durable+DID-bound nodes only). Private/encrypted off.
+    const enabled = computeEnabled(c.env) && route.visibility !== "private" && !route.encrypted;
     const [status, earnings] = enabled
       ? await Promise.all([poolStatus(c.env, project), poolEarnings(c.env, project)])
       : [null, null];

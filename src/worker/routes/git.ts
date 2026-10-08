@@ -495,7 +495,7 @@ async function authorizeGitRouteForRequest(
   patTouchOp: PatTouchOp
 ): Promise<GitAuthorizationResult> {
   const cacheCtx = c.var.cacheCtx;
-  if (route.visibility === "private" || service === "git-receive-pack") {
+  if (route.visibility !== "public" || service === "git-receive-pack") {
     markRequestPrivate(cacheCtx);
   }
 

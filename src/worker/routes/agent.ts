@@ -111,7 +111,14 @@ function dispatchIntentToPool(
   }
 ): void {
   const { route, intentId, title, body } = args;
-  if (route.visibility !== "public" || route.encrypted || !computeEnabled(env)) return;
+  // Public + internal repos dispatch (internal → INTERNAL classification →
+  // durable+DID-bound nodes only). Private/encrypted never leave.
+  if (
+    (route.visibility !== "public" && route.visibility !== "internal") ||
+    route.encrypted ||
+    !computeEnabled(env)
+  )
+    return;
   const project = repoPoolProject(route.routeNamespaceSlug, route.routeRepoSlug);
   ctx.waitUntil(
     (async () => {
@@ -1171,8 +1178,11 @@ export function registerAgentRoutes(router: AppRouter): void {
     const body = new Uint8Array(await c.req.raw.arrayBuffer());
     const principal = await authenticateWrite(c, body, route);
     if (principal instanceof Response) return principal;
-    if (route.visibility !== "public" || route.encrypted) {
-      return bad(c, "private repos never dispatch to the public pool", 403);
+    // Public and internal repos may dispatch — internal jobs carry the
+    // INTERNAL classification, which the coordinator only routes to
+    // durable+DID-bound nodes. Private/encrypted repos never dispatch.
+    if ((route.visibility !== "public" && route.visibility !== "internal") || route.encrypted) {
+      return bad(c, "private repos never dispatch to the pool", 403);
     }
     if (!computeEnabled(c.env)) return bad(c, "compute pool not configured", 503);
     const stub = getRepoStub(c.env, route.doName);
@@ -2452,7 +2462,7 @@ export function registerAgentRoutes(router: AppRouter): void {
   router.get("/api/:owner/:repo/dg/artifacts", async (c) => {
     const route = await resolveRepo(c);
     if (!route) return bad(c, "repo-not-found", 404);
-    if (route.visibility === "private") {
+    if (route.visibility !== "public") {
       const body = new Uint8Array(await c.req.raw.arrayBuffer());
       const principal = await authenticate(c, body, route);
       if (principal instanceof Response) return bad(c, "repo-not-found", 404);
@@ -2477,7 +2487,7 @@ export function registerAgentRoutes(router: AppRouter): void {
   router.get("/api/:owner/:repo/dg/artifacts/:name/:version/:path{.+}", async (c) => {
     const route = await resolveRepo(c);
     if (!route) return bad(c, "repo-not-found", 404);
-    if (route.visibility === "private") {
+    if (route.visibility !== "public") {
       const body = new Uint8Array(await c.req.raw.arrayBuffer());
       const principal = await authenticate(c, body, route);
       if (principal instanceof Response) return bad(c, "repo-not-found", 404);

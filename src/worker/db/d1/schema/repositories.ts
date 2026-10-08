@@ -1,10 +1,13 @@
-import { sql, desc } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 import { namespaces } from "./namespaces";
 import { users } from "./users";
 
-export type RepositoryVisibility = "public" | "private";
+// "internal" = member-gated like "private" (hidden from anonymous callers)
+// but pool-eligible: pool jobs carry the INTERNAL classification and only
+// reach durable+DID-bound volunteer nodes at the coordinator.
+export type RepositoryVisibility = "public" | "private" | "internal";
 
 // Storage backend discriminator. "do" is the native DO+R2 engine; "artifacts"
 // means the canonical object store is a Cloudflare Artifacts repo while the
@@ -72,12 +75,10 @@ export const repositories = sqliteTable(
     // Fork counts + network graph walks.
     index("idx_repositories_forked_from").on(table.forkedFromId),
     // Owner page / namespace listing without scanning the namespace.
-    index("idx_repositories_namespace_updated").on(
-      table.namespaceId,
-      desc(table.updatedAt),
-      table.slug
-    ),
-    check("chk_repositories_visibility", sql`"visibility" IN ('public','private')`),
+    // ASC on updated_at — SQLite scans indexes backward for ORDER BY DESC;
+    // D1's migration apply path rejects the drizzle `desc()` column form.
+    index("idx_repositories_namespace_updated").on(table.namespaceId, table.updatedAt, table.slug),
+    check("chk_repositories_visibility", sql`"visibility" IN ('public','private','internal')`),
   ]
 );
 

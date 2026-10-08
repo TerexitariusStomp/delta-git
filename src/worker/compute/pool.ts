@@ -10,10 +10,12 @@ import { createLogger } from "@/worker/common/logger";
 // coordinated by a single CoordinatorDO, settled in USDC — no token.
 //
 // Privacy gate: poolInfer() refuses to run unless the caller passes
-// `visibility: "public"`. Private and E2E repositories must never emit
-// content to volunteer nodes — the coordinator also enforces a PUBLIC-only
-// classification gate and payload lint, but the repo-side check is the first
-// line of defense.
+// `visibility: "public"` or `"internal"`. Public jobs ride the full pool;
+// INTERNAL jobs are dispatched with coordinator classification INTERNAL —
+// the coordinator only routes those to durable+DID-bound nodes, never to
+// anonymous visitor browsers. Private and E2E repositories must never emit
+// content to volunteer nodes — the repo-side check is the first line of
+// defense and the coordinator rejects SECRET outright.
 //
 // Env:
 //   COMPUTE_COORDINATOR     var    coordinator base URL (https://…)
@@ -46,10 +48,27 @@ export interface PoolInferArgs {
   messages: { role: string; content: string }[];
   maxTokens?: number;
   /**
-   * Caller's repo visibility — the privacy gate. Anything other than
-   * "public" returns null without any network call.
+   * Caller's repo visibility — the privacy gate. "public" → PUBLIC pool
+   * jobs (any node), "internal" → INTERNAL pool jobs (durable+DID-bound
+   * nodes only). Anything else returns null without any network call.
    */
-  visibility: "public" | "private" | string;
+  visibility: "public" | "internal" | "private" | string;
+  /** When true, request SSE deltas and consume them via onDelta. */
+  stream?: boolean;
+  /** Receives each streamed text delta when stream is set. */
+  onDelta?: (text: string) => void;
+}
+
+/**
+ * Repo visibility → coordinator classification. Public work can ride any
+ * node; internal work must never reach a visitor browser, so it carries
+ * INTERNAL — coordinator-side selection restricts to durable+DID-bound
+ * volunteers. Anything else (private, e2e, unknown) is refused client-side.
+ */
+function classificationFor(visibility: string): "PUBLIC" | "INTERNAL" | null {
+  if (visibility === "public") return "PUBLIC";
+  if (visibility === "internal") return "INTERNAL";
+  return null;
 }
 
 export function computeEnabled(env: Env): boolean {
@@ -144,12 +163,61 @@ export function sanitizePoolResult(text: string): { text: string; stripped: numb
 }
 
 /**
+ * Consume an OpenAI `text/event-stream` body into assembled assistant text.
+ * Each `data:` line is a `chat.completion.chunk` JSON or the sentinel
+ * `[DONE]`. Content deltas are concatenated; the (optional) onDelta hook
+ * observes them as they arrive. Returns the assembled string.
+ */
+export async function consumeCompletionStream(
+  body: ReadableStream<Uint8Array>,
+  onDelta?: (text: string) => void
+): Promise<string> {
+  const decoder = new TextDecoder();
+  const reader = body.getReader();
+  let buf = "";
+  let assembled = "";
+  const flush = (line: string) => {
+    const t = line.trim();
+    if (!t.startsWith("data:")) return;
+    const data = t.slice(5).trim();
+    if (data === "[DONE]") return;
+    try {
+      const chunk = JSON.parse(data) as {
+        choices?: { delta?: { content?: string } }[];
+      };
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (typeof delta === "string" && delta) {
+        assembled += delta;
+        onDelta?.(delta);
+      }
+    } catch {
+      // Keep going on a partial/garbled line — the sentinel ends the stream.
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      flush(buf.slice(0, nl));
+      buf = buf.slice(nl + 1);
+    }
+  }
+  if (buf) flush(buf);
+  return assembled;
+}
+
+/**
  * OpenAI-compatible inference through the pool. Returns the assistant text
  * on success; null on any failure (unconfigured, empty pool, timeout, schema
- * mismatch) so callers fall back to Workers AI.
+ * mismatch) so callers fall back to Workers AI. With `stream: true` the
+ * coordinator's SSE replay is consumed — deltas surface through onDelta as
+ * they arrive while the assembled text is sanitized the same way.
  */
 export async function poolInfer(env: Env, args: PoolInferArgs): Promise<string | null> {
-  if (args.visibility !== "public") return null;
+  const classification = classificationFor(args.visibility);
+  if (!classification) return null;
   if (!computeEnabled(env)) return null;
   const log = createLogger(env.LOG_LEVEL, { service: "ComputePool" });
   try {
@@ -164,6 +232,8 @@ export async function poolInfer(env: Env, args: PoolInferArgs): Promise<string |
         project: args.project,
         messages: args.messages,
         max_tokens: args.maxTokens ?? 4096,
+        classification,
+        ...(args.stream ? { stream: true } : {}),
       }),
       signal: AbortSignal.timeout(timeoutMs(env)),
     });
@@ -171,10 +241,15 @@ export async function poolInfer(env: Env, args: PoolInferArgs): Promise<string |
       log.debug("pool:infer-unavailable", { status: res.status, project: args.project });
       return null;
     }
-    const parsed = chatCompletionResponse.safeParse(await res.json());
-    const text = parsed.success ? parsed.data.choices[0]?.message.content.trim() : undefined;
-    if (!text) return null;
-    const clean = sanitizePoolResult(text);
+    const isSse = (res.headers.get("content-type") ?? "").includes("text/event-stream");
+    const resolved = isSse
+      ? (await consumeCompletionStream(res.body!, args.onDelta)).trim()
+      : await res
+          .json()
+          .then((j) => chatCompletionResponse.safeParse(j))
+          .then((p) => p.data?.choices[0]?.message.content.trim());
+    if (!resolved) return null;
+    const clean = sanitizePoolResult(resolved);
     if (clean.stripped > 0) {
       log.warn("pool:stripped-instructions", { project: args.project, stripped: clean.stripped });
     }
@@ -203,10 +278,15 @@ export async function poolDispatch(
     taskType: number;
     payload: unknown;
     priority?: "interactive" | "batch";
-    visibility: "public" | "private" | string;
+    /**
+     * "public" → PUBLIC classification (any node); "internal" → INTERNAL
+     * (durable+DID-bound nodes only); anything else is refused here.
+     */
+    visibility: "public" | "internal" | "private" | string;
   }
 ): Promise<{ jobId: string } | null> {
-  if (args.visibility !== "public") return null;
+  const classification = classificationFor(args.visibility);
+  if (!classification) return null;
   if (!computeEnabled(env)) return null;
   const log = createLogger(env.LOG_LEVEL, { service: "ComputePool" });
   try {
@@ -222,7 +302,7 @@ export async function poolDispatch(
             payload: JSON.stringify(args.payload),
             taskType: args.taskType,
             project: args.project,
-            classification: "PUBLIC",
+            classification,
             priority: args.priority,
           },
         ],

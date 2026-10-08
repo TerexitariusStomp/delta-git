@@ -70,8 +70,8 @@ async function resolveGist(c: GitnessContext, gistId: string): Promise<ResolvedG
   const found = await findGistBySlug(c.var.db, gistId);
   if (!found) return { kind: "response", response: gNotFound(c, "gist") };
   const { repository: row, namespaceSlug } = found;
-  if (row.visibility === "private") {
-    // Non-enumerable: private gists look exactly like missing ones.
+  if (row.visibility !== "public") {
+    // Non-enumerable: non-public gists look exactly like missing ones.
     const viewer = await loadViewer(c);
     if (!viewer || !(await viewerIsNamespaceMember(c.var.db, viewer.userId, row.namespaceId))) {
       return { kind: "response", response: gNotFound(c, "gist") };

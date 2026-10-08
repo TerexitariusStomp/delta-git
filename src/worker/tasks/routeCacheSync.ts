@@ -78,8 +78,8 @@ export async function handleRouteCacheSyncMessage(
     const canonicalKey = routeCacheKey(canonicalNamespaceSlug, canonicalRepoSlug);
     const capturedDiffersFromCanonical = capturedKey !== canonicalKey;
 
-    if (repository.visibility === "private") {
-      // Private rows must never expose a public route candidate.
+    if (repository.visibility !== "public") {
+      // Non-public rows must never expose a public route candidate.
       if (capturedDiffersFromCanonical) {
         await deleteRouteCacheRecord(env, body.namespaceSlug, body.repoSlug);
       }

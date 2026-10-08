@@ -29,3 +29,44 @@ describe("sanitizePoolResult", () => {
     expect(out.text).toBe("");
   });
 });
+
+describe("consumeCompletionStream", () => {
+  const sse = (chunks: string[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const s of chunks) c.enqueue(new TextEncoder().encode(s));
+        c.close();
+      },
+    });
+  const deltaChunk = (content: string, finish: string | null = null) =>
+    `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: finish }] })}\n\n`;
+
+  it("assembles OpenAI SSE deltas into full text", async () => {
+    const { consumeCompletionStream } = await import("@/worker/compute/pool");
+    const out = await consumeCompletionStream(
+      sse([deltaChunk("Hello, "), deltaChunk("world"), deltaChunk("", "stop"), "data: [DONE]\n\n"])
+    );
+    expect(out).toBe("Hello, world");
+  });
+
+  it("delivers deltas to onDelta as they arrive", async () => {
+    const { consumeCompletionStream } = await import("@/worker/compute/pool");
+    const seen: string[] = [];
+    const out = await consumeCompletionStream(
+      sse([deltaChunk("a"), deltaChunk("b"), deltaChunk("c"), "data: [DONE]\n\n"]),
+      (d) => seen.push(d)
+    );
+    expect(out).toBe("abc");
+    expect(seen).toEqual(["a", "b", "c"]);
+  });
+
+  it("tolerates garbled lines and byte-split chunks", async () => {
+    const { consumeCompletionStream } = await import("@/worker/compute/pool");
+    const raw =
+      deltaChunk("x") + "data: {garbled\n\n" + deltaChunk("y", "stop") + "data: [DONE]\n\n";
+    // Split mid-line across stream chunks.
+    const mid = Math.floor(raw.length / 2);
+    const out = await consumeCompletionStream(sse([raw.slice(0, mid), raw.slice(mid)]));
+    expect(out).toBe("xy");
+  });
+});

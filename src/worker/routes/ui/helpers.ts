@@ -194,13 +194,13 @@ export async function resolveAdminApiRepoAccess(c: AppContext): Promise<AdminRep
 
   const membership = await loadSessionMembership(c, route.namespaceId);
   if (membership.kind === "anonymous") {
-    if (route.visibility === "private") {
+    if (route.visibility !== "public") {
       return { kind: "response", response: adminJsonError("Not found", 404) };
     }
     return { kind: "response", response: adminJsonError("Unauthorized", 401) };
   }
   if (membership.kind === "signed-in-non-member") {
-    if (route.visibility === "private") {
+    if (route.visibility !== "public") {
       return { kind: "response", response: adminJsonError("Not found", 404) };
     }
     return { kind: "response", response: adminJsonError("Forbidden", 403) };
