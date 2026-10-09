@@ -13,6 +13,7 @@ import {
   insertUserIfNew,
 } from "@/worker/db/d1/dal";
 import { putRouteCacheRecord, routeCacheKey } from "@/worker/repositories/routeCache";
+import type { RepositoryVisibility } from "@/worker/db/d1/schema/repositories";
 
 import { ensureD1Migrations } from "./d1Setup";
 
@@ -33,7 +34,7 @@ export type SeedRepoArgs = {
   tesseraSub?: string;
   namespaceSlug: string;
   repoSlug: string;
-  visibility?: "public" | "private";
+  visibility?: RepositoryVisibility;
   doName?: string;
   // Skip the ROUTES KV write (some tests want to assert the resolver's D1
   // fallback without a KV candidate).
@@ -47,7 +48,7 @@ export type SeededRepo = {
   doName: string;
   namespaceSlug: string;
   repoSlug: string;
-  visibility: "public" | "private";
+  visibility: RepositoryVisibility;
   routeCacheKey: string;
 };
 

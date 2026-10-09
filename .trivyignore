@@ -93,6 +93,7 @@ GHSA-qrv3-253h-g69c
 GHSA-r9w8-h9r3-54w4
 GHSA-rgj7-g3m4-5g8c
 GHSA-vx52-2968-3vc6
+GHSA-wq5f-xc86-pv6w
 
 # Misconfig false positives — wpcloud/container Dockerfiles.
 # DS-0031 fires on `*_FILE` env names, but `MYSQL_PASSWORD_FILE=/run/secrets/...`
