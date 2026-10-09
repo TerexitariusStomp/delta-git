@@ -1,0 +1,29 @@
+delta-git
+=========
+
+delta-git is derived from git-on-cloudflare (MIT License),
+Copyright (c) 2025 zllovesuki. See LICENSE.
+
+Vendored components
+-------------------
+
+frontend/canary/
+    Harness Gitness SPA (Harness Inc.), Apache License 2.0.
+    See frontend/canary/LICENSE and frontend/canary/UPSTREAM.md.
+
+Runtime dependencies of note
+----------------------------
+
+openpgp (LGPL-3.0+) — loaded dynamically at runtime for client-side
+encryption features; no derivative work, no statically-linked copy.
+LGPL obligations satisfied by dynamic linking + retained notices.
+
+Build-time only (not distributed in the deployed Worker)
+--------------------------------------------------------
+
+sharp / libvips (Apache-2.0 AND LGPL-3.0-or-later) — via wrangler, dev-only.
+lightningcss (MPL-2.0) — Tailwind CSS v4 build pipeline.
+caniuse-lite (CC-BY-4.0) — browserslist target data.
+
+No SSPL-, BSL-, or Elastic-licensed component is required by this project.
+Full inventory: docs/oss-licenses.md and ../megaplan/oss-inventory.md.
