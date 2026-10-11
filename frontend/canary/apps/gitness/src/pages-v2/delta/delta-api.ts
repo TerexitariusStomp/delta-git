@@ -77,6 +77,7 @@ export interface DeltaWorkItem {
   status: string
   claimed_by: string | null
   claim_expires_at: number | null
+  reward_wei: string | null
   created_at: number
 }
 
@@ -98,6 +99,7 @@ export interface ArenaMatchSummary {
   judge_ends_at: number | null
   max_entrants: number
   prize_rep: number
+  prize_wei: string | null
   created_by: string
   created_at: number
 }
@@ -125,6 +127,7 @@ export interface ArenaMatchDetail {
     judge_ends_at: number | null
     max_entrants: number
     prize_rep: number
+    prize_wei: string | null
     created_by: string
     winner_entry_id: string | null
   }
@@ -230,6 +233,23 @@ export const useArenaMatches = (spaceId: string, repoId: string) =>
 export const useArenaMatch = (spaceId: string, repoId: string, matchId: string) =>
   useQuery(['delta', 'match', spaceId, repoId, matchId], () =>
     dgFetch<ArenaMatchDetail>(`${dgPath(spaceId, repoId)}/matches/${matchId}`)
+  )
+
+export interface DeltaAward {
+  ref: string
+  status: string
+  amountWei?: string
+  recipients?: { did: string; amountWei: string }[]
+  project?: string
+  createdAt?: number
+}
+
+/** Coordinator-side award status for a ref (`work:<id>` / `match:<id>`). */
+export const useDeltaAward = (spaceId: string, repoId: string, ref: string | null) =>
+  useQuery(
+    ['delta', 'award', spaceId, repoId, ref],
+    () => dgFetch<{ award: DeltaAward }>(`${dgPath(spaceId, repoId)}/awards/${encodeURIComponent(ref!)}`),
+    { enabled: !!ref, select: data => data.award, retry: false }
   )
 
 /** Unified diff of one match entry against the repo head — the judging

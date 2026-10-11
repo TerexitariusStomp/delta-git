@@ -44,6 +44,7 @@ export async function handleIdeasSiteBuild(c: AppContext<"/:owner/:repo/ideas">)
       status: "open",
       claimedBy: null,
       claimExpiresAt: null,
+      rewardWei: null,
       createdAt: Date.now(),
       closedAt: null,
     },

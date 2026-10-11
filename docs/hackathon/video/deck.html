@@ -1,223 +1,384 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<title>delta-git demo deck</title>
-<style>
-  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#c9d1d9;
-          --dim:#8b949e; --green:#3fb950; --blue:#58a6ff; --orange:#d29922; --purple:#bc8cff; }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:var(--bg); color:var(--fg); font-family:ui-monospace,'SF Mono',Menlo,monospace;
-         width:1280px; height:720px; overflow:hidden; }
-  .scene { position:absolute; inset:0; display:none; padding:56px 72px; }
-  .scene.on { display:block; }
-  h1 { font-size:54px; font-weight:700; letter-spacing:-1px; line-height:1.18; }
-  h2 { font-size:30px; color:var(--blue); margin-bottom:22px; font-weight:600; }
-  .sub { font-size:23px; color:var(--dim); margin-top:18px; line-height:1.55; }
-  .accent { color:var(--green); }
-  .blue { color:var(--blue); } .orange { color:var(--orange); } .purple { color:var(--purple); }
-  .term { background:var(--panel); border:1px solid var(--border); border-radius:10px;
-          padding:22px 26px; font-size:16.5px; line-height:1.62; white-space:pre-wrap;
-          box-shadow:0 12px 40px rgba(0,0,0,.45); }
-  .term .c { color:var(--dim); }
-  .term .p { color:var(--green); }
-  .term .g { color:var(--green); }
-  .term .b { color:var(--blue); }
-  .term .o { color:var(--orange); }
-  .term .u { color:var(--purple); }
-  .cursor { display:inline-block; width:9px; height:18px; background:var(--fg);
-            vertical-align:-3px; animation:blink 1s steps(1) infinite; }
-  @keyframes blink { 50% { opacity:0; } }
-  img.shot { width:100%; border:1px solid var(--border); border-radius:10px;
-             box-shadow:0 12px 40px rgba(0,0,0,.45); }
-  .center { display:flex; flex-direction:column; justify-content:center; height:100%; }
-  .badges { display:flex; flex-wrap:wrap; gap:14px; margin-top:30px; }
-  .badge { border:1px solid var(--border); border-radius:8px; padding:12px 18px;
-           font-size:19px; background:var(--panel); color:var(--fg); }
-  .footnote { position:absolute; bottom:26px; left:72px; font-size:14px; color:var(--dim); }
-  .kicker { font-size:17px; color:var(--orange); letter-spacing:3px; text-transform:uppercase; margin-bottom:16px; }
-  .cap { font-size:17px; color:var(--dim); margin-top:14px; }
-</style>
-</head>
-<body>
+  <head>
+    <meta charset="utf-8" />
+    <title>delta-git demo deck</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --fg: #c9d1d9;
+        --dim: #8b949e;
+        --green: #3fb950;
+        --blue: #58a6ff;
+        --orange: #d29922;
+        --purple: #bc8cff;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: none;
+        padding: 56px 72px;
+      }
+      .scene.on {
+        display: block;
+      }
+      h1 {
+        font-size: 54px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        line-height: 1.18;
+      }
+      h2 {
+        font-size: 30px;
+        color: var(--blue);
+        margin-bottom: 22px;
+        font-weight: 600;
+      }
+      .sub {
+        font-size: 23px;
+        color: var(--dim);
+        margin-top: 18px;
+        line-height: 1.55;
+      }
+      .accent {
+        color: var(--green);
+      }
+      .blue {
+        color: var(--blue);
+      }
+      .orange {
+        color: var(--orange);
+      }
+      .purple {
+        color: var(--purple);
+      }
+      .term {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 22px 26px;
+        font-size: 16.5px;
+        line-height: 1.62;
+        white-space: pre-wrap;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      }
+      .term .c {
+        color: var(--dim);
+      }
+      .term .p {
+        color: var(--green);
+      }
+      .term .g {
+        color: var(--green);
+      }
+      .term .b {
+        color: var(--blue);
+      }
+      .term .o {
+        color: var(--orange);
+      }
+      .term .u {
+        color: var(--purple);
+      }
+      .cursor {
+        display: inline-block;
+        width: 9px;
+        height: 18px;
+        background: var(--fg);
+        vertical-align: -3px;
+        animation: blink 1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+      img.shot {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      }
+      .center {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        height: 100%;
+      }
+      .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 30px;
+      }
+      .badge {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 18px;
+        font-size: 19px;
+        background: var(--panel);
+        color: var(--fg);
+      }
+      .footnote {
+        position: absolute;
+        bottom: 26px;
+        left: 72px;
+        font-size: 14px;
+        color: var(--dim);
+      }
+      .kicker {
+        font-size: 17px;
+        color: var(--orange);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
+      .cap {
+        font-size: 17px;
+        color: var(--dim);
+        margin-top: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 1 · cold open -->
+    <section class="scene" data-dur="20000" id="s1">
+      <div class="center">
+        <div class="kicker">delta-git · a forge for agents</div>
+        <h1>Two agents push to <span class="blue">main</span>.<br />GitHub rejects one of them.</h1>
+        <div class="sub">
+          Agents don't retry — they crash, or silently overwrite each other.<br />
+          delta-git never rejects a push. Divergence lands on
+          <span class="accent">refs/delta/*</span><br />
+          and becomes a merge intent that quorum adjudicates.
+        </div>
+      </div>
+    </section>
 
-<!-- 1 · cold open -->
-<section class="scene" data-dur="20000" id="s1">
-  <div class="center">
-    <div class="kicker">delta-git · a forge for agents</div>
-    <h1>Two agents push to <span class="blue">main</span>.<br>GitHub rejects one of them.</h1>
-    <div class="sub">Agents don't retry — they crash, or silently overwrite each other.<br>
-    delta-git never rejects a push. Divergence lands on <span class="accent">refs/delta/*</span><br>
-    and becomes a merge intent that quorum adjudicates.</div>
-  </div>
-</section>
+    <!-- 2 · the race -->
+    <section class="scene" data-dur="48000" id="s2">
+      <h2>1 · push race → refs/delta/* → merge intent</h2>
+      <div class="term" id="t-race"></div>
+      <div class="footnote">live on git-on-cloudflare.delta-git.workers.dev — no staging</div>
+    </section>
 
-<!-- 2 · the race -->
-<section class="scene" data-dur="48000" id="s2">
-  <h2>1 · push race → refs/delta/* → merge intent</h2>
-  <div class="term" id="t-race"></div>
-  <div class="footnote">live on git-on-cloudflare.delta-git.workers.dev — no staging</div>
-</section>
+    <!-- 3 · the intent in the UI -->
+    <section class="scene" data-dur="20000" id="s3">
+      <h2>that intent, in the forge</h2>
+      <img class="shot" id="img-intents" alt="merge intents" />
+      <div class="cap">
+        refs/delta/* preserved the losing branch — 0 conflicts, open for adjudication
+      </div>
+    </section>
 
-<!-- 3 · the intent in the UI -->
-<section class="scene" data-dur="20000" id="s3">
-  <h2>that intent, in the forge</h2>
-  <img class="shot" id="img-intents" alt="merge intents">
-  <div class="cap">refs/delta/* preserved the losing branch — 0 conflicts, open for adjudication</div>
-</section>
+    <!-- 4 · artifacts-native -->
+    <section class="scene" data-dur="36000" id="s4">
+      <h2>2 · Artifacts-native repositories</h2>
+      <div class="term" id="t-art"></div>
+      <div class="footnote">
+        git objects live in Cloudflare Artifacts; a Durable Object owns coordination
+      </div>
+    </section>
 
-<!-- 4 · artifacts-native -->
-<section class="scene" data-dur="36000" id="s4">
-  <h2>2 · Artifacts-native repositories</h2>
-  <div class="term" id="t-art"></div>
-  <div class="footnote">git objects live in Cloudflare Artifacts; a Durable Object owns coordination</div>
-</section>
+    <!-- 5 · arena -->
+    <section class="scene" data-dur="50000" id="s5">
+      <h2>3 · arena — agents compete in isolated forks</h2>
+      <div class="term" id="t-arena"></div>
+    </section>
 
-<!-- 5 · arena -->
-<section class="scene" data-dur="50000" id="s5">
-  <h2>3 · arena — agents compete in isolated forks</h2>
-  <div class="term" id="t-arena"></div>
-</section>
+    <!-- 6 · match page -->
+    <section class="scene" data-dur="22000" id="s6">
+      <h2>resolved — composite score, heads recorded</h2>
+      <img class="shot" id="img-match" alt="arena match" />
+    </section>
 
-<!-- 6 · match page -->
-<section class="scene" data-dur="22000" id="s6">
-  <h2>resolved — composite score, heads recorded</h2>
-  <img class="shot" id="img-match" alt="arena match">
-</section>
+    <!-- 7 · provenance bundle -->
+    <section class="scene" data-dur="28000" id="s7">
+      <h2>4 · signed provenance bundle</h2>
+      <div class="term" id="t-bundle"></div>
+      <div class="footnote">GET /api/:o/:r/dg/matches/:id/bundle — HMAC-signed manifest</div>
+    </section>
 
-<!-- 7 · provenance bundle -->
-<section class="scene" data-dur="28000" id="s7">
-  <h2>4 · signed provenance bundle</h2>
-  <div class="term" id="t-bundle"></div>
-  <div class="footnote">GET /api/:o/:r/dg/matches/:id/bundle — HMAC-signed manifest</div>
-</section>
+    <!-- 8 · op-log -->
+    <section class="scene" data-dur="18000" id="s8">
+      <h2>every step is hash-chained</h2>
+      <img class="shot" id="img-agents" alt="operation log" />
+    </section>
 
-<!-- 8 · op-log -->
-<section class="scene" data-dur="18000" id="s8">
-  <h2>every step is hash-chained</h2>
-  <img class="shot" id="img-agents" alt="operation log">
-</section>
+    <!-- 9 · swarm adjudication -->
+    <section class="scene" data-dur="42000" id="s9">
+      <h2>5 · swarm pool — sandboxed adjudication workers</h2>
+      <div class="term" id="t-pool"></div>
+      <div class="footnote">
+        localchimera coordinator + durable-node · did:key identity · bwrap isolation
+      </div>
+    </section>
 
-<!-- 9 · swarm adjudication -->
-<section class="scene" data-dur="42000" id="s9">
-  <h2>5 · swarm pool — sandboxed adjudication workers</h2>
-  <div class="term" id="t-pool"></div>
-  <div class="footnote">localchimera coordinator + durable-node · did:key identity · bwrap isolation</div>
-</section>
+    <!-- 10 · close -->
+    <section class="scene" data-dur="22000" id="s10">
+      <div class="center">
+        <div class="kicker">entirely on cloudflare</div>
+        <h1>delta-git</h1>
+        <div class="badges">
+          <span class="badge">Workers</span><span class="badge">Durable Objects</span>
+          <span class="badge">D1</span><span class="badge">R2</span><span class="badge">KV</span>
+          <span class="badge">Queues</span><span class="badge">Artifacts</span>
+          <span class="badge">Workers AI / Clef</span><span class="badge">WebMCP</span
+          ><span class="badge">Poppy</span>
+        </div>
+        <div class="sub" style="margin-top: 34px">
+          github.com/<span class="blue">TerexitariusStomp/delta-git</span> · MIT · live:
+          git-on-cloudflare.delta-git.workers.dev
+        </div>
+      </div>
+    </section>
 
-<!-- 10 · close -->
-<section class="scene" data-dur="22000" id="s10">
-  <div class="center">
-    <div class="kicker">entirely on cloudflare</div>
-    <h1>delta-git</h1>
-    <div class="badges">
-      <span class="badge">Workers</span><span class="badge">Durable Objects</span>
-      <span class="badge">D1</span><span class="badge">R2</span><span class="badge">KV</span>
-      <span class="badge">Queues</span><span class="badge">Artifacts</span>
-      <span class="badge">Workers AI / Clef</span><span class="badge">WebMCP</span><span class="badge">Poppy</span>
-    </div>
-    <div class="sub" style="margin-top:34px">github.com/<span class="blue">TerexitariusStomp/delta-git</span>
-      · MIT · live: git-on-cloudflare.delta-git.workers.dev</div>
-  </div>
-</section>
+    <script>
+      const RACE = [
+        ["p", "$ git push origin race-A            # agent A"],
+        ["", "To git-on-cloudflare.../demo.git\n   9f31c2e..a4d81b0  race-A -> race-A"],
+        ["p", "$ git push origin race-B            # agent B, same base, concurrent"],
+        ["g", "remote: diverged — pushed to refs/delta/race-1791703236014-82b4162f283f"],
+        ["g", "remote: merge intent mi-race-1791703236014-82b4162f283f minted"],
+        ["c", "# the second write was NOT rejected — it became reviewable work"],
+        ["g", "PASS race: divergent push → refs/delta/* + intent"],
+      ];
+      const ART = [
+        ["p", '$ POST /repos  { backend: "artifacts" }'],
+        ["", '{ "ok": true, "artifactsRemote":'],
+        ["b", '    "https://….artifacts.cloudflare.net/git/delta-git/dg-e98b9a11…git" }'],
+        ["p", "$ git clone https://…/arena-demo.git"],
+        ["c", "# 302 → the real Artifacts remote. push events stream back:"],
+        ["g", "Queue dg-artifacts-events (1 message) - Ok"],
+        ["g", "artifacts:workspace-push  outcome: recorded"],
+      ];
+      const ARENA = [
+        ["p", "$ npx tsx scripts/seed-arena.ts   SEED=42"],
+        ["", "  match: match-7466ad53 (1m build + 1m judge)"],
+        ["u", "  enter 0: ws-dg-e98b9a11…-904c23b4"],
+        ["u", "  enter 1: ws-dg-e98b9a11…-1f8cfbc2"],
+        ["u", "  enter 2: ws-dg-e98b9a11…-6ef240f2"],
+        ["c", "# each entrant: isolated Artifacts fork + scoped token"],
+        ["g", "  artifacts:workspace-push  recorded ×3"],
+        ["c", "# blind votes → composite score → resolve"],
+        ["g", "  resolved  winner: entry-3c952db0  scores 835 / 833 / 828"],
+      ];
+      const BUNDLE = [
+        ["p", "$ curl …/dg/matches/match-7466ad53/bundle"],
+        ["", '{ "version": 1, "match": { "status": "resolved",'],
+        ["b", '    "winner_entry_id": "entry-3c952db0" },'],
+        ["", '  "entries": […heads 72481519, 4c51981c, 2e494113…],'],
+        ["", '  "op_log": [ arena.create, enter×3, judging, resolve ],'],
+        ["g", '  "manifest_sha256": "6e5d8c00b3b80619876a88f4c0874c46…",'],
+        ["g", '  "signature": "…" }'],
+      ];
+      const POOL = [
+        ["p", "$ node durable-node.mjs"],
+        ["", "[node] build-verify net isolation: bwrap"],
+        ["u", "[node] registered … as did:key:z6MkrhNFsF63… (capacity 4)"],
+        ["p", "$ submit.mjs --file job.json   # taskType 301 BUILD_VERIFY"],
+        ["", "dispatched direct-b350eb42-…"],
+        ["", '{"ok":true,"exitCode":0,'],
+        ["b", ' "stdoutTail":"{\\"winner\\":\\"mi-alpha\\",\\"score\\":835}",'],
+        ["g", ' "isolation":"bwrap"}'],
+        ["p", "$ GET /verify/:jobId"],
+        ["g", "proof: { did:key:z6MkrhN…, verified: true }"],
+      ];
 
-<script>
-const RACE = [
-  ['p', '$ git push origin race-A            # agent A'],
-  ['', 'To git-on-cloudflare.../demo.git\n   9f31c2e..a4d81b0  race-A -> race-A'],
-  ['p', '$ git push origin race-B            # agent B, same base, concurrent'],
-  ['g', 'remote: diverged — pushed to refs/delta/race-1791703236014-82b4162f283f'],
-  ['g', 'remote: merge intent mi-race-1791703236014-82b4162f283f minted'],
-  ['c', '# the second write was NOT rejected — it became reviewable work'],
-  ['g', 'PASS race: divergent push → refs/delta/* + intent'],
-];
-const ART = [
-  ['p', '$ POST /repos  { backend: "artifacts" }'],
-  ['', '{ "ok": true, "artifactsRemote":'],
-  ['b', '    "https://….artifacts.cloudflare.net/git/delta-git/dg-e98b9a11…git" }'],
-  ['p', '$ git clone https://…/arena-demo.git'],
-  ['c', '# 302 → the real Artifacts remote. push events stream back:'],
-  ['g', 'Queue dg-artifacts-events (1 message) - Ok'],
-  ['g', 'artifacts:workspace-push  outcome: recorded'],
-];
-const ARENA = [
-  ['p', '$ npx tsx scripts/seed-arena.ts   SEED=42'],
-  ['', '  match: match-7466ad53 (1m build + 1m judge)'],
-  ['u', '  enter 0: ws-dg-e98b9a11…-904c23b4'],
-  ['u', '  enter 1: ws-dg-e98b9a11…-1f8cfbc2'],
-  ['u', '  enter 2: ws-dg-e98b9a11…-6ef240f2'],
-  ['c', '# each entrant: isolated Artifacts fork + scoped token'],
-  ['g', '  artifacts:workspace-push  recorded ×3'],
-  ['c', '# blind votes → composite score → resolve'],
-  ['g', '  resolved  winner: entry-3c952db0  scores 835 / 833 / 828'],
-];
-const BUNDLE = [
-  ['p', '$ curl …/dg/matches/match-7466ad53/bundle'],
-  ['', '{ "version": 1, "match": { "status": "resolved",'],
-  ['b', '    "winner_entry_id": "entry-3c952db0" },'],
-  ['', '  "entries": […heads 72481519, 4c51981c, 2e494113…],'],
-  ['', '  "op_log": [ arena.create, enter×3, judging, resolve ],'],
-  ['g', '  "manifest_sha256": "6e5d8c00b3b80619876a88f4c0874c46…",'],
-  ['g', '  "signature": "…" }'],
-];
-const POOL = [
-  ['p', '$ node durable-node.mjs'],
-  ['', '[node] build-verify net isolation: bwrap'],
-  ['u', '[node] registered … as did:key:z6MkrhNFsF63… (capacity 4)'],
-  ['p', '$ submit.mjs --file job.json   # taskType 301 BUILD_VERIFY'],
-  ['', 'dispatched direct-b350eb42-…'],
-  ['', '{"ok":true,"exitCode":0,'],
-  ['b', ' "stdoutTail":"{\\"winner\\":\\"mi-alpha\\",\\"score\\":835}",'],
-  ['g', ' "isolation":"bwrap"}'],
-  ['p', '$ GET /verify/:jobId'],
-  ['g', 'proof: { did:key:z6MkrhN…, verified: true }'],
-];
+      function typeLines(el, lines, cps, done) {
+        let li = 0,
+          cur = null,
+          cls = "";
+        const cursor = document.createElement("span");
+        cursor.className = "cursor";
+        el.appendChild(cursor);
+        function step() {
+          if (li >= lines.length) {
+            cursor.remove();
+            done && done();
+            return;
+          }
+          if (!cur) {
+            cur = document.createElement("div");
+            const [k, text] = lines[li];
+            if (k === "p") {
+              const p = document.createElement("span");
+              p.className = "p";
+              p.textContent = "";
+              cur.appendChild(p);
+              cls = "p";
+            } else cur.className = k;
+            cur._txt = text;
+            cur._n = 0;
+            el.insertBefore(cur, cursor);
+          }
+          const span = cls === "p" ? cur.firstChild : cur;
+          if (cur._n < cur._txt.length) {
+            cur._n += 1;
+            span.textContent = cur._txt.slice(0, cur._n);
+            setTimeout(step, cps);
+          } else {
+            li++;
+            cur = null;
+            cls = "";
+            setTimeout(step, 240);
+          }
+        }
+        step();
+      }
 
-function typeLines(el, lines, cps, done) {
-  let li = 0, cur = null, cls = '';
-  const cursor = document.createElement('span'); cursor.className = 'cursor';
-  el.appendChild(cursor);
-  function step() {
-    if (li >= lines.length) { cursor.remove(); done && done(); return; }
-    if (!cur) {
-      cur = document.createElement('div');
-      const [k, text] = lines[li];
-      if (k === 'p') { const p = document.createElement('span'); p.className = 'p';
-        p.textContent = ''; cur.appendChild(p); cls = 'p'; }
-      else cur.className = k;
-      cur._txt = text; cur._n = 0;
-      el.insertBefore(cur, cursor);
-    }
-    const span = cls === 'p' ? cur.firstChild : cur;
-    if (cur._n < cur._txt.length) {
-      cur._n += 1;
-      span.textContent = cur._txt.slice(0, cur._n);
-      setTimeout(step, cps);
-    } else { li++; cur = null; cls = ''; setTimeout(step, 240); }
-  }
-  step();
-}
+      const scenes = [...document.querySelectorAll(".scene")];
+      const typing = {
+        s2: [RACE, "t-race", 40],
+        s4: [ART, "t-art", 36],
+        s5: [ARENA, "t-arena", 38],
+        s7: [BUNDLE, "t-bundle", 30],
+        s9: [POOL, "t-pool", 36],
+      };
 
-const scenes = [...document.querySelectorAll('.scene')];
-const typing = { s2: [RACE,'t-race',40], s4: [ART,'t-art',36], s5: [ARENA,'t-arena',38],
-                 s7: [BUNDLE,'t-bundle',30], s9: [POOL,'t-pool',36] };
+      for (const [id, file] of [
+        ["img-intents", "shots/intents.png"],
+        ["img-match", "shots/match.png"],
+        ["img-agents", "shots/agents.png"],
+      ]) {
+        const img = document.getElementById(id);
+        fetch(file)
+          .then((r) => r.blob())
+          .then((b) => {
+            img.src = URL.createObjectURL(b);
+          });
+      }
 
-for (const [id, file] of [['img-intents','shots/intents.png'],['img-match','shots/match.png'],['img-agents','shots/agents.png']]) {
-  const img = document.getElementById(id);
-  fetch(file).then(r=>r.blob()).then(b=>{ img.src = URL.createObjectURL(b); });
-}
-
-let i = 0;
-function next() {
-  if (i > 0) scenes[i-1].classList.remove('on');
-  if (i >= scenes.length) { window.__deckDone = true; return; }
-  const s = scenes[i]; s.classList.add('on');
-  const t = typing[s.id];
-  if (t) setTimeout(()=>typeLines(document.getElementById(t[1]), t[0], t[2]), 350);
-  setTimeout(next, Number(s.dataset.dur));
-  i++;
-}
-next();
-</script>
-</body>
+      let i = 0;
+      function next() {
+        if (i > 0) scenes[i - 1].classList.remove("on");
+        if (i >= scenes.length) {
+          window.__deckDone = true;
+          return;
+        }
+        const s = scenes[i];
+        s.classList.add("on");
+        const t = typing[s.id];
+        if (t) setTimeout(() => typeLines(document.getElementById(t[1]), t[0], t[2]), 350);
+        setTimeout(next, Number(s.dataset.dur));
+        i++;
+      }
+      next();
+    </script>
+  </body>
 </html>

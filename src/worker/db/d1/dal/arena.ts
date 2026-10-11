@@ -29,6 +29,14 @@ export async function markArenaMatchResolved(
     .where(eq(arenaMatches.id, matchId));
 }
 
+export async function findArenaMatchIndex(
+  db: Db,
+  matchId: string
+): Promise<ArenaMatchIndexRow | undefined> {
+  const rows = await db.select().from(arenaMatches).where(eq(arenaMatches.id, matchId)).limit(1);
+  return rows[0];
+}
+
 export async function listArenaMatchIndex(db: Db, limit = 50): Promise<ArenaMatchIndexRow[]> {
   return await db.select().from(arenaMatches).orderBy(desc(arenaMatches.createdAt)).limit(limit);
 }

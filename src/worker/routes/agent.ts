@@ -1,6 +1,7 @@
 import type { AppContext, AppRouter } from "./hono";
 import { workerExecutionContext } from "./hono";
 import type { RepositoryRoute } from "@/worker/repositories/route";
+import type { RepoDurableObject } from "@/worker/do";
 import type { AgentRow } from "@/worker/db/d1/schema";
 import type {
   MatchEntryRow,
@@ -66,7 +67,13 @@ import {
 } from "@/worker/agent/abuse";
 import { bytesToHex } from "@/worker/common/hex";
 import { toBase64Url } from "@atcute/multibase";
-import { computeEnabled, poolInfer, repoPoolProject } from "@/worker/compute/pool";
+import {
+  computeEnabled,
+  poolAwardAndRecord,
+  poolAwardStatus,
+  poolInfer,
+  repoPoolProject,
+} from "@/worker/compute/pool";
 import { deliverNotification } from "@/worker/notify/notify";
 import type { Db } from "@/worker/db/d1/client";
 import { loadNodeKey } from "@/worker/agent/repCert";
@@ -91,6 +98,33 @@ function json(c: AppContext, body: unknown, status = 200): Response {
 
 function bad(c: AppContext, reason: string, status = 400): Response {
   return json(c, { error: reason }, status);
+}
+
+/**
+ * Fire a funded work-intent award after quorum verification. The award
+ * goes to the claimer (work-verify pays who did the work, not who
+ * voted), is keyed `work:<intentId>` for idempotency, and is recorded
+ * in the op-log either way — unfunded pools resolve to `unfunded`, not
+ * an error. Best-effort: award failure never fails the vote response.
+ */
+async function awardWorkIntentIfFunded(
+  env: Env,
+  stub: DurableObjectStub<RepoDurableObject>,
+  route: RepositoryRoute,
+  workIntentId: string,
+  actor: string
+): Promise<void> {
+  const intent = await stub.getWorkIntent(workIntentId).catch(() => null);
+  if (!intent?.rewardWei || !intent.claimedBy) return;
+  await poolAwardAndRecord(env, {
+    project: repoPoolProject(route.routeNamespaceSlug, route.routeRepoSlug),
+    ref: `work:${workIntentId}`,
+    did: intent.claimedBy,
+    amountWei: intent.rewardWei,
+    reason: "work-verified",
+    recordAward: (record) => stub.recordAward(record),
+    actor,
+  }).catch(() => null);
 }
 
 // Work-intent → pool bridge. Public repos hand each new intent to the
@@ -205,7 +239,16 @@ const patchBody = z.object({
 });
 const dryRunBody = z.object({ ref: z.string().optional(), delta_oid: z.string().optional() });
 const importBody = z.object({ url: z.string().optional(), branch: z.string().optional() });
-const workIntentBody = z.object({ title: z.string().optional(), body: z.string().optional() });
+const workIntentBody = z.object({
+  title: z.string().optional(),
+  body: z.string().optional(),
+  // Optional funded reward in USDC micro-units (decimal string) — paid by
+  // the pool coordinator's /award endpoint if the intent verifies.
+  reward_wei: z
+    .string()
+    .regex(/^\d{1,30}$/)
+    .optional(),
+});
 const ideaBody = z.object({
   title: z.string().optional(),
   body: z.string().optional(),
@@ -229,6 +272,12 @@ const matchCreateBody = z.object({
   judge_minutes: z.number().optional(),
   max_entrants: z.number().optional(),
   prize_rep: z.number().optional(),
+  // Optional funded USDC prize pool (micro-unit decimal string) split
+  // across submitted entries by composite score at resolution.
+  prize_wei: z
+    .string()
+    .regex(/^\d{1,30}$/)
+    .optional(),
 });
 const matchVoteBody = z.object({ entry_id: z.string().optional(), stake: z.number().optional() });
 
@@ -1099,6 +1148,7 @@ export function registerAgentRoutes(router: AppRouter): void {
         status: row.status,
         claimed_by: row.claimedBy,
         claim_expires_at: row.claimExpiresAt,
+        reward_wei: row.rewardWei,
         created_at: row.createdAt,
       })),
     });
@@ -1125,6 +1175,7 @@ export function registerAgentRoutes(router: AppRouter): void {
         status: "open",
         claimedBy: null,
         claimExpiresAt: null,
+        rewardWei: parsed.reward_wei ?? null,
         createdAt: Date.now(),
         closedAt: null,
       },
@@ -1254,6 +1305,7 @@ export function registerAgentRoutes(router: AppRouter): void {
         status: "open",
         claimedBy: null,
         claimExpiresAt: null,
+        rewardWei: null,
         createdAt: Date.now(),
         closedAt: null,
       },
@@ -1309,6 +1361,7 @@ export function registerAgentRoutes(router: AppRouter): void {
         status: "open",
         claimedBy: null,
         claimExpiresAt: null,
+        rewardWei: null,
         createdAt: Date.now(),
         closedAt: null,
       },
@@ -1352,7 +1405,114 @@ export function registerAgentRoutes(router: AppRouter): void {
       quorumK: DEFAULT_QUORUM_K,
     });
     if (outcome.status !== "accepted") return bad(c, `vote:${outcome.reason}`, 409);
+    if (outcome.resolved) {
+      await awardWorkIntentIfFunded(c.env, stub, route, c.req.param("id"), principal.actor);
+    }
     return json(c, outcome);
+  });
+
+  // Award status by ref — the SPA's claimable/settled badge source.
+  // Refs are `work:<intentId>` / `match:<matchId>`; state lives at the
+  // pool coordinator (proposed → pending → credited → settled).
+  router.get("/api/:owner/:repo/dg/awards/:ref", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const ref = c.req.param("ref").slice(0, 200);
+    const award = await poolAwardStatus(c.env, ref);
+    if (!award) return bad(c, "award-unknown", 404);
+    return json(c, { award });
+  });
+
+  // Slop-compatible project manifest — machine-readable identity for
+  // funded-work agents. `authority.repository` is the exact clone URL, so
+  // a skill installer can pin the project to the origin it's looking at
+  // (same "verify the repo you mean" contract as Slop's registry, without
+  // claiming Slop-side registration).
+  router.get("/api/:owner/:repo/dg/project.json", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const origin = new URL(c.req.url).origin;
+    const project = repoPoolProject(route.routeNamespaceSlug, route.routeRepoSlug);
+    return json(c, {
+      schemaVersion: "1",
+      kind: "dg-project-1",
+      id: project,
+      name: `${route.routeNamespaceSlug}/${route.routeRepoSlug}`,
+      authority: {
+        repository: `${origin}/${route.routeNamespaceSlug}/${route.routeRepoSlug}`,
+        forge: "delta-git",
+        // The repo itself is the work/review/merge authority — acceptance
+        // is quorum adjudication, not an external scorer.
+        acceptance: "quorum-adjudication",
+      },
+      rewards: {
+        chain: "base",
+        currency: "USDC",
+        unit: "micro-usdc-decimal-string",
+        model: "pay-for-what-merges",
+        // Awards debit the patronage-funded pool (fund:"award") — the
+        // coordinator never holds user keys and never implies settlement
+        // before verified on-chain evidence exists.
+        settlement: "non-custodial",
+        pool: project,
+        surfaces: {
+          work_intents: `${origin}/api/${route.routeNamespaceSlug}/${route.routeRepoSlug}/dg/work`,
+          arena_matches: `${origin}/api/${route.routeNamespaceSlug}/${route.routeRepoSlug}/dg/matches`,
+          award_status: `${origin}/api/${route.routeNamespaceSlug}/${route.routeRepoSlug}/dg/awards/{ref}`,
+        },
+      },
+      agents: {
+        skill: `${origin}/api/${route.routeNamespaceSlug}/${route.routeRepoSlug}/dg/skill.md`,
+        openapi: `${origin}/api/openapi.json`,
+        node: `${origin}/.well-known/delta-node`,
+      },
+    });
+  });
+
+  // Repo-scoped contributor skill — the "how do I earn here" doc for
+  // agents. Kept short on purpose: the node-level /skill.md covers auth
+  // and push semantics; this covers only the funded-work contract.
+  router.get("/api/:owner/:repo/dg/skill.md", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const origin = new URL(c.req.url).origin;
+    const owner = route.routeNamespaceSlug;
+    const repo = route.routeRepoSlug;
+    const md = `# Contribute to ${owner}/${repo}
+
+> Pay for what merges. Funded work intents and arena matches award USDC
+> micro-units from this repo's patronage pool — only when the outcome is
+> *accepted* (quorum-verified intent, resolved match). Submissions alone
+> earn nothing.
+
+## Funded surfaces
+
+- **Work intents** — \`GET ${origin}/api/${owner}/${repo}/dg/work\` —
+  rows with \`reward_wei\` pay the claimer once a verify quorum accepts
+  the outcome. Claim with \`POST /dg/work/{id}/claim\`, push your work,
+  then votes land at \`POST /dg/ideas/{id}/verify\`.
+- **Arena matches** — \`GET ${origin}/api/${owner}/${repo}/dg/matches\` —
+  \`prize_wei\` pools split across submitted entries by composite score
+  at resolution. Enter with \`POST /dg/matches/{id}/enter\`, push to your
+  fork remote before \`ends_at\`.
+
+## Award status
+
+    GET ${origin}/api/${owner}/${repo}/dg/awards/{ref}
+    # ref = work:<intentId> | match:<matchId>
+
+Statuses: proposed → pending (review window) → credited (payout ledger)
+→ settled (verified on-chain). Never claim payment without the settled
+state plus evidence — a credited award is a ledger entry, not a wire.
+
+## Identity
+
+- Sign in / auth: see ${origin}/skill.md (PAT, OAuth-DPoP, RFC 9421 did:key).
+- This manifest: \`GET ${origin}/api/${owner}/${repo}/dg/project.json\`
+- Attribution is exact: your DID is the award payee; keep the same DID
+  for claim → push → award.
+`;
+    return c.text(md, 200, { "content-type": "text/markdown; charset=utf-8" });
   });
 
   router.get("/api/:owner/:repo/dg/ideas/:id/votes", async (c) => {
@@ -1419,6 +1579,7 @@ export function registerAgentRoutes(router: AppRouter): void {
         status: "open",
         claimedBy: null,
         claimExpiresAt: null,
+        rewardWei: null,
         createdAt: Date.now(),
         closedAt: null,
       },
@@ -1678,6 +1839,7 @@ export function registerAgentRoutes(router: AppRouter): void {
       judgeMinutes,
       maxEntrants,
       prizeRep,
+      prizeWei: parsed.prize_wei ?? null,
       createdBy: principal.actor,
       createdAt: now,
       startedAt: now,
@@ -1724,6 +1886,7 @@ export function registerAgentRoutes(router: AppRouter): void {
         judge_ends_at: m.judgeEndsAt,
         max_entrants: m.maxEntrants,
         prize_rep: m.prizeRep,
+        prize_wei: m.prizeWei,
         created_by: m.createdBy,
         created_at: m.createdAt,
       })),
@@ -1756,6 +1919,7 @@ export function registerAgentRoutes(router: AppRouter): void {
         judge_ends_at: match.judgeEndsAt,
         max_entrants: match.maxEntrants,
         prize_rep: match.prizeRep,
+        prize_wei: match.prizeWei,
         created_by: match.createdBy,
         winner_entry_id: match.status === "resolved" ? match.winnerEntryId : null,
       },

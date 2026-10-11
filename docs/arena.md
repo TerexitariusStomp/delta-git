@@ -57,16 +57,16 @@ tie-break  = higher vote share → earliest final push
 
 ## Endpoints
 
-| Route                                   | Purpose                                                                              |
-| --------------------------------------- | ------------------------------------------------------------------------------------ |
-| `POST /api/:o/:r/dg/workspaces`         | Task workspace fork (non-match)                                                      |
-| `POST /api/:o/:r/dg/matches`            | Create match `{title, spec, window_minutes, judge_minutes, max_entrants, prize_rep}` |
-| `GET  /api/:o/:r/dg/matches`            | List (`?status=`)                                                                    |
-| `GET  /api/:o/:r/dg/matches/:id`        | Detail (blind-masked until resolved/voted)                                           |
-| `POST /api/:o/:r/dg/matches/:id/enter`  | Fork + entry → `{workspace, remote, token}`                                          |
-| `POST /api/:o/:r/dg/matches/:id/vote`   | Blind vote `{entry_id}`                                                              |
-| `GET  /api/:o/:r/dg/matches/:id/entries/:eid/diff` | Entry diff vs repo head — judging exhibit (sealed while building, 409) |
-| `GET  /api/:o/:r/dg/matches/:id/bundle` | Signed provenance bundle (post-resolve)                                              |
+| Route                                              | Purpose                                                                                          |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `POST /api/:o/:r/dg/workspaces`                    | Task workspace fork (non-match)                                                                  |
+| `POST /api/:o/:r/dg/matches`                       | Create match `{title, spec, window_minutes, judge_minutes, max_entrants, prize_rep, prize_wei?}` |
+| `GET  /api/:o/:r/dg/matches`                       | List (`?status=`)                                                                                |
+| `GET  /api/:o/:r/dg/matches/:id`                   | Detail (blind-masked until resolved/voted)                                                       |
+| `POST /api/:o/:r/dg/matches/:id/enter`             | Fork + entry → `{workspace, remote, token}`                                                      |
+| `POST /api/:o/:r/dg/matches/:id/vote`              | Blind vote `{entry_id}`                                                                          |
+| `GET  /api/:o/:r/dg/matches/:id/entries/:eid/diff` | Entry diff vs repo head — judging exhibit (sealed while building, 409)                           |
+| `GET  /api/:o/:r/dg/matches/:id/bundle`            | Signed provenance bundle (post-resolve)                                                          |
 
 Pages: `/arena` (global feed), `/:owner/:repo/arena` (repo matches),
 `/:owner/:repo/arena/:id` (live match page — polls `/api/.../matches/:id`,
@@ -79,6 +79,18 @@ over the canonical serialization, same scheme as `/dg/export`): match spec,
 entries (revealed), votes, score breakdown, and the op-log slice for the
 match. Arena lifecycle events (`arena.create/enter/judging/vote/resolve`) are
 also hash-chained into the repo op-log.
+
+## Funded prize pools (prize_wei)
+
+A match may carry `prize_wei` — a USDC micro-unit amount (decimal string)
+funded through the pool coordinator's patronage lane (`fund:"award"`).
+On resolution the `arena-resolve` task posts `match:<id>` to the
+coordinator's `/award` endpoint, split across every entry that submitted a
+head, weighted by composite score (largest-remainder — exact total, no
+rounding loss). The coordinator credits each entrant's payout ledger;
+unfunded pools record `unfunded` in the op-log instead of failing the
+resolve. Award state (proposed → pending → credited → settled) is readable
+at `/api/:o/:r/dg/awards/match:<id>` — see `docs/slop-integration.md`.
 
 ## Ops notes
 

@@ -261,6 +261,138 @@ export async function poolInfer(env: Env, args: PoolInferArgs): Promise<string |
   }
 }
 
+const awardResponse = z.object({
+  ok: z.boolean().optional(),
+  status: z.string().optional(),
+  recipients: z.array(z.object({ did: z.string(), amountWei: z.string() })).optional(),
+});
+
+export type PoolAwardResult = z.infer<typeof awardResponse>;
+
+/**
+ * Post an accepted-outcome award to the pool coordinator (`/award`).
+ * Fire-and-observe: returns the coordinator's status (`credited`,
+ * `pending`) or null on unfunded/unreachable — the caller op-logs the
+ * outcome either way. The ref is the idempotency key; the coordinator
+ * rejects duplicates with 409, so retries after a resolution are safe.
+ * Money is micro-USDC as decimal strings; the pool fund must have been
+ * patronage-deposited with `fund:"award"` — awards never move repo or
+ * user funds and never imply settlement before verified on-chain
+ * evidence exists.
+ */
+export async function poolAward(
+  env: Env,
+  args: {
+    /** `dg:<owner>/<repo>` pool the award pool is funded under. */
+    project: string;
+    /** Idempotency key — `work:<intentId>` / `match:<matchId>`. */
+    ref: string;
+    /** Single recipient DID, or a score-weighted split. */
+    did?: string;
+    split?: { did: string; score: number }[];
+    /** Award total in USDC micro-units (decimal string). */
+    amountWei: string;
+    reason: "work-verified" | "arena-winner" | "merge-accepted";
+  }
+): Promise<PoolAwardResult | null> {
+  if (!computeEnabled(env)) return null;
+  if (!args.did && !(args.split && args.split.length > 0)) return null;
+  const log = createLogger(env.LOG_LEVEL, { service: "ComputePool" });
+  try {
+    const res = await fetch(coordinatorUrl(env, "/award"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${env.COMPUTE_DISPATCH_TOKEN}`,
+      },
+      body: JSON.stringify({
+        project: args.project,
+        ref: args.ref,
+        ...(args.did ? { did: args.did } : {}),
+        ...(args.split ? { split: args.split } : {}),
+        amountWei: args.amountWei,
+        reason: args.reason,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      // 402 = unfunded pool, 409 = ref already awarded — both expected
+      // states, logged at debug for the op-log trail.
+      log.debug("pool:award-unavailable", { status: res.status, ref: args.ref });
+      return null;
+    }
+    const parsed = awardResponse.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch (error) {
+    log.warn("pool:award-failed", { ref: args.ref, error: String(error) });
+    return null;
+  }
+}
+
+/**
+ * Post an award and record the coordinator's reply in the repo's op-log.
+ * `recordAward` is the DO-side `award.grant` appender — passed as a
+ * callback so this module never depends on the DO stub type. Never throws:
+ * award failure just records `unfunded`/`coordinator-unreachable`, and a
+ * total failure to record is logged, not fatal — the award already landed
+ * (or didn't) at the coordinator.
+ */
+export async function poolAwardAndRecord(
+  env: Env,
+  args: Parameters<typeof poolAward>[1] & {
+    recordAward: (record: {
+      ref: string;
+      recipients: { did: string; amountWei: string }[];
+      status: string;
+      actor: string;
+    }) => Promise<unknown>;
+    actor: string;
+  }
+): Promise<PoolAwardResult | null> {
+  const { recordAward, actor, ...award } = args;
+  const result = await poolAward(env, award);
+  const record = {
+    ref: award.ref,
+    recipients: result?.recipients ?? [],
+    status: result?.status ?? "unfunded",
+    actor,
+  };
+  await recordAward(record).catch(() => {});
+  return result;
+}
+
+const awardStatusResponse = z.object({
+  ref: z.string(),
+  status: z.string(),
+  amountWei: z.string().optional(),
+  recipients: z.array(z.object({ did: z.string(), amountWei: z.string() })).optional(),
+  project: z.string().optional(),
+  createdAt: z.number().optional(),
+});
+
+export type PoolAwardStatus = z.infer<typeof awardStatusResponse>;
+
+/**
+ * Read an award's coordinator-side status (`credited` | `pending` |
+ * settle fields as they land) by ref — the frontend's claimable/settled
+ * badge source. Null when unconfigured, unknown ref, or unreachable.
+ */
+export async function poolAwardStatus(env: Env, ref: string): Promise<PoolAwardStatus | null> {
+  if (!env.COMPUTE_COORDINATOR) return null;
+  const log = createLogger(env.LOG_LEVEL, { service: "ComputePool" });
+  try {
+    const res = await fetch(coordinatorUrl(env, `/award/${encodeURIComponent(ref)}`), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return null;
+    const parsed = awardStatusResponse.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch (error) {
+    log.warn("pool:award-status-failed", { ref, error: String(error) });
+    return null;
+  }
+}
+
 const dispatchResponse = z.object({
   results: z.array(z.object({ jobId: z.string().optional(), error: z.string().optional() })),
 });

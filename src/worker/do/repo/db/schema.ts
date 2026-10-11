@@ -148,6 +148,11 @@ export const workIntents = sqliteTable(
     status: text("status").notNull(),
     claimedBy: text("claimed_by"),
     claimExpiresAt: integer("claim_expires_at"),
+    // Optional funded reward in USDC micro-units (decimal string — wei can
+    // exceed 2^53). Set at creation; paid by the compute-pool coordinator's
+    // /award endpoint when the intent verifies — never a promise of payment,
+    // funding availability is checked at award time.
+    rewardWei: text("reward_wei"),
     createdAt: integer("created_at").notNull(),
     closedAt: integer("closed_at"),
   },
@@ -278,6 +283,11 @@ export const matches = sqliteTable(
     judgeMinutes: integer("judge_minutes").notNull(),
     maxEntrants: integer("max_entrants").notNull(),
     prizeRep: integer("prize_rep").notNull(),
+    // Optional funded prize pool in USDC micro-units (decimal string).
+    // Split across submitted entries by composite score via the pool
+    // coordinator's /award endpoint at resolution — Slop-style "pay for
+    // what merges": unfunded pools simply pay no award.
+    prizeWei: text("prize_wei"),
     createdBy: text("created_by").notNull(),
     createdAt: integer("created_at").notNull(),
     startedAt: integer("started_at"),

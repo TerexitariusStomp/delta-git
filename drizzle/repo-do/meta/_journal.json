@@ -85,6 +85,13 @@
       "when": 1791314766308,
       "tag": "0011_vengeful_quentin_quire",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791742307931,
+      "tag": "0012_slippery_demogoblin",
+      "breakpoints": true
     }
   ]
 }

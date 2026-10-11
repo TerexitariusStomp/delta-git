@@ -575,3 +575,39 @@ export async function listWorkVotesState(
 ): Promise<MergeVoteRow[]> {
   return await listMergeVotes(getDb(ctx.storage), `work:${workIntentId}`);
 }
+
+// ---------------------------------------------------------------------------
+// Award provenance — accepted outcomes that carry USDC (Slop-style "pay for
+// what merges"). The Worker posts to the pool coordinator's /award endpoint
+// after a funded intent verifies or a funded match resolves, then records
+// the coordinator's reply here so the award lands in the hash-chained
+// op-log: auditable which outcome earned what, and whether the coordinator
+// credited, queued for review, or refused (unfunded).
+// ---------------------------------------------------------------------------
+
+export async function recordAwardState(args: {
+  ctx: DurableObjectState;
+  /** Idempotency ref sent to the coordinator — `work:<id>` / `match:<id>`. */
+  ref: string;
+  /** Recipients as credited by the coordinator (empty when refused). */
+  recipients: { did: string; amountWei: string }[];
+  /** `credited` | `pending` | `unfunded` | `coordinator-unreachable`. */
+  status: string;
+  actor: string;
+}): Promise<{ status: "ok" }> {
+  const db = getDb(args.ctx.storage);
+  await appendOpLogEntry(
+    db,
+    {
+      kind: "award.grant",
+      actor: args.actor,
+      payload: {
+        ref: args.ref,
+        status: args.status,
+        recipients: args.recipients,
+      },
+    },
+    Date.now()
+  );
+  return { status: "ok" };
+}

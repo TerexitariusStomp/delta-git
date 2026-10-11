@@ -62,10 +62,13 @@ function nodeInfo(c: AppContext, nodeDid?: string, nodeKey?: JsonWebKey) {
       op_log: "hash-chained, independently verifiable audit trail",
       e2e_private_repos: "repo objects encrypted client-side; server holds ciphertext",
       compute_pool: "volunteer-compute pool (dg:{owner}/{repo}) — public repos only",
+      awards:
+        "funded work intents + arena prizes settle USDC via the pool coordinator (non-custodial) — /api/{owner}/{repo}/dg/project.json",
     },
     agents: {
       llms_txt: `${origin}/llms.txt`,
       skill_md: `${origin}/skill.md`,
+      project_json: `${origin}/api/{owner}/{repo}/dg/project.json`,
       content_negotiation: "Accept: text/markdown on any repo URL",
       mcp: `${origin}/mcp`,
       xrpc: `${origin}/xrpc`,

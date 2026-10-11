@@ -37,6 +37,7 @@ function makeMatchRow(repoId: string, overrides: Partial<MatchRow> = {}): MatchR
     judgeMinutes: 30,
     maxEntrants: 4,
     prizeRep: 25,
+    prizeWei: null,
     createdBy: "did:key:zCreator",
     createdAt: now,
     startedAt: now,
@@ -176,6 +177,40 @@ it("match lifecycle: enter → judging → blind votes → resolve", async () =>
     };
     expect(payload.settlement?.pool).toBe(7);
     expect(payload.settlement?.payouts["did:key:zVoter1"]).toBe(17);
+  });
+});
+
+it("award.grant op-log records the coordinator's reply", async () => {
+  const repoId = makeRepoId("award-oplog");
+  const id = env.REPO_DO.idFromName(repoId);
+  const getStub = () => env.REPO_DO.get(id);
+
+  await runDOWithRetry(getStub, async (instance) => {
+    const rec = await instance.recordAward({
+      ref: "match:m-abc",
+      recipients: [
+        { did: "did:key:zWinner", amountWei: "835000" },
+        { did: "did:key:zSecond", amountWei: "165000" },
+      ],
+      status: "credited",
+      actor: "arena-resolve",
+    });
+    expect(rec.status).toBe("ok");
+
+    const ops = await instance.listOpLog(-1);
+    const award = ops.find((o) => o.kind === "award.grant");
+    const payload = JSON.parse(award!.payload) as {
+      ref: string;
+      status: string;
+      recipients: { did: string; amountWei: string }[];
+    };
+    expect(payload.ref).toBe("match:m-abc");
+    expect(payload.status).toBe("credited");
+    expect(payload.recipients).toHaveLength(2);
+    expect(payload.recipients[0].amountWei).toBe("835000");
+    // Hash-chained like every op — award provenance is tamper-evident.
+    expect(award!.hash).toBeTruthy();
+    expect(award!.prevHash).toBeTruthy();
   });
 });
 

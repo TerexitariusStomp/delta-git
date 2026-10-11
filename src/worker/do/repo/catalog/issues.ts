@@ -99,6 +99,7 @@ export async function createIssueState(args: {
     status: "open",
     claimedBy: null,
     claimExpiresAt: null,
+    rewardWei: null,
     createdAt: now,
     closedAt: null,
   };

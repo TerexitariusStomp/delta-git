@@ -6,10 +6,12 @@ import { Button, SandboxLayout, StatusBadge, Table, Tag, Text } from '@harnessio
 import { PathParams } from '../../RouteDefinitions'
 import { ArenaEntryDiff } from './arena-entry-diff'
 import {
+  ArenaMatchDetail,
   ForkNode,
   useArenaMatch,
   useArenaMatches,
   useCreateIdea,
+  useDeltaAward,
   useDeltaIdeas,
   useDeltaIntents,
   useDeltaOplog,
@@ -22,6 +24,26 @@ import {
 
 const shortId = (id: string) => (id.length > 12 ? `${id.slice(0, 10)}…` : id)
 const ts = (n: number | null | undefined) => (n ? new Date(n).toLocaleString() : '—')
+
+/** Micro-USDC (6-decimal) wei string → "$X.XX" — BigInt, never float math. */
+const formatWei = (wei: string | null | undefined): string | null => {
+  if (!wei) return null
+  try {
+    const units = BigInt(wei)
+    const whole = units / 1_000_000n
+    const frac = (units % 1_000_000n).toString().padStart(6, '0').slice(0, 2)
+    return `$${whole}.${frac}`
+  } catch {
+    return null
+  }
+}
+
+/** Funded-reward badge — a USDC amount backed by the repo's award pool. */
+const WeiTag = ({ wei, label }: { wei: string | null | undefined; label?: string }) => {
+  const amount = formatWei(wei)
+  if (!amount) return null
+  return <Tag value={`${amount} USDC${label ? ` ${label}` : ''}`} />
+}
 
 function useRepoParams() {
   const { spaceId = '', repoId = '' } = useParams<PathParams>()
@@ -214,7 +236,12 @@ export function RepoDeltaArenaPage() {
                       {m.status}
                     </StatusBadge>
                   </Table.Cell>
-                  <Table.Cell>{m.prize_rep} rep</Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-cn-xs">
+                      {m.prize_rep} rep
+                      <WeiTag wei={m.prize_wei} />
+                    </div>
+                  </Table.Cell>
                   <Table.Cell>{ts(m.ends_at)}</Table.Cell>
                   <Table.Cell>{ts(m.created_at)}</Table.Cell>
                 </Table.Row>
@@ -246,6 +273,55 @@ export function RepoDeltaArenaMatchPage() {
     )
   }
   const { match, entries, blind, voted } = data
+  return (
+    <ArenaMatchView
+      spaceId={spaceId}
+      repoId={repoId}
+      matchId={matchId}
+      match={match}
+      entries={entries}
+      blind={blind}
+      voted={voted}
+      enter={enter}
+      vote={vote}
+      openDiff={openDiff}
+      setOpenDiff={setOpenDiff}
+    />
+  )
+}
+
+function ArenaMatchView({
+  spaceId,
+  repoId,
+  matchId,
+  match,
+  entries,
+  blind,
+  voted,
+  enter,
+  vote,
+  openDiff,
+  setOpenDiff
+}: {
+  spaceId: string
+  repoId: string
+  matchId: string
+  match: ArenaMatchDetail['match']
+  entries: ArenaMatchDetail['entries']
+  blind: boolean
+  voted: boolean
+  enter: ReturnType<typeof useEnterArenaMatch>
+  vote: ReturnType<typeof useVoteArenaMatch>
+  openDiff: string | null
+  setOpenDiff: (id: string | null) => void
+}) {
+  // Coordinator-side award state for the prize pool — only resolved
+  // matches with prizeWei can have one; the hook short-circuits otherwise.
+  const { data: award } = useDeltaAward(
+    spaceId,
+    repoId,
+    match.status === 'resolved' && match.prize_wei ? `match:${matchId}` : null
+  )
   // Entries stay sealed while building — diffs open once judging begins.
   const diffsVisible = match.status === 'judging' || match.status === 'resolved'
   return (
@@ -262,6 +338,14 @@ export function RepoDeltaArenaMatchPage() {
             {match.status}
           </StatusBadge>
           <Tag value={`${match.prize_rep} rep prize`} />
+          <WeiTag wei={match.prize_wei} label="pool" />
+          {award && (
+            <StatusBadge
+              variant="status"
+              theme={award.status === 'settled' ? 'success' : award.status === 'credited' ? 'info' : 'muted'}>
+              {`award ${award.status}`}
+            </StatusBadge>
+          )}
           {blind && <Tag value="blind judging" />}
           {match.status === 'open' && (
             <Button size="sm" disabled={enter.isLoading} onClick={() => enter.mutate()}>
@@ -405,16 +489,28 @@ export function RepoDeltaAgentsPage() {
   const { spaceId, repoId } = useRepoParams()
   const { data: work } = useDeltaWork(spaceId, repoId)
   const { data: ops } = useDeltaOplog(spaceId, repoId)
+  const [fundedOnly, setFundedOnly] = useState(false)
+  const visible = fundedOnly ? work?.filter(w => w.reward_wei) : work
   return (
     <SandboxLayout.Main>
       <SandboxLayout.Content>
         <Text as="h1" variant="heading-section" className="mb-cn-md">
           Agents
         </Text>
-        <Text as="h2" variant="heading-subsection" className="mb-cn-sm">
-          Work queue
-        </Text>
-        {!work?.length ? (
+        <div className="flex items-center gap-cn-sm mb-cn-sm">
+          <Text as="h2" variant="heading-subsection">
+            Work queue
+          </Text>
+          {work?.some(w => w.reward_wei) && (
+            <Button
+              variant={fundedOnly ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => setFundedOnly(v => !v)}>
+              Funded only
+            </Button>
+          )}
+        </div>
+        {!visible?.length ? (
           <Text color="foreground-3" className="mb-cn-lg">
             No open work items.
           </Text>
@@ -424,19 +520,23 @@ export function RepoDeltaAgentsPage() {
               <Table.Row>
                 <Table.Head>Item</Table.Head>
                 <Table.Head>Status</Table.Head>
+                <Table.Head>Reward</Table.Head>
                 <Table.Head>Posted by</Table.Head>
                 <Table.Head>Claimed by</Table.Head>
                 <Table.Head>Created</Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {work.map(w => (
+              {visible.map(w => (
                 <Table.Row key={w.id}>
                   <Table.Cell>{w.title}</Table.Cell>
                   <Table.Cell>
                     <StatusBadge variant="status" theme={w.status === 'closed' ? 'muted' : 'info'}>
                       {w.status}
                     </StatusBadge>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <WeiTag wei={w.reward_wei} />
                   </Table.Cell>
                   <Table.Cell>{w.created_by}</Table.Cell>
                   <Table.Cell>{w.claimed_by ?? '—'}</Table.Cell>

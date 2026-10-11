@@ -3,13 +3,14 @@ import type { RepoQueueMessageHandle, ArenaResolveQueueMessage } from "./types";
 import { createLogger, getRepoStubByDoId } from "@/worker/common";
 import { createDb } from "@/worker/db/d1/client";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal";
-import { markArenaMatchResolved } from "@/worker/db/d1/dal/arena";
+import { findArenaMatchIndex, markArenaMatchResolved } from "@/worker/db/d1/dal/arena";
 import { adjustRep } from "@/worker/db/d1/dal";
 import { metric } from "@/worker/agent/abuse";
 import { pushRefToRemote } from "@/worker/git/remote/push";
 import { VOTER_FORFEIT_PCT, VOTER_POOL_SHARE, voteWeight } from "@/shared/arena";
 import { CLEF_MODEL, clefProbability, clefScore, runClef } from "@/worker/agent/clef";
 import { diffCommitsText } from "@/worker/api/gitness/gitdata";
+import { poolAwardAndRecord, repoPoolProject } from "@/worker/compute/pool";
 
 // Arena match resolution.
 //
@@ -262,6 +263,31 @@ export async function handleArenaResolveMessage(
   }
   for (const [voter, payout] of Object.entries(payouts)) {
     await adjustRep(db, voter, payout + VOTER_PARTICIPATION_REP).catch(() => false);
+  }
+
+  // --- funded prize award (Slop-style "pay for what merges") ---------------
+  // Matches may carry prizeWei — a USDC micro-unit pool funded through the
+  // compute coordinator's patronage lane (fund:"award"). Split it across
+  // every entry that actually submitted, weighted by composite score — the
+  // coordinator's largest-remainder allocator keeps the total exact. The
+  // ref `match:<id>` is idempotent so resolve retries never double-pay.
+  // Unfunded pools record `unfunded` in the op-log instead of failing.
+  // The feed index denormalizes the owner/repo slugs the pool project
+  // name needs — cheaper than joining namespaces for the repo row here.
+  const matchIndex = await findArenaMatchIndex(db, body.matchId).catch(() => undefined);
+  if (winner && match.prizeWei && matchIndex) {
+    const split = scores
+      .filter((s) => s.autoScore > 0)
+      .map((s) => ({ did: s.entrantDid, score: Math.max(1, s.composite) }));
+    await poolAwardAndRecord(env, {
+      project: repoPoolProject(matchIndex.ownerSlug, matchIndex.repoSlug),
+      ref: `match:${body.matchId}`,
+      split,
+      amountWei: match.prizeWei,
+      reason: "arena-winner",
+      recordAward: (record) => stub.recordAward(record),
+      actor: "arena-resolve",
+    }).catch(() => null);
   }
 
   // --- merge-out: winner head → canonical remote ----------------------------

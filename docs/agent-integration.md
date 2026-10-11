@@ -113,12 +113,12 @@ The SPA registers read-only WebMCP tools (`navigator.modelContext`, via the
 browsers like Cloudflare Kitesurf/Browser Run can drive the forge without
 click simulation:
 
-| Tool                    | Backs                                        |
-| ----------------------- | -------------------------------------------- |
-| `dg_node_info`          | `GET /.well-known/delta-node`                |
-| `dg_get_repo`           | `GET /{o}/{r}` (Accept: text/markdown)       |
-| `dg_list_merge_intents` | `GET /api/{o}/{r}/dg/intents`                |
-| `dg_list_arena_matches` | `GET /api/{o}/{r}/dg/matches`                |
+| Tool                    | Backs                                  |
+| ----------------------- | -------------------------------------- |
+| `dg_node_info`          | `GET /.well-known/delta-node`          |
+| `dg_get_repo`           | `GET /{o}/{r}` (Accept: text/markdown) |
+| `dg_list_merge_intents` | `GET /api/{o}/{r}/dg/intents`          |
+| `dg_list_arena_matches` | `GET /api/{o}/{r}/dg/matches`          |
 
 ## 2e. Adjacent agent infra
 
@@ -147,10 +147,20 @@ POST /api/:o/:r/dg/intents/:id/run    attempt auto-merge
 POST /api/:o/:r/dg/intents/:id/vote   quorum vote on a conflicted intent
 GET  /api/:o/:r/dg/context/:sha       file context for patching
 POST /api/:o/:r/dg/import             import an external commit/PR
-POST /api/:o/:r/dg/work               claimable work intents
+POST /api/:o/:r/dg/work               claimable work intents (optional reward_wei)
 POST /api/:o/:r/dg/ideas              free-text idea (non-coder lane)
+GET  /api/:o/:r/dg/awards/:ref        award status (work:<id> | match:<id>)
+GET  /api/:o/:r/dg/project.json       Slop-compatible project manifest
+GET  /api/:o/:r/dg/skill.md           repo-scoped contributor skill
 GET  /api/:o/:r/dg/export             signed provenance bundle
 ```
+
+**Funded work (Slop model).** Work intents may carry `reward_wei`
+(micro-USDC) paid to `claimed_by` when the verify quorum accepts; arena
+matches may carry `prize_wei` split by composite score at resolution.
+Awards debit a patronage-funded pool at the compute coordinator —
+accepted outcomes earn, submissions alone don't. Full semantics:
+`docs/slop-integration.md`.
 
 Divergence is never rejected: pushes to a moved base land as
 `refs/delta/<oid>` + a merge intent; the engine auto-merges, conflicts go to

@@ -136,6 +136,7 @@ import {
   listWorkIntentsState,
   listWorkVotesState,
   putRepoSecretState,
+  recordAwardState,
   setCommitStatusState,
   updateWorkIntentResultState,
 } from "./catalog/agentApi";
@@ -711,6 +712,21 @@ export class RepoDurableObject extends DurableObject {
   public async listWorkVotes(workIntentId: string) {
     await this.ensureAccessAndAlarm();
     return await listWorkVotesState(this.ctx, workIntentId);
+  }
+
+  /**
+   * Record a pool-coordinator award outcome in the op-log. Called by the
+   * Worker after it posts to /award — the coordinator reply (credited,
+   * pending, refused) becomes auditable repo history.
+   */
+  public async recordAward(args: {
+    ref: string;
+    recipients: { did: string; amountWei: string }[];
+    status: string;
+    actor: string;
+  }) {
+    await this.ensureAccessAndAlarm();
+    return await recordAwardState({ ctx: this.ctx, ...args });
   }
 
   // --- issues (GitHub-shaped tracker over materialized work intents) ------
