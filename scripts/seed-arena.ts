@@ -127,7 +127,7 @@ function git(args: string[], cwd: string, env: Record<string, string> = {}) {
 function pushWorkspace(remote: string, token: string, seedTag: string) {
   const dir = mkdtempSync(join(tmpdir(), "dg-ws-"));
   try {
-    const authed = remote.replace("https://", `https://x:${token}@`);
+    const authed = remote.replace("https://", `https://x:${encodeURIComponent(token)}@`);
     git(["clone", authed, "."], dir, { GIT_TERMINAL_PROMPT: "0" });
     const files = [
       `<h1>${seedTag}</h1>`,
@@ -157,6 +157,43 @@ function pushWorkspace(remote: string, token: string, seedTag: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// `cf.artifacts.repo.pushed` subscriptions are scoped to a single Artifacts
+// repo; the worker creates them via CF_API_TOKEN, but deployments without
+// that credential need an ops backfill — wrangler's OAuth session works.
+// Set DG_SUBSCRIBE_EVENTS=1 to subscribe each repo this script learns about.
+const SUBSCRIBE_EVENTS = process.env.DG_SUBSCRIBE_EVENTS === "1";
+
+function subscribeArtifactsRepo(artifactsName: string) {
+  if (!SUBSCRIBE_EVENTS) return;
+  try {
+    execFileSync(
+      "npx",
+      [
+        "wrangler@4.149.0",
+        "queues",
+        "subscription",
+        "create",
+        "dg-artifacts-events",
+        "--source",
+        "artifacts.repo",
+        "--events",
+        "pushed",
+        "--name",
+        `dg-push-${artifactsName}`,
+        "--source-namespace",
+        "delta-git",
+        "--source-repo-name",
+        artifactsName,
+      ],
+      { stdio: "pipe" }
+    );
+    console.log(`  subscribed: ${artifactsName}`);
+  } catch (e) {
+    // Duplicate subscriptions are fine; anything else is non-fatal.
+    console.log(`  subscribe ${artifactsName}: ${String(e).slice(0, 120)}`);
+  }
+}
+
 async function main() {
   console.log(`seed-arena: base=${BASE} repo=${OWNER}/${REPO} seed=${SEED}`);
   const basic = PAT ? `Basic ${Buffer.from(`${OWNER}:${PAT}`).toString("base64")}` : "";
@@ -168,7 +205,11 @@ async function main() {
   if (cookie) {
     const res = await fetch(`${BASE}/auth/api/repositories`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: `dg_session=${cookie}` },
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: `__Host-dg_session=${cookie}`,
+        Origin: BASE,
+      },
       body: JSON.stringify({
         namespaceSlug: OWNER,
         slug: REPO,
@@ -178,6 +219,9 @@ async function main() {
     });
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     console.log(`  repo: ${res.status}`, res.status >= 400 ? data : "");
+    const remote = data.artifactsRemote as string | undefined;
+    const artifactsName = remote?.match(/\/([^/]+)\.git$/)?.[1];
+    if (artifactsName) subscribeArtifactsRepo(artifactsName);
   } else {
     console.log("  repo: assuming it exists (set DG_COOKIE to create it)");
   }
@@ -186,6 +230,14 @@ async function main() {
   const agents = [];
   for (let i = 0; i < ENTRANTS; i++) agents.push(await registerAgent(i));
   console.log(`  agents: ${agents.map((a) => a.did.slice(0, 24)).join(", ")}`);
+
+  // The /dg/* API resolves repos route-cache-only; fresh repos need the
+  // async route-cache-sync task to land first (~40s on prod).
+  for (let i = 0; i < 90; i++) {
+    const probe = await api(`/api/${OWNER}/${REPO}/dg/matches`);
+    if (probe.status !== 404) break;
+    await sleep(1000);
+  }
 
   // 3. Match.
   const match = await api(
@@ -223,6 +275,9 @@ async function main() {
       continue;
     }
     console.log(`  enter ${i}: ${workspace}`);
+    // The pushed-event subscription must exist before the push lands or the
+    // workspace's head never reaches judging.
+    if (workspace) subscribeArtifactsRepo(workspace);
     pushWorkspace(remote, token, `hero-${SEED}-${i}`);
   }
 

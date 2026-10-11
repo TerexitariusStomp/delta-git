@@ -61,8 +61,12 @@ async function mintReadToken(
   if (!artifacts) return null;
   const repo = await artifacts.get(artifactsName);
   const token = await repo.createToken("read", 900);
+  // The `get()` RPC handle doesn't expose `remote` (only `create()`/`fork()`
+  // results carry it), so rebuild it — the host prefix is the account id and
+  // the path is `<namespace>/<name>.git`, matching what the REST API returns.
+  const remote = `https://${env.CF_ACCOUNT_ID}.artifacts.cloudflare.net/git/delta-git/${artifactsName}.git`;
   // Bearer auth is the recommended header for art_v1_* tokens.
-  return { remote: repo.remote, auth: `Bearer ${token.plaintext}` };
+  return { remote, auth: `Bearer ${token.plaintext}` };
 }
 
 async function handleCanonicalPush(
@@ -162,7 +166,9 @@ export async function handleArtifactsEventBatch(
       } else {
         outcome = await handleCanonicalPush(env, repoName, after, eventId, log);
       }
-      log.debug("artifacts:event-handled", { repoName, outcome });
+      // Event outcomes are info-level: a silent early-return strands
+      // workspace heads and there is no other signal to detect it by.
+      log.info("artifacts:event-handled", { repoName, outcome });
       message.ack();
     } catch (e) {
       log.warn("artifacts:event-error", { error: String(e) });
