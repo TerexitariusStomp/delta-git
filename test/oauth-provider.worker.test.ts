@@ -7,6 +7,7 @@ import { env, exports as workerExports } from "cloudflare:workers";
 
 import { ensureD1Migrations } from "./util/d1Setup";
 import { setupRepoForTests } from "./util/repoSeed";
+import { hasOAuthScope, OAUTH_SCOPES } from "@/worker/auth/oauth";
 
 const ORIGIN = "https://example.com";
 const REDIRECT_URI = "https://client.example/cb";
@@ -178,6 +179,16 @@ describe("oauth provider", () => {
     expect(body.issuer).toBe(ORIGIN);
     expect(body.authorization_endpoint).toBe(`${ORIGIN}/oauth/authorize`);
     expect(body.token_endpoint).toBe(`${ORIGIN}/oauth/token`);
+    // Poppy discovery: agents confirm protocol support via poppy_domains
+    // and the advertised poppy:* scope aliases.
+    expect(body.poppy_domains).toEqual(["example.com"]);
+    expect(body.scopes_supported).toEqual(expect.arrayContaining(["poppy:read", "poppy:write"]));
+    // The aliases are functional, not just advertised: poppy:read satisfies
+    // read, poppy:write subsumes read and satisfies write.
+    expect(hasOAuthScope(["poppy:read"], OAUTH_SCOPES.REPO_READ)).toBe(true);
+    expect(hasOAuthScope(["poppy:read"], OAUTH_SCOPES.REPO_WRITE)).toBe(false);
+    expect(hasOAuthScope(["poppy:write"], OAUTH_SCOPES.REPO_WRITE)).toBe(true);
+    expect(hasOAuthScope(["poppy:write"], OAUTH_SCOPES.REPO_READ)).toBe(true);
 
     const resource = await request("/.well-known/oauth-protected-resource");
     expect(resource.status).toBe(200);

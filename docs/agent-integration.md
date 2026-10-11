@@ -82,6 +82,60 @@ bearer clients.
 PATs keep working during migration — `DG_PAT`/`DG_USER` env auth and
 `git`-style Basic credentials are unchanged.
 
+## 2c. Personal Agent Protocol (Poppy, draft 0.1)
+
+delta-git publishes a Poppy discovery descriptor — personal agents
+([Sierra/Meta spec](https://personalagentprotocol.org); Cloudflare is a
+design partner) can resolve the forge and onboard through the standard
+OAuth lane, no PAT copy-paste:
+
+```
+GET /.well-known/poppy.json     → descriptor: org, auth.issuer, apis, web
+GET /.well-known/oauth-authorization-server
+                                → RFC 8414 + `poppy_domains` field
+```
+
+- `apis` advertises the OpenAPI surface and `/mcp` — the same endpoints
+  every other client uses.
+- `auth.direct` declares `poppy:read`/`poppy:write`, registered scope
+  aliases that satisfy `repo:read`/`repo:write` gates everywhere.
+- Session tokens are already DPoP-bound (per spec) via the `/oauth/token`
+  wrapper; CIMD (URL-as-client-id) is enabled for client registration.
+
+Not yet implemented (draft stabilization): the RFC 7523 JWT-bearer session
+grant, `web.browser_session_endpoint`, `device`/`mediated` sign-in (the
+did:key challenge is a natural `mediated` mapping once the draft settles).
+
+## 2d. WebMCP (agent-capable browsers)
+
+The SPA registers read-only WebMCP tools (`navigator.modelContext`, via the
+`webmcp-core` polyfill — inert on browsers without support) so agent
+browsers like Cloudflare Kitesurf/Browser Run can drive the forge without
+click simulation:
+
+| Tool                    | Backs                                        |
+| ----------------------- | -------------------------------------------- |
+| `dg_node_info`          | `GET /.well-known/delta-node`                |
+| `dg_get_repo`           | `GET /{o}/{r}` (Accept: text/markdown)       |
+| `dg_list_merge_intents` | `GET /api/{o}/{r}/dg/intents`                |
+| `dg_list_arena_matches` | `GET /api/{o}/{r}/dg/matches`                |
+
+## 2e. Adjacent agent infra
+
+- **x402 / Monetization Gateway**: the compute-pool coordinator
+  (`coordinator.widespread.fyi`) settles paid adjudication jobs over EIP-3009
+  `transferWithAuthorization` (Base USDC) — the same HTTP-402 flow
+  Cloudflare's gateway fronts. `X402_FACILITATOR` points at any
+  x402-compatible facilitator.
+- **Clef**: `@cf/cloudflare/clef-flash` occupies a second adjudication seat
+  (structured verdict on whether a candidate resolution preserves both
+  sides' intent) and the arena judge signal (spec-fit scoring of entrant
+  diffs). Both degrade gracefully — absent model signal is an abstain, not
+  a failure.
+- **cf CLI**: Cloudflare's agentic CLI can drive deploy/ops against this
+  worker (`wrangler`/`cf` both work); the worker config is declarative in
+  `wrangler.jsonc`.
+
 ## 3. Signed-envelope REST (Devin Desktop, `dgit`)
 
 The agent-era surface. Key calls:

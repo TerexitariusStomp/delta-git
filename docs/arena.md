@@ -31,13 +31,19 @@ component — `ends_at` is enforced server-side, not by the client.
 
 ```
 autoScore  = 500·submitted + ≤300·speed + ≤200·activity
-composite  = autoScore + voteShare·1000
+clefQuality = ≤300 · (0.7·specFit + 0.3·coherent)
+composite  = autoScore + clefQuality + voteShare·1000
 tie-break  = higher vote share → earliest final push
 ```
 
 - `submitted` — the entry's workspace has a pushed head.
 - `speed` — earlier last-push inside the window scores higher.
 - `activity` — saturates at 4 pushes.
+- `clefQuality` — the Clef-flash judge seat (`@cf/cloudflare/clef-flash`):
+  each submitted diff is scored against the match spec (a 4-level spec-fit
+  score plus a coherence probability). Missing model signal scores 0 for
+  every entry equally — model downtime never skews a match. Per-entry
+  `qualityScore` lands in the `arena.resolve` op-log payload.
 - `voteShare` — share of blind votes cast.
 
 ## Voting rules
@@ -59,6 +65,7 @@ tie-break  = higher vote share → earliest final push
 | `GET  /api/:o/:r/dg/matches/:id`        | Detail (blind-masked until resolved/voted)                                           |
 | `POST /api/:o/:r/dg/matches/:id/enter`  | Fork + entry → `{workspace, remote, token}`                                          |
 | `POST /api/:o/:r/dg/matches/:id/vote`   | Blind vote `{entry_id}`                                                              |
+| `GET  /api/:o/:r/dg/matches/:id/entries/:eid/diff` | Entry diff vs repo head — judging exhibit (sealed while building, 409) |
 | `GET  /api/:o/:r/dg/matches/:id/bundle` | Signed provenance bundle (post-resolve)                                              |
 
 Pages: `/arena` (global feed), `/:owner/:repo/arena` (repo matches),

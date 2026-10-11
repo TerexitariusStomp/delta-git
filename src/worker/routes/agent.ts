@@ -34,6 +34,7 @@ import { applyUnifiedPatch } from "@/worker/agent/patch";
 import { scanTextForSecrets } from "@/worker/agent/secretscan";
 import { attemptMerge, mergeDryRun } from "@/worker/merge/engine";
 import { evaluateDeliveryGates } from "@/worker/api/gitness/delivery";
+import { diffCommitsText } from "@/worker/api/gitness/gitdata";
 import { writeServerPack } from "@/worker/merge/packWriter";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { encryptRepoSecret } from "@/worker/agent/secrets";
@@ -1766,6 +1767,31 @@ export function registerAgentRoutes(router: AppRouter): void {
         match.status === "resolved"
           ? votes.map((v) => ({ voter_did: v.voterDid, entry_id: v.entryId, stake: v.stake }))
           : [],
+    });
+  });
+
+  // Per-candidate diff — the judging exhibit. Entries stay sealed while the
+  // match is building (leaking in-progress work would let competitors copy
+  // each other); once judging opens the diff is the public exhibit. Blind
+  // judging hides WHO authored, never WHAT the change is.
+  router.get("/api/:owner/:repo/dg/matches/:id/entries/:entryId/diff", async (c) => {
+    const route = await resolveRepo(c);
+    if (!route) return bad(c, "not-found", 404);
+    const stub = getRepoStub(c.env, route.doName);
+    const detail = await stub.getMatch(c.req.param("id"));
+    if (!detail) return bad(c, "match-not-found", 404);
+    const { match, entries } = detail;
+    if (match.status === "open" || match.status === "building") {
+      return bad(c, "entries-sealed", 409);
+    }
+    const entry = entries.find((e) => e.id === c.req.param("entryId"));
+    if (!entry?.headOid) return bad(c, "entry-not-found", 404);
+
+    const { head, refs } = await stub.getHeadAndRefs();
+    const baseOid = refs.find((r) => r.name === head?.target)?.oid;
+    const body = await diffCommitsText(c.env, route.doName, baseOid, entry.headOid);
+    return new Response(body, {
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   });
 

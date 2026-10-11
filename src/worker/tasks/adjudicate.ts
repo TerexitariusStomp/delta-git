@@ -12,6 +12,7 @@ import { findRepositoryById } from "@/worker/db/d1/dal/repositories";
 import { findNamespaceById } from "@/worker/db/d1/dal/namespaces";
 import { insertEvalSample } from "@/worker/db/d1/dal/evalCorpus";
 import { poolInfer, repoPoolProject } from "@/worker/compute/pool";
+import { CLEF_MODEL, clefProbability, runClef } from "@/worker/agent/clef";
 
 // Workers-AI adjudicator seat.
 //
@@ -24,8 +25,12 @@ import { poolInfer, repoPoolProject } from "@/worker/compute/pool";
 
 const td = new TextDecoder();
 const WORKERS_AI_DID_PUBKEY = "00".repeat(32); // deterministic platform did
+const CLEF_DID_PUBKEY = "11".repeat(32); // clef verdict seat
 const DEFAULT_QUORUM_K = 3;
 const MODEL = "@cf/meta/llama-3.1-8b-instruct";
+// A Clef verdict needs every preservation question to clear this bar
+// before its seat votes for the digest; below it the seat abstains.
+const CLEF_APPROVAL_FLOOR = 0.55;
 
 function b64(bytes: Uint8Array): string {
   let bin = "";
@@ -116,6 +121,10 @@ export async function runWorkersAiAdjudication(
   // Eval-corpus sample — inputs collected alongside the merge loop so the
   // offline harness can replay real conflicts. Public repos only.
   const corpusInputs: { path: string; ours: string; theirs: string }[] = [];
+  // Clef verdict seat inputs — the merged text per path, kept alongside the
+  // b64 resolution payload so the seat can evaluate preservation after the
+  // digest is minted.
+  const mergedByPath: Record<string, { ours: string; theirs: string; merged: string }> = {};
   let unresolved = 0;
   let poolMerged = 0;
 
@@ -169,6 +178,7 @@ export async function runWorkersAiAdjudication(
         unresolved++;
         continue;
       }
+      mergedByPath[path] = { ours, theirs, merged };
       files[path] = { content_b64: b64(new TextEncoder().encode(merged + "\n")) };
     } catch (error) {
       log.warn("adjudicate:ai-failed", { path, error: String(error) });
@@ -206,6 +216,83 @@ export async function runWorkersAiAdjudication(
     status: outcome.status,
     resolved: outcome.status === "accepted" ? outcome.resolved : false,
   });
+
+  // --- Clef verdict seat ----------------------------------------------------
+  // A second, independent quorum seat: a different model family evaluates
+  // whether the resolution preserves both sides' intent. Approves → votes
+  // for the same digest (real byzantine diversity beats one model judging
+  // its own output); unconvinced or unavailable → abstains silently. The
+  // seat never blocks resolution — its absence is just one open seat.
+  const mergedPaths = Object.keys(mergedByPath);
+  if (mergedPaths.length > 0) {
+    const verdictState = {
+      task: "merge-resolution-verdict",
+      paths: mergedPaths.slice(0, 5).map((path) => ({
+        path,
+        ours: mergedByPath[path].ours.slice(0, 1500),
+        theirs: mergedByPath[path].theirs.slice(0, 1500),
+        merged: mergedByPath[path].merged.slice(0, 1500),
+      })),
+    };
+    const answers = await runClef(env, verdictState, {
+      preserves_ours: {
+        type: "noul",
+        instructions: "The merged result preserves the intent and changes of the OURS version.",
+      },
+      preserves_theirs: {
+        type: "noul",
+        instructions: "The merged result preserves the intent and changes of the THEIRS version.",
+      },
+      coherent: {
+        type: "noul",
+        instructions:
+          "The merged result is syntactically coherent and contains no conflict markers or duplicated content.",
+      },
+    });
+    const pOurs = clefProbability(answers, "preserves_ours");
+    const pTheirs = clefProbability(answers, "preserves_theirs");
+    const pCoherent = clefProbability(answers, "coherent");
+    const approved =
+      pOurs !== undefined &&
+      pTheirs !== undefined &&
+      pCoherent !== undefined &&
+      Math.min(pOurs, pTheirs, pCoherent) >= CLEF_APPROVAL_FLOOR;
+    if (approved) {
+      const clefRegistered = await registerAgent(db, {
+        pubkeyHex: CLEF_DID_PUBKEY,
+        label: "clef-flash",
+        kind: "clef",
+      }).catch(() => undefined);
+      const clefDid =
+        clefRegistered && "did" in clefRegistered
+          ? clefRegistered.did
+          : `did:dg:${CLEF_DID_PUBKEY}`;
+      const fmt = (p: number) => p.toFixed(2);
+      const clefOutcome = await stub
+        .castMergeVote({
+          intentId,
+          voterDid: clefDid,
+          resolutionDigest: digest,
+          rationale: `${CLEF_MODEL} verdict p(ours)=${fmt(pOurs)} p(theirs)=${fmt(pTheirs)} p(coherent)=${fmt(pCoherent)}`,
+          signature: `clef:${digest.slice(0, 16)}`,
+          quorumK: DEFAULT_QUORUM_K,
+        })
+        .catch(() => undefined);
+      log.info("adjudicate:clef-vote", {
+        intentId,
+        status: clefOutcome?.status ?? "unavailable",
+        resolved: clefOutcome?.status === "accepted" ? clefOutcome.resolved : false,
+      });
+    } else {
+      log.debug("adjudicate:clef-abstain", {
+        intentId,
+        pOurs,
+        pTheirs,
+        pCoherent,
+      });
+    }
+  }
+
   // Eval-corpus write — only when the repo is public (same visibility gate
   // as pool dispatch; private/E2E content never leaves the DO). The row is
   // the offline harness's replay material: conflict inputs + merged output

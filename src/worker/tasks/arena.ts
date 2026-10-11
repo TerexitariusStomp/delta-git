@@ -8,6 +8,8 @@ import { adjustRep } from "@/worker/db/d1/dal";
 import { metric } from "@/worker/agent/abuse";
 import { pushRefToRemote } from "@/worker/git/remote/push";
 import { VOTER_FORFEIT_PCT, VOTER_POOL_SHARE, voteWeight } from "@/shared/arena";
+import { CLEF_MODEL, clefProbability, clefScore, runClef } from "@/worker/agent/clef";
+import { diffCommitsText } from "@/worker/api/gitness/gitdata";
 
 // Arena match resolution.
 //
@@ -17,10 +19,14 @@ import { VOTER_FORFEIT_PCT, VOTER_POOL_SHARE, voteWeight } from "@/shared/arena"
 // reputation deltas, and pushes the winning head to the canonical remote
 // when the repo is Artifacts-backed.
 //
-// Composite = autoScore (0..1000) + weightedVoteShare*1000.
+// Composite = autoScore (0..1000) + clefQuality (0..300) + weightedVoteShare*1000.
 //   autoScore: submitted (500 for a pushed head) + speed (≤300, earlier
 //   last-push inside the window scores higher) + activity (≤200, saturates
 //   at 4 pushes). Tie-break: higher vote share → earliest final push.
+//   clefQuality: the Clef-flash judge seat — the entrant's diff is scored
+//   against the match spec (spec-fit on a 4-level score + a coherence
+//   probability). Missing model signal scores 0 for every entry equally,
+//   so model downtime never skews a match.
 //
 // Stake settlement (Confetti-shaped, rep instead of money): each vote
 // escrowed `stake` rep at vote time with weight stake·(1+bonus·remaining/
@@ -32,6 +38,10 @@ import { VOTER_FORFEIT_PCT, VOTER_POOL_SHARE, voteWeight } from "@/shared/arena"
 const SCORE_SUBMITTED = 500;
 const SCORE_SPEED_MAX = 300;
 const SCORE_ACTIVITY_MAX = 200;
+const SCORE_QUALITY_MAX = 300;
+// Judged entries per match — the diff call is one object-tree walk each.
+const JUDGE_MAX_ENTRIES = 8;
+const JUDGE_DIFF_MAX_CHARS = 8000;
 const ENTRANT_PARTICIPATION_REP = 5;
 const VOTER_PARTICIPATION_REP = 1;
 
@@ -39,10 +49,64 @@ interface EntryScore {
   entryId: string;
   entrantDid: string;
   autoScore: number;
+  qualityScore: number;
   voteCount: number;
   voteWeight: number;
   composite: number;
   lastPushAt: number;
+}
+
+/**
+ * Clef judge seat: scores each submitted entry against the match spec.
+ * The state is the spec plus the entrant's full diff (empty-tree base —
+ * arena entries are whole submissions, and the total is what satisfies a
+ * spec like "build a landing page with X"). Returns entryId → 0..1 fit,
+ * with absent/errored entries simply missing from the map.
+ */
+async function judgeEntries(
+  env: Env,
+  match: { spec: string },
+  doName: string,
+  entries: { id: string; headOid: string | null }[]
+): Promise<Map<string, number>> {
+  const fits = new Map<string, number>();
+  const submitted = entries.filter((e) => e.headOid).slice(0, JUDGE_MAX_ENTRIES);
+  for (const entry of submitted) {
+    const diff = await diffCommitsText(env, doName, undefined, entry.headOid!).catch(
+      () => undefined
+    );
+    if (!diff) continue;
+    const answers = await runClef(
+      env,
+      {
+        spec: match.spec.slice(0, 4000),
+        submission_diff: diff.slice(0, JUDGE_DIFF_MAX_CHARS),
+      },
+      {
+        spec_fit: {
+          type: "score",
+          instructions: "How well does the submission satisfy the match spec?",
+          criteria: [
+            "Off-spec or no relevant change",
+            "Partially addresses the spec",
+            "Mostly satisfies the spec",
+            "Fully satisfies the spec",
+          ],
+        },
+        coherent: {
+          type: "noul",
+          instructions:
+            "The submission is coherent, well-formed, and free of placeholder or broken content.",
+        },
+      }
+    );
+    const specFit = clefScore(answers, "spec_fit", 4);
+    const coherent = clefProbability(answers, "coherent");
+    if (specFit !== undefined || coherent !== undefined) {
+      fits.set(entry.id, 0.7 * (specFit ?? 0) + 0.3 * (coherent ?? 0));
+    }
+  }
+  return fits;
 }
 
 export async function handleArenaResolveMessage(
@@ -86,6 +150,12 @@ export async function handleArenaResolveMessage(
     weights.set(vote.entryId, acc);
   }
 
+  // Clef judge seat — scored once per match against the entrant diffs.
+  // `match.doName` is the object-store id the diff walker reads against.
+  const judgeFits = await judgeEntries(env, match, match.doName, entries).catch(
+    () => new Map<string, number>()
+  );
+
   const scores: EntryScore[] = entries.map((entry) => {
     let auto = 0;
     if (entry.headOid) auto += SCORE_SUBMITTED;
@@ -95,18 +165,27 @@ export async function handleArenaResolveMessage(
       auto += Math.round((remaining / windowMs) * SCORE_SPEED_MAX);
     }
     auto += Math.min(entry.pushCount, 4) * (SCORE_ACTIVITY_MAX / 4);
+    const quality = Math.round((judgeFits.get(entry.id) ?? 0) * SCORE_QUALITY_MAX);
     const agg = weights.get(entry.id) ?? { weight: 0, count: 0 };
     const voteShare = totalWeight > 0 ? agg.weight / totalWeight : 0;
     return {
       entryId: entry.id,
       entrantDid: entry.entrantDid,
       autoScore: Math.round(auto),
+      qualityScore: quality,
       voteCount: agg.count,
       voteWeight: Math.round(agg.weight * 100) / 100,
-      composite: Math.round(auto + voteShare * 1000),
+      composite: Math.round(auto + quality + voteShare * 1000),
       lastPushAt: entry.lastPushAt ?? 0,
     };
   });
+  if (judgeFits.size > 0) {
+    log.info("arena-resolve:clef-judged", {
+      matchId: body.matchId,
+      model: CLEF_MODEL,
+      judged: judgeFits.size,
+    });
+  }
 
   scores.sort((a, b) => {
     if (b.composite !== a.composite) return b.composite - a.composite;
@@ -153,6 +232,7 @@ export async function handleArenaResolveMessage(
     scores: scores.map((s) => ({
       entryId: s.entryId,
       autoScore: s.autoScore,
+      qualityScore: s.qualityScore,
       voteCount: s.voteCount,
       voteWeight: s.voteWeight,
     })),

@@ -1145,7 +1145,13 @@ export class RepoDurableObject extends DurableObject {
   public async resolveMatch(args: {
     matchId: string;
     winnerEntryId: string | null;
-    scores: { entryId: string; autoScore: number; voteCount: number; voteWeight?: number }[];
+    scores: {
+      entryId: string;
+      autoScore: number;
+      qualityScore?: number;
+      voteCount: number;
+      voteWeight?: number;
+    }[];
     settlement?: MatchSettlement;
     actor: string;
   }) {

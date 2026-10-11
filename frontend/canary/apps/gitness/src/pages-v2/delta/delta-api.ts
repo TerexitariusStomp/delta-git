@@ -20,6 +20,23 @@ async function dgFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body
 }
 
+/** Text variant — unified diffs and other non-JSON payloads. */
+async function dgFetchText(path: string, init?: RequestInit): Promise<string> {
+  const res = await fetch(path, { credentials: 'same-origin', ...init })
+  const body = await res.text()
+  if (!res.ok) {
+    const parsed = (() => {
+      try {
+        return JSON.parse(body) as { error?: string; message?: string }
+      } catch {
+        return null
+      }
+    })()
+    throw new Error(parsed?.error ?? parsed?.message ?? `request failed: ${res.status}`)
+  }
+  return body
+}
+
 const dgPath = (spaceId: string, repoId: string) => `/api/${spaceId}/${repoId}/dg`
 
 // --- types (mirror the worker JSON shapes) -----------------------------------
@@ -213,6 +230,21 @@ export const useArenaMatches = (spaceId: string, repoId: string) =>
 export const useArenaMatch = (spaceId: string, repoId: string, matchId: string) =>
   useQuery(['delta', 'match', spaceId, repoId, matchId], () =>
     dgFetch<ArenaMatchDetail>(`${dgPath(spaceId, repoId)}/matches/${matchId}`)
+  )
+
+/** Unified diff of one match entry against the repo head — the judging
+ *  exhibit. Server seals entries while the match builds; only call when the
+ *  match is judging or resolved. */
+export const useArenaEntryDiff = (
+  spaceId: string,
+  repoId: string,
+  matchId: string,
+  entryId: string | null
+) =>
+  useQuery(
+    ['delta', 'match', spaceId, repoId, matchId, 'entry-diff', entryId],
+    () => dgFetchText(`${dgPath(spaceId, repoId)}/matches/${matchId}/entries/${entryId}/diff`),
+    { enabled: !!entryId }
   )
 
 // --- mutations -----------------------------------------------------------------

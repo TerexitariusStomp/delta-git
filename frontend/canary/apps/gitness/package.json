@@ -55,6 +55,7 @@
     "react-i18next": "^15.1.1",
     "react-router-dom": "^6.26.0",
     "tinykeys": "4.0.1",
+    "webmcp-core": "1.0.0",
     "yaml": "^2.5.0",
     "zod": "^4.0.0",
     "zustand": "^4.5.4"

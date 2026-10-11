@@ -16,6 +16,7 @@ import { registerDocsRoutes } from "./routes/docs";
 import { registerMcpRoutes } from "./routes/mcp";
 import { registerHermesRoutes, ISOLATION_HEADERS } from "./routes/hermes";
 import { registerOAuthProviderRoutes } from "./routes/oauthProvider";
+import { registerPoppyRoutes } from "./routes/poppy";
 import { registerGitnessApi } from "./api/gitness";
 import { registerNpmRegistryRoutes } from "./routes/npmRegistry";
 import { registerDidRoutes } from "./routes/did";
@@ -106,6 +107,8 @@ registerFeedRoutes(app);
 // Agent-readable surface — /.well-known/delta-node, /llms.txt, /skill.md,
 // and `Accept: text/markdown` repo cards (falls through to UI otherwise).
 registerAgentSurfaceRoutes(app);
+// Poppy (Personal Agent Protocol) discovery descriptor.
+registerPoppyRoutes(app);
 
 // Functional legacy endpoints (raw blobs, refs JSON, site builds) — before
 // the SPA fallback so they keep winning their old paths.

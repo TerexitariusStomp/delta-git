@@ -36,12 +36,20 @@ export const OAUTH_SCOPES = {
   REPO_WRITE: "repo:write",
   /** refresh tokens */
   OFFLINE: "offline_access",
+  /** Poppy (Personal Agent Protocol) vocabulary — a personal agent asks for
+   *  the protocol's scope names; they alias the repo scopes so a spec-shaped
+   *  authorize request works unchanged. */
+  POPPY_READ: "poppy:read",
+  /** write alias — subsumes POPPY_READ like repo:write subsumes repo:read */
+  POPPY_WRITE: "poppy:write",
 } as const;
 
 export const OAUTH_SCOPES_SUPPORTED: string[] = [
   OAUTH_SCOPES.REPO_READ,
   OAUTH_SCOPES.REPO_WRITE,
   OAUTH_SCOPES.OFFLINE,
+  OAUTH_SCOPES.POPPY_READ,
+  OAUTH_SCOPES.POPPY_WRITE,
 ];
 
 /** What the consent page shows for each scope. */
@@ -49,6 +57,8 @@ export const OAUTH_SCOPE_DESCRIPTIONS: Record<string, string> = {
   [OAUTH_SCOPES.REPO_READ]: "Read and clone repositories you can access",
   [OAUTH_SCOPES.REPO_WRITE]: "Push to repositories and create or change content",
   [OAUTH_SCOPES.OFFLINE]: "Stay connected without re-authorizing",
+  [OAUTH_SCOPES.POPPY_READ]: "Read your repositories and forge data (Poppy agent)",
+  [OAUTH_SCOPES.POPPY_WRITE]: "Push and act on repositories for you (Poppy agent)",
 };
 
 /**
@@ -68,15 +78,21 @@ export interface OAuthTokenProps {
   namespace?: string;
 }
 
-/** Scope check with write⊃read subsumption: a writer can always read. */
+/** Scope check with write⊃read subsumption: a writer can always read.
+ *  poppy:* aliases satisfy the matching repo scope. */
 export function hasOAuthScope(
   scopes: string[],
   required: typeof OAUTH_SCOPES.REPO_READ | typeof OAUTH_SCOPES.REPO_WRITE
 ): boolean {
   if (required === OAUTH_SCOPES.REPO_READ) {
-    return scopes.includes(OAUTH_SCOPES.REPO_READ) || scopes.includes(OAUTH_SCOPES.REPO_WRITE);
+    return (
+      scopes.includes(OAUTH_SCOPES.REPO_READ) ||
+      scopes.includes(OAUTH_SCOPES.REPO_WRITE) ||
+      scopes.includes(OAUTH_SCOPES.POPPY_READ) ||
+      scopes.includes(OAUTH_SCOPES.POPPY_WRITE)
+    );
   }
-  return scopes.includes(OAUTH_SCOPES.REPO_WRITE);
+  return scopes.includes(OAUTH_SCOPES.REPO_WRITE) || scopes.includes(OAUTH_SCOPES.POPPY_WRITE);
 }
 
 export interface OAuthPrincipal {

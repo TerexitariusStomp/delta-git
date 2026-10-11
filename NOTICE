@@ -18,6 +18,12 @@ openpgp (LGPL-3.0+) — loaded dynamically at runtime for client-side
 encryption features; no derivative work, no statically-linked copy.
 LGPL obligations satisfied by dynamic linking + retained notices.
 
+webmcp-core (MIT) — WebMCP polyfill bundled in the SPA; registers the
+navigator.modelContext tool surface for agent-capable browsers.
+
+@cloudflare/workers-oauth-provider (MIT) — OAuth 2.1 authorization
+server backing /oauth/* and the RFC 8414/9728 metadata endpoints.
+
 Build-time only (not distributed in the deployed Worker)
 --------------------------------------------------------
 

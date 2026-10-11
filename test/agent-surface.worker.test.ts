@@ -66,6 +66,28 @@ describe("agent surface", () => {
     expect(spec.paths["/.well-known/delta-node"]).toBeTruthy();
   });
 
+  it("serves a Poppy descriptor at /.well-known/poppy.json", async () => {
+    const { status, body, contentType } = await get("/.well-known/poppy.json");
+    expect(status).toBe(200);
+    expect(contentType).toContain("application/json");
+    const doc = JSON.parse(body) as {
+      protocol_version: string;
+      organization: { name: string; domain: string };
+      auth: { issuer: string; direct: { scopes: string[] } };
+      apis: { type: string; url: string }[];
+    };
+    expect(doc.protocol_version).toBe("0.1");
+    expect(doc.organization.name).toBe("delta-git");
+    expect(doc.auth.issuer).toBe("https://example.com");
+    // poppy:* aliases are real supported scopes (auth/oauth.ts maps them
+    // onto repo:read/repo:write).
+    expect(doc.auth.direct.scopes).toContain("poppy:read");
+    expect(doc.auth.direct.scopes).toContain("poppy:write");
+    const apiTypes = doc.apis.map((a) => a.type);
+    expect(apiTypes).toContain("openapi");
+    expect(apiTypes).toContain("mcp");
+  });
+
   it("returns a markdown repo card on Accept: text/markdown", async () => {
     const { status, body, contentType } = await get(
       `/${seeded.namespaceSlug}/agsrepo`,

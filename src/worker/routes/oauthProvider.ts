@@ -252,14 +252,22 @@ async function tokenEndpoint(c: AppContext): Promise<Response> {
 }
 
 export function registerOAuthProviderRoutes(router: AppRouter): void {
-  // Protocol-owned endpoints — delegate to the authorization server.
-  router.all("/.well-known/oauth-authorization-server", async (c) =>
-    getAuthorizationServer(new URL(c.req.url).origin).fetch(
+  // Protocol-owned endpoints — delegate to the authorization server. The
+  // RFC 8414 response is wrapped to add `poppy_domains` (Personal Agent
+  // Protocol draft 0.1): the issuer doc is where Poppy agents confirm this
+  // AS speaks the protocol.
+  router.all("/.well-known/oauth-authorization-server", async (c) => {
+    const origin = new URL(c.req.url).origin;
+    const res = await getAuthorizationServer(origin).fetch(
       c.req.raw,
       c.env,
       c.executionCtx as ExecutionContext
-    )
-  );
+    );
+    if (!res.ok) return res;
+    const metadata = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!metadata) return res;
+    return jsonResponse({ ...metadata, poppy_domains: [new URL(origin).hostname] });
+  });
 
   router.all("/oauth/token", async (c) => tokenEndpoint(c));
   router.all("/oauth/register", async (c) =>

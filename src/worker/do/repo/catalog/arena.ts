@@ -461,7 +461,13 @@ export async function resolveMatchState(args: {
   ctx: DurableObjectState;
   matchId: string;
   winnerEntryId: string | null;
-  scores: { entryId: string; autoScore: number; voteCount: number; voteWeight?: number }[];
+  scores: {
+    entryId: string;
+    autoScore: number;
+    qualityScore?: number;
+    voteCount: number;
+    voteWeight?: number;
+  }[];
   settlement?: MatchSettlement;
   actor: string;
 }): Promise<{ status: "resolved" | "not-found" | "already-resolved" }> {

@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Button, SandboxLayout, StatusBadge, Table, Tag, Text } from '@harnessio/ui/components'
 
 import { PathParams } from '../../RouteDefinitions'
+import { ArenaEntryDiff } from './arena-entry-diff'
 import {
   ForkNode,
   useArenaMatch,
@@ -233,6 +234,7 @@ export function RepoDeltaArenaMatchPage() {
   const { data, isLoading } = useArenaMatch(spaceId, repoId, matchId)
   const enter = useEnterArenaMatch(spaceId, repoId, matchId)
   const vote = useVoteArenaMatch(spaceId, repoId, matchId)
+  const [openDiff, setOpenDiff] = useState<string | null>(null)
 
   if (isLoading || !data) {
     return (
@@ -244,6 +246,8 @@ export function RepoDeltaArenaMatchPage() {
     )
   }
   const { match, entries, blind, voted } = data
+  // Entries stay sealed while building — diffs open once judging begins.
+  const diffsVisible = match.status === 'judging' || match.status === 'resolved'
   return (
     <SandboxLayout.Main>
       <SandboxLayout.Content>
@@ -277,24 +281,48 @@ export function RepoDeltaArenaMatchPage() {
           </Table.Header>
           <Table.Body>
             {entries.map(entry => (
-              <Table.Row key={entry.id}>
-                <Table.Cell>{shortId(entry.id)}</Table.Cell>
-                <Table.Cell>{entry.entrant_did ?? 'hidden'}</Table.Cell>
-                <Table.Cell>{entry.workspace}</Table.Cell>
-                <Table.Cell>{shortId(entry.head_oid)}</Table.Cell>
-                <Table.Cell>
-                  {match.status !== 'resolved' && !voted && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={vote.isLoading}
-                      onClick={() => vote.mutate({ entry_id: entry.id })}>
-                      Vote
-                    </Button>
-                  )}
-                  {match.winner_entry_id === entry.id && <Tag value="winner" />}
-                </Table.Cell>
-              </Table.Row>
+              <Fragment key={entry.id}>
+                <Table.Row>
+                  <Table.Cell>{shortId(entry.id)}</Table.Cell>
+                  <Table.Cell>{entry.entrant_did ?? 'hidden'}</Table.Cell>
+                  <Table.Cell>{entry.workspace}</Table.Cell>
+                  <Table.Cell>{shortId(entry.head_oid)}</Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-cn-xs">
+                      {diffsVisible && entry.head_oid && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setOpenDiff(openDiff === entry.id ? null : entry.id)}>
+                          {openDiff === entry.id ? 'Hide diff' : 'Diff'}
+                        </Button>
+                      )}
+                      {match.status !== 'resolved' && !voted && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={vote.isLoading}
+                          onClick={() => vote.mutate({ entry_id: entry.id })}>
+                          Vote
+                        </Button>
+                      )}
+                      {match.winner_entry_id === entry.id && <Tag value="winner" />}
+                    </div>
+                  </Table.Cell>
+                </Table.Row>
+                {openDiff === entry.id && (
+                  <Table.Row>
+                    <Table.Cell colSpan={5}>
+                      <ArenaEntryDiff
+                        spaceId={spaceId}
+                        repoId={repoId}
+                        matchId={matchId}
+                        entryId={entry.id}
+                      />
+                    </Table.Cell>
+                  </Table.Row>
+                )}
+              </Fragment>
             ))}
           </Table.Body>
         </Table.Root>

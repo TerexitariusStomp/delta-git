@@ -69,6 +69,8 @@ function nodeInfo(c: AppContext, nodeDid?: string, nodeKey?: JsonWebKey) {
       content_negotiation: "Accept: text/markdown on any repo URL",
       mcp: `${origin}/mcp`,
       xrpc: `${origin}/xrpc`,
+      poppy: `${origin}/.well-known/poppy.json`,
+      webmcp_tools: "dg_node_info, dg_get_repo, dg_list_merge_intents, dg_list_arena_matches",
     },
     links: {
       homepage: origin,
@@ -93,6 +95,8 @@ const LLMS_TXT = `# delta-git
 - [/api/v3](/api/v3): GitHub REST-compatible surface (issues, pulls, releases, discussions)
 - [/mcp](/mcp): MCP server endpoint
 - [/xrpc](/xrpc): atproto XRPC surface
+- [/.well-known/poppy.json](/.well-known/poppy.json): Personal Agent Protocol descriptor (draft 0.1)
+- WebMCP tools on the SPA for agent-capable browsers (dg_* read-only tools)
 
 ## Repo surfaces
 

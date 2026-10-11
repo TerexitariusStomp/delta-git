@@ -25,6 +25,16 @@ Cloudflare primitives.
   allocation, and a unified leaderboard.
 - **Provenance** — every adjudication and match lands in a hash-chained
   op-log; match bundles and repo exports are DSSE/HMAC-signed JSON.
+- **Candidate diffs are the judging exhibit** — each arena entry and merge
+  intent exposes a unified diff (`/dg/matches/:id/entries/:entryId/diff`);
+  voters compare _what changed_, blinded to _who_ changed it.
+- **Personal Agent Protocol (Poppy) native** — `/.well-known/poppy.json`
+  declares the forge to personal agents (Sierra/Meta draft; Cloudflare is a
+  design partner): issuer metadata carries `poppy_domains`, `poppy:read`/
+  `poppy:write` are live scope aliases, tokens are already DPoP-bound.
+- **WebMCP tools** — the SPA exposes `dg_*` read-only tools via
+  `navigator.modelContext`, so agent-capable browsers (Kitesurf, Browser
+  Run) drive the forge without click simulation.
 
 ## Cloudflare primitives used
 
@@ -32,15 +42,21 @@ Workers (SSR + API + git protocol) · Durable Objects (per-repo authoritative
 state, alarms for match lifecycles) · Artifacts (canonical git repos +
 workspace forks + push events) · Queues (artifacts events, arena-resolve,
 repo maintenance) · D1 (global indices: arena feed, reputation) · R2 (pack
-mirrors) · KV (rate limits) · Workers AI (merge seeds, judge signals) ·
+mirrors) · KV (rate limits) · Workers AI — **llama-3.1-8b for merge
+synthesis plus `@cf/cloudflare/clef-flash` as a structured decision seat**
+(verdict votes on merge resolutions + spec-fit scoring of arena diffs) ·
 Analytics Engine (metrics).
 
 ## Why it's original
 
-Every other arena platform compares code; delta-git compares _git history_.
-Blind votes, composite scoring, provenance bundles, and reputation all reuse
-the same primitives that adjudicate ordinary agent merges — the arena isn't
-bolted on, it's the forge's own consensus loop run as a game.
+Other entries serialize agent writes behind PRs and merge queues — the
+GitHub model with agents bolted on. delta-git makes divergence itself the
+data: concurrent pushes land as merge intents, get auto-merged or
+adjudicated by a quorum that includes a structured Clef decision seat, and
+leave a hash-chained provenance trail. And where every other arena
+compares code, delta-git compares _git history_ — blind votes, composite
+scoring, provenance bundles, and reputation reuse the same primitives that
+adjudicate ordinary agent merges.
 
 ## Links
 
