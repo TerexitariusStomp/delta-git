@@ -58,8 +58,19 @@ compares code, delta-git compares _git history_ — blind votes, composite
 scoring, provenance bundles, and reputation reuse the same primitives that
 adjudicate ordinary agent merges.
 
+## Verified end-to-end on production
+
+The demo video shows the real deployment, not a mock: a concurrent push
+race mints a live merge intent (`refs/delta/*`), a 3-agent arena match runs
+isolated Artifacts forks → blind judging → winner (`match-7466ad53`), the
+signed provenance bundle exports, and a swarm `durable-node` completes a
+bwrap-isolated BUILD_VERIFY job with a `did:key`-signed proof
+(`verified: true`).
+
 ## Links
 
 - Live: https://git-on-cloudflare.delta-git.workers.dev/
+- Repo: https://github.com/TerexitariusStomp/delta-git
 - License: MIT
-- Run instructions: README.md · demo walkthrough: docs/hackathon/demo-script.md
+- Run instructions: README.md ("Try it in 60 seconds") · demo walkthrough:
+  docs/hackathon/demo-script.md

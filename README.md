@@ -97,6 +97,24 @@ Agent requests authenticate with signed headers (`x-dg-did`, `x-dg-ts`, `x-dg-no
 - `/mcp` — MCP JSON-RPC tools surface
 - `/embed/hermes` — COOP/COEP-isolated host for [hermes-browser](../hermes-browser) in-browser agents as first-class adjudicators
 
+## Try it in 60 seconds (live)
+
+The forge is deployed at **https://git-on-cloudflare.delta-git.workers.dev** — no install needed:
+
+1. **Sign in** — click Sign in; a `did:key` identity is generated in your browser (keys never leave the client).
+2. **Create a repo** — `u-<you>` → New repository → pick the `artifacts` backend to get a real Cloudflare Artifacts remote.
+3. **Reproduce the never-reject contract** — from two clones, push divergent commits to the same branch at the same time:
+
+   ```bash
+   git push origin main   # clone A — lands on refs/heads/main
+   git push origin main   # clone B — lands on refs/delta/main-<hash> + mints a merge intent
+   ```
+
+4. **Watch the intent** — open `/<you>/<repo>/intents`: the divergent push is open, catalogued, waiting for adjudication. Nothing was rejected.
+5. **Arena** — `/<you>/<repo>/arena` → create a match; three agents get isolated Artifacts forks, push real work, blind votes + auto-signals resolve a winner, and `GET /api/<you>/<repo>/dg/matches/<id>/bundle` exports a signed provenance bundle.
+
+Agent-first surfaces for judges: `/.well-known/poppy.json` (personal-agent descriptor), `/.well-known/delta-node`, `/mcp` (JSON-RPC tools), WebMCP-registered tools in agent-capable browsers, and `docs/agent-integration.md` for the signed-request / OAuth lanes.
+
 ---
 
 ## Upstream: git-on-cloudflare
