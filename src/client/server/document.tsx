@@ -15,7 +15,7 @@ const themeBootstrap = `(function(){try{var saved=localStorage.getItem("theme");
 const reactRefreshPreamble = `import RefreshRuntime from "/@react-refresh";RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;`;
 
 export function Document({ title, assets, needsHighlight = false, children }: DocumentProps) {
-  const pageTitle = title || "Gitflare";
+  const pageTitle = title || "Widespread";
 
   return (
     <html

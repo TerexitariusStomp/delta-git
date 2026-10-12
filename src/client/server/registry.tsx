@@ -23,19 +23,19 @@ function renderWithProps<Props extends object>(
 const views: Record<string, ViewDefinition> = {
   "404": {
     kind: "document",
-    title: "404 · git-on-cloudflare",
+    title: "Widespread",
     clientEntrypoints: [clientEntrypoints.shell],
     render: () => <NotFoundPage />,
   },
   error: {
     kind: "document",
-    title: "Error · git-on-cloudflare",
+    title: "Widespread",
     clientEntrypoints: [clientEntrypoints.shell],
     render: renderWithProps((props: ErrorPageProps) => <ErrorPage {...props} />),
   },
   "auth-signin": {
     kind: "document",
-    title: "Sign in · git-on-cloudflare",
+    title: "Widespread",
     clientEntrypoints: [clientEntrypoints.shell, clientEntrypoints.didSignin],
     render: renderWithProps((props: AuthSignInPageProps) => <AuthSignInPage {...props} />),
   },
