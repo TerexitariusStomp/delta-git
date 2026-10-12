@@ -1,40 +1,39 @@
+import { createPublicClient, http, parseAbiItem } from "viem";
+import { base } from "viem/chains";
 import type { Env } from "./env";
 
 // USDC watcher: cron scans Base for Transfer(to=deposit) events and credits
 // intents matched by unique salted amount (amount-salt attribution).
 // USDC has 6 decimals → log value IS micro-USDC.
-const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-
-async function rpc(env: Env, method: string, params: unknown[]): Promise<any> {
-  const r = await fetch(env.USDC_RPC, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
-  });
-  const j = await r.json() as any;
-  if (j.error) throw new Error(`rpc ${method}: ${JSON.stringify(j.error)}`);
-  return j.result;
-}
+const TRANSFER_EVENT = parseAbiItem(
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+);
 
 export async function scanUsdc(env: Env): Promise<void> {
-  const deposit = env.USDC_DEPOSIT_ADDRESS;
+  const deposit = env.USDC_DEPOSIT_ADDRESS as `0x${string}` | undefined;
   if (!deposit) return;
-  const conf = parseInt(env.USDC_CONFIRMATIONS || "3");
-  const latest = parseInt(await rpc(env, "eth_blockNumber", []), 16) - conf;
+  const conf = BigInt(env.USDC_CONFIRMATIONS || "3");
+  const client = createPublicClient({ chain: base, transport: http(env.USDC_RPC) });
+  const latest = (await client.getBlockNumber()) - conf;
   const cursor = await env.DB.prepare("SELECT v FROM meta WHERE k='usdc_scan'").first<{ v: string }>();
-  const from = cursor ? parseInt(cursor.v) + 1 : Math.max(0, latest - 5000);
+  const from = cursor
+    ? BigInt(cursor.v) + 1n
+    : latest > 5000n ? latest - 5000n : 0n;
   if (from > latest) return;
 
-  const logs = await rpc(env, "eth_getLogs", [{
-    address: env.USDC_CONTRACT,
-    topics: [TRANSFER_TOPIC, null, "0x" + deposit.toLowerCase().replace("0x", "").padStart(64, "0")],
-    fromBlock: "0x" + from.toString(16),
-    toBlock: "0x" + latest.toString(16),
-  }]);
+  const logs = await client.getLogs({
+    address: env.USDC_CONTRACT as `0x${string}`,
+    event: TRANSFER_EVENT,
+    args: { to: deposit },
+    fromBlock: from,
+    toBlock: latest,
+  });
 
-  for (const log of logs ?? []) {
-    const amountMicro = BigInt(log.data).toString();
-    const txhash = log.transactionHash as string;
+  for (const log of logs) {
+    const value = log.args.value;
+    if (value === undefined) continue; // undecodable log — skip
+    const amountMicro = value.toString();
+    const txhash = log.transactionHash;
     const intent = await env.DB.prepare(
       "SELECT id, user_did FROM intents WHERE amount_salt=? AND status='pending' LIMIT 1"
     ).bind(amountMicro).first<{ id: number; user_did: string }>();

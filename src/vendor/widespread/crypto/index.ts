@@ -6,7 +6,7 @@
  *  - @noble/ciphers (AES-GCM)
  *  - WebCrypto (PBKDF2, HKDF)
  *  - viem (hex encoding)
- *  - @noble/ed25519 (signing)
+ *  - @noble/curves (Ed25519 signing)
  */
 export * from "./aes.js";
 export * from "./kdf.js";

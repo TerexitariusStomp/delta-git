@@ -53,7 +53,6 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "@noble/ciphers": "^2.4.0",
     "@noble/curves": "^2.4.0",
-    "@noble/ed25519": "^3.2.0",
     "@noble/hashes": "^2.4.0",
     "@orama/orama": "^2.1.1",
     "@primer/octicons-react": "19.38.0",

@@ -25,9 +25,13 @@ maintaining a divergent port.
 - `@widespread/crypto` → `../crypto/index.js` (relative vendored path).
 - `@widespread/config` was declared as a dep upstream but never imported —
   omitted.
-- npm deps: `oslo` (MIT), `@noble/ciphers`, `@noble/hashes`, `@noble/ed25519`.
+- npm deps: `oslo` (MIT), `@noble/ciphers`, `@noble/hashes`,
+  `@noble/curves` (ed25519 — substituted for upstream's standalone
+  `@noble/ed25519`; same RFC8032 semantics, sync API, re-export surface
+  unchanged. `generateEd25519KeyPair` is now sync rather than async).
 
 ## Update procedure
 
 Re-copy `packages/{auth,crypto}/src` from the Rooted workspace, re-apply the
-two deviations above, run `npm run typecheck`.
+deviations above (relative imports, hex helpers, ed25519→curves), run
+`npm run typecheck`.

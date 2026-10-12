@@ -1,21 +1,24 @@
 /**
- * Ed25519 signing via @noble/ed25519.
+ * Ed25519 signing via @noble/curves (deviation from upstream
+ * `@noble/ed25519` — see UPSTREAM.md; identical RFC8032 semantics,
+ * avoids carrying a second Ed25519 package).
  *
  * Re-exports the library's sign/verify functions and provides a
- * keypair generation helper.
+ * keypair generation helper. Curves' sign/verify are synchronous;
+ * callers that `await` them are unaffected.
  */
-export { sign, verify, getPublicKey } from "@noble/ed25519";
+import { ed25519 } from "@noble/curves/ed25519.js";
+
+export const { sign, verify, getPublicKey } = ed25519;
 
 /**
  * Generate a new Ed25519 keypair.
  * @returns { publicKey, secretKey } as Uint8Array
  */
-export async function generateEd25519KeyPair(): Promise<{
+export function generateEd25519KeyPair(): {
   publicKey: Uint8Array;
   secretKey: Uint8Array;
-}> {
+} {
   const secretKey = crypto.getRandomValues(new Uint8Array(32));
-  const { getPublicKey } = await import("@noble/ed25519");
-  const publicKey = await getPublicKey(secretKey);
-  return { publicKey, secretKey };
+  return { publicKey: ed25519.getPublicKey(secretKey), secretKey };
 }
