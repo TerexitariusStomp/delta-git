@@ -297,8 +297,11 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
       redirect_uris: [`${origin}/oauth/callback`, `${origin}/auth/oauth/callback`],
       // `atproto` alone can't mint service-auth JWTs — the client-side lane
       // needs rpc:* scoped to this deployment's service ref so the PDS's
-      // assertRpc({aud, lxm:*}) check inside getServiceAuth passes.
-      scope: `atproto rpc:*?aud=did:web:${new URL(c.req.url).hostname}#delta_git`,
+      // assertRpc({aud, lxm:*}) check inside getServiceAuth passes. The aud
+      // host must be the PUBLIC host the browser sees (window.location) —
+      // behind a proxy the raw request host is the upstream, not the origin
+      // the PDS grants scope for.
+      scope: `atproto rpc:*?aud=did:web:${new URL(requestOrigin(c.env, c.req.url, c.req.raw.headers)).hostname}#delta_git`,
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       application_type: "web",
@@ -423,8 +426,10 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
       .catch(() => null);
     if (!parsed?.did || !parsed.jwt) return bad(c, "did+jwt required");
 
-    // Audience binds to this deployment's service identifier.
-    const expectedAud = `did:web:${new URL(c.req.url).host}`;
+    // Audience binds to this deployment's public service identifier (the
+    // browser signs in via window.location — behind a proxy that's the
+    // forwarded host, not the upstream request host).
+    const expectedAud = `did:web:${new URL(requestOrigin(c.env, c.req.url, c.req.raw.headers)).host}`;
     const verified = await verifyServiceAuth(c.env, parsed.did, parsed.jwt, expectedAud);
     if (!verified) {
       metric(c.env, "auth.did", { scope: "serviceauth-failed", index: parsed.did });

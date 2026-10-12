@@ -33,7 +33,7 @@ import { attemptMerge, mergeDryRun, findMergeBase } from "@/worker/merge/engine"
 import { writeServerPack } from "@/worker/merge/packWriter";
 import { doPrefix, packIndexKey, r2PackKey } from "@/worker/keys";
 import { isValidRef } from "@/shared/web";
-import { getRepoStub } from "@/worker/common";
+import { getRepoStub, requestOrigin } from "@/worker/common";
 import { commitFileActions, type CommitFilesRequest } from "./commitFiles";
 import { buildZip, collectArchiveEntries, computeBlame, computeLanguages } from "./archival";
 import { readRepoRules, ruleBlocksRef } from "./stores";
@@ -1350,7 +1350,7 @@ export function registerGitnessGitdata(router: AppRouter) {
     // GitHub noreply convention: web commits attribute to the actor at
     // `ID+uid@users.noreply.<host>` — no real mailbox, but stable and
     // host-derived so multi-instance deployments stay distinguishable.
-    const noreply = `${numericId(gate.actor)}+${gate.actor}@users.noreply.${new URL(c.req.url).host}`;
+    const noreply = `${numericId(gate.actor)}+${gate.actor}@users.noreply.${new URL(requestOrigin(c.env, c.req.url, c.req.raw.headers)).host}`;
     const author = req.author?.name
       ? `${req.author.name} <${req.author.email ?? noreply}>`
       : `${gate.actor} <${noreply}>`;

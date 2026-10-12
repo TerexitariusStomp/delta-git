@@ -677,7 +677,12 @@ export function registerGitRoutes(router: AppRouter) {
       if (body.length > HTTP_SIG_MAX_BODY_BYTES) {
         return withGitCors(c.req.raw, new Response("signed body too large\n", { status: 413 }));
       }
-      const verified = await verifyHttpSignature({ request: c.req.raw, body, db: c.var.db });
+      const verified = await verifyHttpSignature({
+        request: c.req.raw,
+        body,
+        db: c.var.db,
+        env: c.env,
+      });
       if (verified.kind === "rejected") {
         log.info("git-acl:http-sig-rejected", { reason: verified.reason });
         return withGitCors(

@@ -1,4 +1,5 @@
 import { pubkeyFromDidKey } from "@/worker/agent/atpauth/didkey";
+import { requestOrigin } from "@/worker/common";
 import { getAgent } from "@/worker/agent/auth";
 import type { AgentRow } from "@/worker/db/d1/schema/agents";
 import type { Db } from "@/worker/db/d1/client";
@@ -140,10 +141,20 @@ export async function verifyHttpSignature(args: {
   request: Request;
   body: Uint8Array;
   db: Db;
+  env: { PUBLIC_ORIGIN?: string };
   nowSec?: number;
 }): Promise<HttpSigVerify> {
   const { request, body, db } = args;
   const url = new URL(request.url);
+  // @authority/@target-uri are bound to the host the client dialed — behind
+  // a fronting proxy that's the forwarded host, not the upstream host in
+  // request.url. Re-derive the effective URL so the signature base matches
+  // what the client signed.
+  const effective = new URL(requestOrigin(args.env, request.url, request.headers));
+  if (effective.origin !== url.origin) {
+    url.protocol = effective.protocol;
+    url.host = effective.host;
+  }
 
   const inputHeader = request.headers.get("signature-input")!;
   const sigHeader = request.headers.get("signature")!;

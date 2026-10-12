@@ -173,7 +173,10 @@ export function registerAuthOidcRoutes(router: AppRouter) {
       return errorRedirect(c, "oidc_unavailable");
     }
     const tokenResult = await exchangeAuthorizationCode(providerResult.provider, {
-      callbackUrl: c.req.url,
+      // The exchange replays redirect_uri, which we registered against the
+      // public origin — rebuild the callback URL on that origin or the
+      // provider rejects with redirect_uri_mismatch behind a proxy.
+      callbackUrl: `${requestOrigin(c.env, c.req.url, c.req.raw.headers)}${new URL(c.req.url).pathname}${new URL(c.req.url).search}`,
       codeVerifier: transaction.payload.codeVerifier,
       nonce: transaction.payload.nonce,
       state,
