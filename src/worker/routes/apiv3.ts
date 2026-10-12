@@ -1,7 +1,7 @@
 import type { AppContext, AppRouter } from "./hono";
 import type { RepositoryRoute } from "@/worker/repositories/route";
 
-import { getRepoStub } from "@/worker/common";
+import { getRepoStub, requestOrigin } from "@/worker/common";
 import { deliverWebhookEvent } from "@/worker/agent/webhooks";
 import { readObject } from "@/worker/git/object-store/store";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
@@ -129,7 +129,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const namespaces = await listNamespacesForUser(c.var.db, userId);
     const login = namespaces[0]?.slug;
     if (!login) return v3Err(c, 404, "Not Found");
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json({
       login,
       id: userId,
@@ -190,8 +190,8 @@ export function registerApiV3Routes(router: AppRouter): void {
       full_name: `${c.req.param("owner")}/${c.req.param("repo")}`,
       private: route.visibility !== "public",
       owner: { login: c.req.param("owner"), type: "User" },
-      html_url: `${new URL(c.req.url).origin}/${c.req.param("owner")}/${c.req.param("repo")}`,
-      clone_url: `${new URL(c.req.url).origin}/${c.req.param("owner")}/${c.req.param("repo")}.git`,
+      html_url: `${requestOrigin(c.env, c.req.url, c.req.raw.headers)}/${c.req.param("owner")}/${c.req.param("repo")}`,
+      clone_url: `${requestOrigin(c.env, c.req.url, c.req.raw.headers)}/${c.req.param("owner")}/${c.req.param("repo")}.git`,
       default_branch: defaultBranch,
       visibility: route.visibility,
       refs_count: refs.length,
@@ -213,7 +213,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       refs.map((ref) => ({
         ref: ref.name,
         object: { sha: ref.oid, type: "commit" },
-        url: `${new URL(c.req.url).origin}/api/v3/repos/${c.req.param("owner")}/${c.req.param("repo")}/git/refs/${ref.name}`,
+        url: `${requestOrigin(c.env, c.req.url, c.req.raw.headers)}/api/v3/repos/${c.req.param("owner")}/${c.req.param("repo")}/git/refs/${ref.name}`,
       }))
     );
   });
@@ -226,7 +226,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     const { head, refs } = await stub.getHeadAndRefs();
     const branches = refs.filter((r) => r.name.startsWith("refs/heads/"));
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const shape = (name: string, oid: string) => ({
       name,
       commit: {
@@ -277,7 +277,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       if (refs.length === 0) return c.json([]);
       return v3Err(c, 422, `No commit found for SHA: ${sha}`);
     }
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const ns = route.routeNamespaceSlug;
     const rs = route.routeRepoSlug;
     const person = (p?: CommitInfo["author"]) =>
@@ -332,7 +332,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     if (!entry) return v3Err(c, 404, "Not Found");
     const blob = await readObject(c.env, route.doName, entry.oid, c.var.cacheCtx);
     if (!blob || blob.type !== "blob") return v3Err(c, 404, "Not Found");
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json({
       name: entry.name,
       path: entry.name,
@@ -758,7 +758,7 @@ export function registerApiV3Routes(router: AppRouter): void {
             ? OPEN_INTENT_STATUSES.includes(intent.status)
             : !OPEN_INTENT_STATUSES.includes(intent.status)
       );
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       await Promise.all(
         filtered.map(({ intent, number }) =>
@@ -807,7 +807,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     }
     const all = await intentsOrdered(c.env, route.doName);
     const number = all.findIndex((i) => i.id === accepted.intent.id) + 1;
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       await pullJson(
         c.env,
@@ -833,7 +833,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const all = await intentsOrdered(c.env, route.doName);
     const intent = all[number - 1];
     if (!intent) return v3Err(c, 404, "Not Found");
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       await pullJson(
         c.env,
@@ -884,7 +884,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       await writePrMeta(c.env, route.doName, intent.id, meta);
     }
     const refreshed = await stub.getMergeIntent(intent.id);
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       await pullJson(
         c.env,
@@ -1113,7 +1113,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       state: state === "open" || state === "closed" ? state : undefined,
       query,
     });
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const owner = c.req.param("owner");
     const repo = c.req.param("repo");
     return c.json(issues.map((i) => issueJson(i, origin, owner, repo)));
@@ -1146,7 +1146,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const query = parseIssueQuery(remaining);
     const stub = getRepoStub(c.env, route.doName);
     const issues = await stub.listIssues({ query });
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json({
       total_count: issues.length,
       incomplete_results: false,
@@ -1185,7 +1185,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       labelIds,
     });
     if (result.status !== "created") return v3Err(c, 422, result.reason);
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(issueJson(result.issue, origin, c.req.param("owner"), c.req.param("repo")), 201);
   });
 
@@ -1200,7 +1200,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.getIssue(number);
     if (result.status !== "ok") return v3Err(c, 404, "Not Found");
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(issueJson(result.issue, origin, c.req.param("owner"), c.req.param("repo")));
   });
 
@@ -1245,7 +1245,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const result = await stub.updateIssue({ number, patch, actor });
     if (result.status === "not-found") return v3Err(c, 404, "Not Found");
     if (result.status === "invalid") return v3Err(c, 422, result.reason);
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(issueJson(result.issue, origin, c.req.param("owner"), c.req.param("repo")));
   });
 
@@ -1410,7 +1410,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     const category = c.req.query("category");
     const discussions = await stub.listDiscussions({ category: category ?? undefined });
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       discussions.map((d) => discussionJson(d, origin, c.req.param("owner"), c.req.param("repo")))
     );
@@ -1435,7 +1435,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       actor: await actorSlug(c, auth),
     });
     if (result.status !== "created") return v3Err(c, 422, result.reason);
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       discussionJson(result.discussion, origin, c.req.param("owner"), c.req.param("repo")),
       201
@@ -1453,7 +1453,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.getDiscussion(number);
     if (result.status !== "ok") return v3Err(c, 404, "Not Found");
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       discussionJson(result.discussion, origin, c.req.param("owner"), c.req.param("repo"))
     );
@@ -1549,7 +1549,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     if (auth instanceof Response) return auth;
     const stub = getRepoStub(c.env, route.doName);
     const releases = await stub.listReleases({ includeDrafts: auth !== "anonymous" });
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       releases.map((r) => releaseJson(r, [], origin, c.req.param("owner"), c.req.param("repo")))
     );
@@ -1587,7 +1587,7 @@ export function registerApiV3Routes(router: AppRouter): void {
       actor: await actorSlug(c, auth),
     });
     if (result.status === "invalid") return v3Err(c, 422, result.reason);
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       releaseJson(result.release, [], origin, c.req.param("owner"), c.req.param("repo")),
       result.status === "exists" ? 200 : 201
@@ -1603,7 +1603,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     const stub = getRepoStub(c.env, route.doName);
     const result = await stub.getLatestRelease();
     if (result.status !== "ok") return v3Err(c, 404, "Not Found");
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       releaseJson(result.release, result.assets, origin, c.req.param("owner"), c.req.param("repo"))
     );
@@ -1621,7 +1621,7 @@ export function registerApiV3Routes(router: AppRouter): void {
     if (result.release.draft === 1 && auth === "anonymous") {
       return v3Err(c, 404, "Not Found");
     }
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       releaseJson(result.release, result.assets, origin, c.req.param("owner"), c.req.param("repo"))
     );

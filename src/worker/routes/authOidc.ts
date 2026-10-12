@@ -33,7 +33,7 @@ import {
   loadSessionConfig,
   loadViewer,
 } from "@/worker/auth/session";
-import { newPrefixedId } from "@/worker/common";
+import { newPrefixedId, requestOrigin } from "@/worker/common";
 import { insertSecurityEvent } from "@/worker/db/d1/dal/securityEvents";
 import type { AppRouter } from "./hono";
 import { renderUiDocumentResponse } from "./uiResponse";
@@ -84,7 +84,7 @@ export function registerAuthOidcRoutes(router: AppRouter) {
     const state = generateState();
     const nonce = generateNonce();
     const pkce = await generatePkcePair();
-    const redirectUri = buildCallbackUrl(c.req.url);
+    const redirectUri = buildCallbackUrl(requestOrigin(c.env, c.req.url, c.req.raw.headers));
     const encodedTransaction = encodeTransactionPayload({
       state,
       nonce,
@@ -158,7 +158,10 @@ export function registerAuthOidcRoutes(router: AppRouter) {
       clearOidcTransactionCookie(c);
       return errorRedirect(c, "invalid_state");
     }
-    if (transaction.payload.redirectUri !== buildCallbackUrl(c.req.url)) {
+    if (
+      transaction.payload.redirectUri !==
+      buildCallbackUrl(requestOrigin(c.env, c.req.url, c.req.raw.headers))
+    ) {
       log.warn("oidc:callback-redirect-mismatch");
       clearOidcTransactionCookie(c);
       return errorRedirect(c, "invalid_state");

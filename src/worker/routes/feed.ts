@@ -1,7 +1,7 @@
 import type { AppContext, AppRouter } from "./hono";
 
 import { isValidOwnerRepo } from "@/shared/web";
-import { getRepoStub } from "@/worker/common";
+import { getRepoStub, requestOrigin } from "@/worker/common";
 import { readCommitInfo, resolveRef } from "@/worker/git/operations/read";
 import type { CommitInfo } from "@/worker/git/operations/read/types";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
@@ -68,7 +68,7 @@ export function registerFeedRoutes(router: AppRouter) {
     const releases = await limiter.run("do:list-releases", () =>
       stub.listReleases({ includeDrafts: false })
     );
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const repoUrl = `${origin}/${c.req.param("owner")}/${c.req.param("repo")}`;
     const updated = releases[0] ? new Date(releases[0].createdAt).toISOString() : "";
     const entries = releases
@@ -99,7 +99,7 @@ export function registerFeedRoutes(router: AppRouter) {
   router.get("/:owner/:repo/commits.atom", async (c) => {
     const route = await resolvePublicRepo(c);
     if (!route) return notFound();
-    const repoUrl = `${new URL(c.req.url).origin}/${c.req.param("owner")}/${c.req.param("repo")}`;
+    const repoUrl = `${requestOrigin(c.env, c.req.url, c.req.raw.headers)}/${c.req.param("owner")}/${c.req.param("repo")}`;
     const branch = c.req.query("branch");
     const headOid = await resolveRef(
       c.env,
@@ -162,7 +162,7 @@ export function registerFeedRoutes(router: AppRouter) {
       : null;
     const when = head?.committer?.when ?? head?.author?.when ?? 0;
     const age = when ? new Date(when * 1000).toISOString().slice(0, 10) : "";
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const repoUrl = `${origin}/${route.routeNamespaceSlug}/${route.routeRepoSlug}`;
     const desc = repoRow?.description ?? "";
     const html = `<!doctype html>

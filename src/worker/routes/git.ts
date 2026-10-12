@@ -20,7 +20,7 @@ import {
   verifyHttpSignature,
 } from "@/worker/auth/httpSignature";
 import { handleStreamingReceivePackPOST } from "@/worker/git/receive/streamReceivePack";
-import { asBodyInit, gunzip } from "@/worker/common";
+import { asBodyInit, gunzip, requestOrigin } from "@/worker/common";
 import { bytesToHex } from "@/worker/common/hex";
 import { createDigestStream } from "@/worker/common/webtypes";
 import { doPrefix } from "@/worker/keys";
@@ -787,7 +787,7 @@ export function registerGitRoutes(router: AppRouter) {
     if ("response" in authorized) return authorized.response;
     const route = authorized.route;
 
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const owner = c.req.param("owner") ?? "";
     const repo = normalizeGitRouteRepoSlug(c.req.param("repo") ?? "");
     const authz = c.req.raw.headers.get("Authorization");

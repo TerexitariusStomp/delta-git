@@ -12,7 +12,7 @@ import type {
   WebAuthnCredential,
 } from "@simplewebauthn/server";
 
-import { json, newPrefixedId } from "@/worker/common";
+import { json, newPrefixedId, requestOrigin } from "@/worker/common";
 import { createLogger } from "@/worker/common/logger";
 import { createSessionForUser, loadViewer } from "@/worker/auth/session";
 import { findUserById } from "@/worker/db/d1/dal/users";
@@ -87,8 +87,8 @@ async function consumePasskeyChallenge(
 }
 
 function rpAndOrigin(c: AppContext): { rpID: string; origin: string } {
-  const url = new URL(c.req.url);
-  return { rpID: url.hostname, origin: url.origin };
+  const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
+  return { rpID: new URL(origin).hostname, origin };
 }
 
 function keyView(row: {

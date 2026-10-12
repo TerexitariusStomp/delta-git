@@ -217,8 +217,10 @@
     "EMAIL_API_URL": "",
     "EMAIL_FROM": "delta-git <noreply@delta-git.workers.dev>",
     // Canonical public origin — used to turn relative notification links
-    // into absolute URLs in outbound email.
-    "PUBLIC_ORIGIN": "https://delta-git.workers.dev",
+    // into absolute URLs in outbound email, and as the X-Forwarded-Host
+    // allowlist when the worker sits behind a fronting proxy
+    // (code.widespread.fyi → code-router worker → this worker).
+    "PUBLIC_ORIGIN": "https://code.widespread.fyi",
     // Proof-of-interest compute pool — localchimera coordinator base URL.
     // When set, PUBLIC repos route inference-shaped work (adjudication,
     // research, indexing) to the volunteer pool first and fall back to

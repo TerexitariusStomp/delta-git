@@ -12,7 +12,7 @@ import type {
 
 import { z } from "zod";
 
-import { getRepoStub, newPrefixedId } from "@/worker/common";
+import { getRepoStub, newPrefixedId, requestOrigin } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
@@ -1431,7 +1431,7 @@ export function registerAgentRoutes(router: AppRouter): void {
   router.get("/api/:owner/:repo/dg/project.json", async (c) => {
     const route = await resolveRepo(c);
     if (!route) return bad(c, "not-found", 404);
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const project = repoPoolProject(route.routeNamespaceSlug, route.routeRepoSlug);
     return json(c, {
       schemaVersion: "1",
@@ -1475,7 +1475,7 @@ export function registerAgentRoutes(router: AppRouter): void {
   router.get("/api/:owner/:repo/dg/skill.md", async (c) => {
     const route = await resolveRepo(c);
     if (!route) return bad(c, "not-found", 404);
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const owner = route.routeNamespaceSlug;
     const repo = route.routeRepoSlug;
     const md = `# Contribute to ${owner}/${repo}

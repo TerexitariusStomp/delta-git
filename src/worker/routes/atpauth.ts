@@ -1,6 +1,6 @@
 import type { AppContext, AppRouter } from "./hono";
 
-import { newPrefixedId } from "@/worker/common";
+import { newPrefixedId, requestOrigin } from "@/worker/common";
 import { consumeChallenge, issueChallenge } from "@/worker/agent/atpauth/challenge";
 import { resolveDid, resolveHandle } from "@/worker/agent/atpauth/pds";
 import { signDidSession, signHs256Jwt, verifyDidSession } from "@/worker/agent/atpauth/jwt";
@@ -286,7 +286,7 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
   // entry holds the PKCE verifier + DPoP key until the callback consumes it.
 
   router.get("/client-metadata.json", async (c) => {
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json({
       client_id: `${origin}/client-metadata.json`,
       client_name: "delta-git",
@@ -344,7 +344,7 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
     const result = await startOAuth({
       env: c.env,
       kv: c.env.ROUTES,
-      origin: new URL(c.req.url).origin,
+      origin: requestOrigin(c.env, c.req.url, c.req.raw.headers),
       handle,
       returnTo,
     });
@@ -357,7 +357,7 @@ export function registerAtpAuthRoutes(router: AppRouter): void {
   });
 
   router.get("/auth/oauth/callback", async (c) => {
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const result = await completeOAuth({
       env: c.env,
       kv: c.env.ROUTES,

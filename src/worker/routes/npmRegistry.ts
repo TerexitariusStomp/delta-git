@@ -23,6 +23,7 @@ import type { AppRouter } from "@/worker/routes/hono";
 import { findNamespaceBySlug } from "@/worker/db/d1/dal/namespaces";
 import { verifyPat } from "@/worker/auth/pat";
 import { normalizeIdentifier } from "@/worker/api/gitness/shared";
+import { requestOrigin } from "@/worker/common";
 import { chargeStorageQuota, metric } from "@/worker/agent/abuse";
 
 const MAX_TARBALL_BYTES = 64 * 1024 * 1024;
@@ -166,7 +167,7 @@ export function registerNpmRegistryRoutes(router: AppRouter) {
       versions: {},
       time: {},
     };
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
 
     for (const [version, meta] of versions) {
       if (stored.versions[version]) {

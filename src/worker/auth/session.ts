@@ -1,5 +1,5 @@
 import type { Viewer } from "@/client/server/viewer";
-import { newPrefixedId } from "@/worker/common";
+import { newPrefixedId, requestOrigin } from "@/worker/common";
 import {
   findIdentityByDid,
   findLiveDidSession,
@@ -198,7 +198,7 @@ async function readActiveSessionUncached(c: AppContext): Promise<ActiveSession |
               (await verifyDpopProof(
                 proof,
                 c.req.method,
-                `${url.origin}${url.pathname}`,
+                `${requestOrigin(c.env, c.req.url, c.req.raw.headers)}${url.pathname}`,
                 boundJkt,
                 c.env.ROUTES
               ));

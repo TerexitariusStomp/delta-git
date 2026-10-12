@@ -3,6 +3,7 @@
  */
 
 export * from "./compression";
+export * from "./origin";
 export * from "./bytes";
 export * from "./hex";
 export * from "./logger";

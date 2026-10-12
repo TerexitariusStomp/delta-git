@@ -3,6 +3,7 @@ import type { VouchKind } from "@/worker/db/d1/schema";
 
 import { verifyAgentRequest } from "@/worker/agent/auth";
 import { issueRepCert, loadNodeKey } from "@/worker/agent/repCert";
+import { requestOrigin } from "@/worker/common";
 import { loadViewer } from "@/worker/auth/session";
 import { sameOriginViolation } from "@/worker/auth/origin";
 import { metric, rateLimit, LIMITS } from "@/worker/agent/abuse";
@@ -67,7 +68,7 @@ function proofRequired(c: AppContext, reason: string): Response {
     {
       error: reason,
       proof_required: "dg-rep-cert",
-      acquire: `${new URL(c.req.url).origin}/api/dg/agents/{did}/certificate`,
+      acquire: `${requestOrigin(c.env, c.req.url, c.req.raw.headers)}/api/dg/agents/{did}/certificate`,
     },
     429
   );

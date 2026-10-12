@@ -25,10 +25,11 @@
 import type { AppRouter } from "./hono";
 
 import { OAUTH_SCOPES } from "@/worker/auth/oauth";
+import { requestOrigin } from "@/worker/common";
 
 export function registerPoppyRoutes(router: AppRouter): void {
   router.get("/.well-known/poppy.json", (c) => {
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     return c.json(
       {
         protocol_version: "0.1",

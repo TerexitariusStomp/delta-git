@@ -31,6 +31,7 @@ import {
   OAUTH_SCOPES_SUPPORTED,
   type OAuthTokenProps,
 } from "@/worker/auth/oauth";
+import { requestOrigin } from "@/worker/common";
 import { computeJwkThumbprint, verifyDpopProof } from "@/vendor/widespread/auth/dpop";
 import { base64UrlToBytes, bytesToUtf8 } from "@/vendor/widespread/crypto/index.js";
 import { findIdentityByUserId } from "@/worker/db/d1/dal/identities";
@@ -73,7 +74,7 @@ function asAuthorizeRequest(request: Request, origin: string): Request {
  * the SPA turns a 401 into a /signin?return_to= hop.
  */
 async function authorizeInfo(c: AppContext): Promise<Response> {
-  const origin = new URL(c.req.url).origin;
+  const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
   const server = getAuthorizationServer(origin);
   const api = server.getOAuthApi(c.env);
 
@@ -128,7 +129,7 @@ interface DecisionBody {
  * Approves (minting the code) or denies, returning the client redirect URL.
  */
 async function authorizeDecision(c: AppContext): Promise<Response> {
-  const origin = new URL(c.req.url).origin;
+  const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
   const server = getAuthorizationServer(origin);
   const api = server.getOAuthApi(c.env);
 
@@ -174,7 +175,7 @@ async function authorizeDecision(c: AppContext): Promise<Response> {
  * so a stolen refresh token can't shed the constraint.
  */
 async function tokenEndpoint(c: AppContext): Promise<Response> {
-  const origin = new URL(c.req.url).origin;
+  const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
   const server = getAuthorizationServer(origin);
   const log = c.var.logFor({ service: "OAuthToken" });
 
@@ -257,7 +258,7 @@ export function registerOAuthProviderRoutes(router: AppRouter): void {
   // Protocol draft 0.1): the issuer doc is where Poppy agents confirm this
   // AS speaks the protocol.
   router.all("/.well-known/oauth-authorization-server", async (c) => {
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
     const res = await getAuthorizationServer(origin).fetch(
       c.req.raw,
       c.env,
@@ -271,7 +272,7 @@ export function registerOAuthProviderRoutes(router: AppRouter): void {
 
   router.all("/oauth/token", async (c) => tokenEndpoint(c));
   router.all("/oauth/register", async (c) =>
-    getAuthorizationServer(new URL(c.req.url).origin).fetch(
+    getAuthorizationServer(requestOrigin(c.env, c.req.url, c.req.raw.headers)).fetch(
       c.req.raw,
       c.env,
       c.executionCtx as ExecutionContext
@@ -281,7 +282,7 @@ export function registerOAuthProviderRoutes(router: AppRouter): void {
   // RFC 9728 protected-resource metadata (+ the /mcp-suffixed variant MCP
   // clients probe when the resource has a path).
   const serveResourceMetadata = (c: AppContext) =>
-    jsonResponse(protectedResourceMetadata(new URL(c.req.url).origin));
+    jsonResponse(protectedResourceMetadata(requestOrigin(c.env, c.req.url, c.req.raw.headers)));
   router.get("/.well-known/oauth-protected-resource", serveResourceMetadata);
   router.get("/.well-known/oauth-protected-resource/*", serveResourceMetadata);
 

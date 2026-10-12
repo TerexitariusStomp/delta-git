@@ -343,8 +343,8 @@ export function buildAuthorizeUrl(
     .toString();
 }
 
-export function buildCallbackUrl(requestUrl: string): string {
-  return `${new URL(requestUrl).origin}/auth/callback`;
+export function buildCallbackUrl(origin: string): string {
+  return `${origin}/auth/callback`;
 }
 
 export function generateState(): string {

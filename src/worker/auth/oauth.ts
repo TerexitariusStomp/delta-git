@@ -24,6 +24,7 @@ import {
   type OAuthAuthorizationServerOptions,
 } from "@cloudflare/workers-oauth-provider";
 
+import { requestOrigin } from "@/worker/common";
 import { verifyDpopProof } from "@/vendor/widespread/auth/dpop";
 import { findMembership } from "@/worker/db/d1/dal/namespaces";
 import type { Db } from "@/worker/db/d1/client";
@@ -195,7 +196,7 @@ export async function resolveOAuthBearer(
   const token = getBearerToken(request);
   if (!token) return null;
 
-  const origin = new URL(request.url).origin;
+  const origin = requestOrigin(env, request.url, request.headers);
   const server = getAuthorizationServer(origin);
   const validated = await server
     .validateToken<OAuthTokenProps>(oauthResource(origin), token, env)
@@ -213,7 +214,7 @@ export async function resolveOAuthBearer(
       (await verifyDpopProof(
         proof,
         request.method,
-        `${url.origin}${url.pathname}`,
+        `${requestOrigin(env, request.url, request.headers)}${url.pathname}`,
         jkt,
         env.OAUTH_KV
       ));

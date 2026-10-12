@@ -1,3 +1,4 @@
+import { requestOrigin } from "@/worker/common";
 import type { AppContext } from "@/worker/routes/hono";
 
 const SAFE_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -19,7 +20,7 @@ export function sameOriginViolation(c: AppContext): Response | null {
   } catch {
     return new Response("Forbidden\n", { status: 403 });
   }
-  if (originUrl.origin !== new URL(c.req.url).origin) {
+  if (originUrl.origin !== requestOrigin(c.env, c.req.url, c.req.raw.headers)) {
     return new Response("Forbidden\n", { status: 403 });
   }
   return null;

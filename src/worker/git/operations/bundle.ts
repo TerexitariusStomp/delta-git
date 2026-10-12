@@ -4,7 +4,7 @@ import type { RepositoryRoute } from "@/worker/repositories/route";
 import { pktLine, flushPkt, concatChunks } from "@/worker/git/core/pktline";
 import { asBodyInit } from "@/worker/common/webtypes";
 import { responseCacheControl } from "@/worker/cache/policy";
-import { createLogger } from "@/worker/common";
+import { createLogger, requestOrigin } from "@/worker/common";
 import { getLimiter, countSubrequest } from "./limits";
 import { getHeadAndRefs } from "./read/refs";
 import type { HeadInfo } from "./types";
@@ -52,7 +52,7 @@ export async function handleBundleUriCommand(
   // creationToken must be comparable across bundle refreshes; the HEAD oid
   // changes whenever the bundle would be stale, which is the semantics we need.
   const token = head?.oid ?? refs[0]!.oid;
-  const origin = new URL(request.url).origin;
+  const origin = requestOrigin(env, request.url, request.headers);
   const uri = `${origin}${bundleUriPath(route, token)}`;
 
   const chunks: Uint8Array[] = [];

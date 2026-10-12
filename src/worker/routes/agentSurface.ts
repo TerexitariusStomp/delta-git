@@ -1,7 +1,7 @@
 import type { AppContext, AppRouter } from "./hono";
 
 import { isValidOwnerRepo } from "@/shared/web";
-import { getRepoStub } from "@/worker/common";
+import { getRepoStub, requestOrigin } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { getHeadAndRefs, readPath } from "@/worker/git/operations/read";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
@@ -19,7 +19,7 @@ const README_MAX_BYTES = 64 * 1024;
 const td = new TextDecoder();
 
 function nodeInfo(c: AppContext, nodeDid?: string, nodeKey?: JsonWebKey) {
-  const origin = new URL(c.req.url).origin;
+  const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
   return {
     // GLIP-02-compatible node descriptor (Twigpine interop) plus the
     // delta-git capability block — a superset node.
@@ -225,7 +225,7 @@ async function repoMarkdownCard(c: AppContext, owner: string, repo: string): Pro
     }
   }
 
-  const origin = new URL(c.req.url).origin;
+  const origin = requestOrigin(c.env, c.req.url, c.req.raw.headers);
   const stub = getRepoStub(c.env, route.doName);
   const openIssues = await stub
     .listIssues({ state: "open", limit: 20 })
