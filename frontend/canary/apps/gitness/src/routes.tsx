@@ -254,6 +254,13 @@ const rulesRoute = {
 
 export const repoRoutes: CustomRouteObject[] = [
   {
+    // Bare /:spaceId (e.g. post-sign-in namespace redirect) has no child
+    // match without this index — it rendered the layout with an empty
+    // outlet (blank content pane). Land on the space's repo list instead.
+    index: true,
+    element: <Navigate to="repos" replace />,
+  },
+  {
     path: "repos",
     handle: {
       breadcrumb: () => <span>{Page.Repositories}</span>,
