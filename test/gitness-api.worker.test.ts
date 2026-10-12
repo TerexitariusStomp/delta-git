@@ -68,6 +68,16 @@ describe("gitness /api/v1 facade", () => {
     expect(hit!.default_branch).toBe("main");
   });
 
+  it("GET /api/v1/spaces/{ns}/+/repos resolves the gitness descendant marker", async () => {
+    const { status, body } = await get(
+      `/api/v1/spaces/${seeded.namespaceSlug}/+/repos`,
+      seeded.cookieHeader
+    );
+    expect(status).toBe(200);
+    const repos = body as Array<{ identifier: string }>;
+    expect(repos.find((r) => r.identifier === "gvrepo")).toBeDefined();
+  });
+
   it("GET /api/v1/repos/{ref}/+ resolves repo_ref with trailing +", async () => {
     const { status, body } = await get(`/api/v1/repos/${seeded.namespaceSlug}/gvrepo/+`);
     expect(status).toBe(200);

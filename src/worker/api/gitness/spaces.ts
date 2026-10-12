@@ -89,7 +89,10 @@ export function spaceRepoView(row: RepositoryRow, nsSlug: string) {
 }
 
 async function resolveSpace(c: GitnessContext, ref: string): Promise<NamespaceRow | Response> {
-  const slug = ref.replace(/\/+$/, "");
+  // The SPA sends `space/+` on list endpoints — gitness's "this space and
+  // descendants" marker. Our namespaces are flat, so the marker degrades
+  // to the space itself; without stripping it every list call 404s.
+  const slug = ref.replace(/\/\+?$/, "").replace(/\/+$/, "");
   if (!isValidOwnerRepo(slug)) return gNotFound(c, "space");
   const ns = await findNamespaceBySlug(c.var.db, slug);
   if (!ns) return gNotFound(c, "space");
