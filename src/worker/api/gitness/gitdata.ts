@@ -860,6 +860,59 @@ export function registerGitnessGitdata(router: AppRouter) {
     });
   });
 
+  // Batch path details — the SPA's file table POSTs the row paths and
+  // expects each one's last-touching commit (the "last commit" column).
+  // One bounded last-change walk resolves every requested path; entries
+  // left uncovered render empty in the client rather than erroring.
+  router.post("/api/v1/repos/:repo_ref{.+}/path-details", async (c) => {
+    const access = await resolveGitnessRepo(c, c.req.param("repo_ref"));
+    if (access.kind !== "ok") return access.response;
+    const ref = c.req.query("git_ref") || "main";
+    let rawPaths: string[];
+    try {
+      const body = (await c.req.json()) as { paths?: unknown };
+      rawPaths = Array.isArray(body?.paths)
+        ? body.paths.filter((p): p is string => typeof p === "string")
+        : [];
+    } catch {
+      return gErr(c, 400, "invalid JSON body");
+    }
+    const paths = rawPaths
+      .map((p) => p.replace(/^\/+|\/+$/g, ""))
+      .filter((p) => p.length > 0)
+      .slice(0, MAX_PATH_ENTRIES);
+    if (!paths.length) return c.json({ details: [] });
+    // dirPath "" keeps wanted names as full repo-relative paths. isDir true
+    // is correct for both cases: directory paths match descendant changes,
+    // file paths only ever hit the exact-match branch.
+    const lastChange = await listPathsLastChange(
+      c.env,
+      access.route.doName,
+      ref,
+      "",
+      paths.map((name) => ({ name, isDir: true })),
+      access.cacheCtx
+    ).catch(() => null);
+    const details = paths.map((path) => {
+      const lc = lastChange?.entries[path];
+      return {
+        path,
+        last_commit: lc
+          ? {
+              sha: lc.oid,
+              title: lc.subject,
+              message: lc.subject,
+              author: {
+                identity: { name: lc.author ?? "", email: "" },
+                when: new Date(lc.when * 1000).toISOString(),
+              },
+            }
+          : undefined,
+      };
+    });
+    return c.json({ details });
+  });
+
   // Archive download: gitness asks for `{ref}.{format}`. Tar redirects to
   // the existing SSR archive lane; zip is built here as a real stored-entry
   // archive over the ref's tree.

@@ -102,6 +102,22 @@ describe("gitness /api/v1 facade", () => {
     expect((summary.body as { branch_count: number }).branch_count).toBe(0);
   });
 
+  it("POST /path-details returns per-path last_commit entries", async () => {
+    // Empty repo: the walk resolves no paths, but the route must still
+    // answer 200 with a details array — the SPA skeletons forever on a 404.
+    const res = await workerExports.default.fetch(
+      `https://example.com/api/v1/repos/${seeded.namespaceSlug}/gvrepo/+/path-details?git_ref=main`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: ["a.ts", "dir/b.ts"] }),
+      }
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { details: { path: string }[] };
+    expect(body.details.map((d) => d.path)).toEqual(["a.ts", "dir/b.ts"]);
+  });
+
   it("GET /pullreq lists intents; empty repo has none", async () => {
     const { status, body } = await get(`/api/v1/repos/${seeded.namespaceSlug}/gvrepo/+/pullreq`);
     expect(status).toBe(200);
@@ -502,6 +518,38 @@ describe("gitness /api/v1 write paths", () => {
     );
     expect(merged.status).toBe(200);
     expect((merged.body as { mergeable: boolean }).mergeable).toBe(true);
+  });
+
+  it("POST /path-details reports the last-touching commit per path", async () => {
+    await post(
+      `/api/v1/repos/${ref}/branches`,
+      { name: "pd-branch", target: "main" },
+      w.cookieHeader
+    );
+    await post(
+      `/api/v1/repos/${ref}/commits`,
+      {
+        branch: "pd-branch",
+        message: "add pd.txt",
+        actions: [{ action: "CREATE", path: "pd.txt", encoding: "text", payload: "pd\n" }],
+      },
+      w.cookieHeader
+    );
+    const res = await post(
+      `/api/v1/repos/${ref}/path-details?git_ref=${encodeURIComponent("refs/heads/pd-branch")}`,
+      { paths: ["pd.txt", "missing.txt"] },
+      w.cookieHeader
+    );
+    expect(res.status).toBe(200);
+    const details = (
+      res.body as { details: { path: string; last_commit?: { message: string; sha: string } }[] }
+    ).details;
+    const hit = details.find((d) => d.path === "pd.txt");
+    // The merge-intent flow may land a merge commit on the branch, so the
+    // message isn't asserted — only that a real commit touched the path.
+    expect(hit?.last_commit?.sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(hit?.last_commit?.message).toBeTruthy();
+    expect(details.find((d) => d.path === "missing.txt")?.last_commit).toBeUndefined();
   });
 
   it("PR assignees add/remove and surface on detail", async () => {
