@@ -53,7 +53,7 @@ const AppSidebar: FC<{ children: ReactNode }> = ({ children }) => {
           <Sidebar.Header>
             <SearchProvider>
               <Layout.Grid gapY="md">
-                <img src="/gitflare-icon.png" alt="Gitflare" className="h-7 w-auto" />
+                <img src="/logo-widespread.png" alt="Widespread" className="h-7 w-auto" />
                 <SidebarSearch />
               </Layout.Grid>
             </SearchProvider>

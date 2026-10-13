@@ -68,7 +68,7 @@ export function Header({ currentView, viewer }: HeaderProps) {
               aria-hidden="true"
             >
               <img
-                src="/gitflare-icon.png"
+                src="/logo-widespread.png"
                 alt=""
                 width="64"
                 height="27"
@@ -80,10 +80,10 @@ export function Header({ currentView, viewer }: HeaderProps) {
                 className="block text-sm font-semibold"
                 style={{ color: "var(--header-fgColor-logo)" }}
               >
-                Gitflare
+                Widespread
               </strong>
               <small className="block text-xs" style={{ color: "var(--header-fgColor-default)" }}>
-                GitHub on Cloudflare
+                Code forge
               </small>
             </span>
           </a>

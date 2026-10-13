@@ -12,7 +12,8 @@ export type GetNavbarMenuDataParams = {
 
 export type GetNavbarMenuData = ({ t, spaceId, repoId, routes }: GetNavbarMenuDataParams) => MenuGroupType[]
 
-export const getNavbarMenuData: GetNavbarMenuData = ({ t, spaceId, repoId, routes }) => [
+export const getNavbarMenuData: GetNavbarMenuData = ({ t, spaceId, repoId, routes }) => {
+  const groups: MenuGroupType[] = [
   {
     groupId: 0,
     title: t('component:navbar.devops'),
@@ -347,3 +348,12 @@ export const getNavbarMenuData: GetNavbarMenuData = ({ t, spaceId, repoId, route
     ]
   }
 ]
+
+  // Items whose link still contains an unresolved ":param" (e.g. Webhooks
+  // needs a repoId that only exists inside a repo) would 404 — drop them.
+  for (const group of groups) {
+    group.items = group.items.filter(item => !item.to?.includes('/:'))
+  }
+
+  return groups
+}

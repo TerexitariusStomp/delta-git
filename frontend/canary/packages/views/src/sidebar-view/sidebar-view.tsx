@@ -5,7 +5,6 @@ import {
   AppSidebarUser,
   Drawer,
   DrawerContentProps,
-  HarnessLogo,
   LanguageCode,
   LanguageDialog,
   LanguageInterface,
@@ -117,7 +116,7 @@ export const SidebarView = ({
         <Sidebar.Header>
           <SearchProvider>
             <Layout.Grid gapY="md">
-              <HarnessLogo />
+              <img src="/logo-widespread.png" alt="Widespread" className="size-6" />
               <SidebarSearch />
             </Layout.Grid>
           </SearchProvider>

@@ -107,10 +107,10 @@ export const OAuthAuthorize: FC = () => {
       <header className="w-full border-b border-cn-2">
         <div className="flex w-full items-center gap-3 px-4 py-3 sm:px-6">
           <a href="/" className="flex items-center gap-2.5 no-underline hover:no-underline">
-            <img src="/gitflare-icon.png" alt="" className="block h-8 w-auto" aria-hidden="true" />
+            <img src="/logo-widespread.png" alt="" className="block h-8 w-auto" aria-hidden="true" />
             <span className="hidden sm:block">
-              <strong className="block text-sm font-semibold text-cn-1">Gitflare</strong>
-              <small className="block text-xs text-cn-2">GitHub on Cloudflare</small>
+              <strong className="block text-sm font-semibold text-cn-1">Widespread</strong>
+              <small className="block text-xs text-cn-2">Code forge</small>
             </span>
           </a>
         </div>

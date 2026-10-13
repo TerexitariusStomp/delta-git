@@ -8,14 +8,14 @@ export function Footer() {
           style={{ color: "var(--fgColor-muted)" }}
         >
           <img
-            src="/gitflare-icon.png"
+            src="/logo-widespread.png"
             alt=""
             width="48"
             height="20"
             className="block h-5 w-auto"
             aria-hidden="true"
           />
-          <span>Gitflare</span>
+          <span>Widespread</span>
         </a>
         <nav
           className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs"
