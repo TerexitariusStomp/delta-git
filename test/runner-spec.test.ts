@@ -116,6 +116,48 @@ jobs:
     expect(spec.stages[0].name).toBe("build");
   });
 
+  it("merges env top → job → step with step winning", () => {
+    const spec = parseWorkflowSpec(
+      "ci.yml",
+      `env:
+  GLOBAL: top
+  SHARED: top
+jobs:
+  build:
+    env:
+      SHARED: job
+      JOB_ONLY: '1'
+    steps:
+      - name: compile
+        run: make
+        env:
+          SHARED: step
+      - name: test
+        run: make test
+`
+    );
+    const [compile, test] = spec.stages[0].steps;
+    expect(compile.env).toEqual({ GLOBAL: "top", SHARED: "step", JOB_ONLY: "1" });
+    // Job env applies to steps that don't declare their own.
+    expect(test.env).toEqual({ GLOBAL: "top", SHARED: "job", JOB_ONLY: "1" });
+  });
+
+  it("parses Harness stage env and drops non-scalar values", () => {
+    const spec = parseWorkflowSpec(
+      "pipe.yml",
+      `stages:
+  - name: build
+    env:
+      STAGE_FLAG: 'yes'
+      ODD: {nested: drop-me}
+    steps:
+      - name: compile
+        run: make
+`
+    );
+    expect(spec.stages[0].steps[0].env).toEqual({ STAGE_FLAG: "yes" });
+  });
+
   it("returns empty stages for a yaml with no runnable shape", () => {
     const spec = parseWorkflowSpec("empty.yml", `name: nothing\non: push\n`);
     expect(spec.stages).toEqual([]);
