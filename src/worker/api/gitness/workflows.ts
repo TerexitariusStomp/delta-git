@@ -11,6 +11,7 @@ import { readPath } from "@/worker/git/operations/read/tree";
 import { createExecution } from "./executions";
 import { branchMatches } from "./stores";
 import { gErr, requireWriter, type GitnessContext } from "./shared";
+import { enqueueRunnerDispatch } from "@/worker/tasks/runner";
 import {
   readRepoPipelines,
   writeRepoPipelines,
@@ -223,6 +224,7 @@ export function spawnPullRequestPipelines(
           message: `pull_request #${args.prNumber}`,
           author_name: args.actor,
         });
+        await enqueueRunnerDispatch(c.env, doName).catch(() => undefined);
       }
     })().catch((err) => log.warn("workflow:pr-trigger-failed", { doName, error: String(err) }))
   );

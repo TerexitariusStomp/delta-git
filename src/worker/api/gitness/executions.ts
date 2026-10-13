@@ -25,6 +25,7 @@ import {
   type RepoPipelineTrigger,
 } from "./stores";
 import { gErr, gNotFound, resolveGitnessRepo, requireWriter } from "./shared";
+import { enqueueRunnerDispatch } from "@/worker/tasks/runner";
 
 const log = createLogger(undefined, { service: "GitnessExec" });
 
@@ -187,6 +188,11 @@ export function registerGitnessExecutions(router: AppRouter) {
       pipelineId: pipe.id,
       number: exec.number,
     });
+    c.executionCtx.waitUntil(
+      enqueueRunnerDispatch(c.env, gate.route.doName).catch((err) =>
+        log.warn("exec:runner-dispatch-failed", { doName: gate.route.doName, error: String(err) })
+      )
+    );
     return c.json(toGitnessExecution(exec));
   });
 

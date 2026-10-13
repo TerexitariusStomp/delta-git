@@ -1,0 +1,14 @@
+name: ci
+on:
+  push:
+    branches: [main]
+jobs:
+  verify:
+    name: verify
+    steps:
+      - name: install
+        run: npm ci --ignore-scripts
+      - name: typecheck
+        run: npm run typecheck
+      - name: unit tests
+        run: npm test

@@ -165,6 +165,16 @@ export const KnowledgeRefreshQueueMessageSchema = z.object({
 
 export type KnowledgeRefreshQueueMessage = z.infer<typeof KnowledgeRefreshQueueMessageSchema>;
 
+// Platform runner dispatch: an execution went pending → the built-in
+// Cloudflare delegate claims and runs it if no client runner picks it up
+// first (the enqueue delay is the external-delegate grace window).
+export const RunnerDispatchQueueMessageSchema = z.object({
+  kind: z.literal("runner-dispatch"),
+  repoId: z.string(),
+});
+
+export type RunnerDispatchQueueMessage = z.infer<typeof RunnerDispatchQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
@@ -180,6 +190,7 @@ export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   SiteBuildQueueMessageSchema,
   PipelineTriggerQueueMessageSchema,
   KnowledgeRefreshQueueMessageSchema,
+  RunnerDispatchQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;

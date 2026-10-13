@@ -22,6 +22,7 @@ import {
 } from "@/worker/api/gitness/stores";
 import { createExecution } from "@/worker/api/gitness/executions";
 import { nextCronFire } from "@/worker/tasks/cronmatch";
+import { enqueueRunnerDispatch } from "@/worker/tasks/runner";
 
 const log = createLogger(undefined, { service: "scheduled" });
 
@@ -69,6 +70,7 @@ async function fireDueCronPipelines(env: Env, now: number): Promise<void> {
           ref: `refs/heads/${pipe.default_branch ?? "main"}`,
           message: `schedule ${trigger.cron}`,
         });
+        await enqueueRunnerDispatch(env, doName).catch(() => undefined);
         trigger.lastFired = now;
         changed = true;
         fired++;

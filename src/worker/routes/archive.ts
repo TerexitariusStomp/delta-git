@@ -137,6 +137,114 @@ async function resolveRefToCommit(
   return oid;
 }
 
+// ---- shared tar builder ----
+
+export interface RepoTarStream {
+  readable: ReadableStream<Uint8Array>;
+  /** Total file entries packed (dirs and symlinks included). */
+  files: number;
+  mtime: Date;
+  /** Rejects when the tree exceeds MAX_FILES / MAX_BYTES. */
+  done: Promise<void>;
+}
+
+/**
+ * Pack the full worktree of `commitOid` into an uncompressed POSIX tar
+ * stream. Shared by the `/-/archive/<ref>.tar` route and platform jobs
+ * (CI runner worktree staging) that need the same materialization.
+ * Returns null when the commit can't be read; throws via `done`/the
+ * stream's error signal when caps are exceeded.
+ */
+export async function openRepoTar(args: {
+  env: Env;
+  doName: string;
+  commitOid: string;
+  cacheCtx: CacheContext | undefined;
+  log?: {
+    info: (msg: string, extra?: Record<string, unknown>) => void;
+    warn: (msg: string, extra?: Record<string, unknown>) => void;
+    debug: (msg: string, extra?: Record<string, unknown>) => void;
+  };
+}): Promise<RepoTarStream | null> {
+  const { env, doName, commitOid, cacheCtx, log } = args;
+  const commitObj = await readObject(env, doName, commitOid, cacheCtx);
+  if (!commitObj || commitObj.type !== "commit") return null;
+  const commit = parseCommitText(td.decode(commitObj.payload));
+
+  const entries = await collectEntries(env, doName, commit.tree, cacheCtx);
+  if (!entries) {
+    log?.warn("archive:file-cap-exceeded", { repoId: doName, cap: MAX_FILES });
+    return null;
+  }
+
+  const mtime = commit.committer?.when ?? commit.author?.when ?? Math.floor(Date.now() / 1000);
+  const mtimeDate = new Date(mtime * 1000);
+  let bytesOut = 0;
+
+  // Lazily emit entries so the worker holds at most one blob payload at a
+  // time. Errors mid-stream cancel the readable — a partial tar fails
+  // closed on the consumer's integrity checks either way.
+  const { readable, controller: tar } = createTarPacker();
+  const done = (async () => {
+    for (const f of entries) {
+      if (f.type === "file" && f.oid) {
+        const blob = await readObject(env, doName, f.oid, cacheCtx);
+        if (!blob || blob.type !== "blob") continue;
+        const size = blob.payload.length;
+        bytesOut += size;
+        if (bytesOut > MAX_BYTES) {
+          log?.warn("archive:byte-cap-exceeded", { repoId: doName, cap: MAX_BYTES });
+          throw new Error("archive byte cap exceeded");
+        }
+        const body = tar.add({
+          name: f.path,
+          size,
+          mtime: mtimeDate,
+          mode: f.mode,
+          type: "file",
+          uid: 0,
+          gid: 0,
+          uname: "git",
+          gname: "git",
+        });
+        const writer = body.getWriter();
+        await writer.write(blob.payload);
+        await writer.close();
+      } else {
+        const body = tar.add({
+          name: f.path,
+          size: 0,
+          mtime: mtimeDate,
+          mode: f.mode,
+          type: f.type === "dir" ? "directory" : "symlink",
+          uid: 0,
+          gid: 0,
+          uname: "git",
+          gname: "git",
+          linkname: f.type === "symlink" ? f.linkname : undefined,
+        });
+        await body.getWriter().close();
+      }
+    }
+    tar.finalize();
+    log?.info("archive:stream-complete", { repoId: doName, commitOid, bytesOut });
+  })();
+  done.catch((err: unknown) => {
+    log?.warn("archive:pump-failed", {
+      repoId: doName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    void readable.cancel(err);
+  });
+
+  log?.debug("archive:stream-start", {
+    repoId: doName,
+    commitOid,
+    files: entries.length,
+  });
+  return { readable, files: entries.length, mtime: mtimeDate, done };
+}
+
 // ---- route ----
 
 export function registerArchiveRoutes(router: AppRouter): void {
@@ -198,85 +306,17 @@ export function registerArchiveRoutes(router: AppRouter): void {
 
     const commitOid = await resolveRefToCommit(c.env, route, ref, c.var.cacheCtx);
     if (!commitOid) return notFound();
-    const commitObj = await readObject(c.env, route.doName, commitOid, c.var.cacheCtx);
-    if (!commitObj || commitObj.type !== "commit") return notFound();
-    const commit = parseCommitText(td.decode(commitObj.payload));
 
-    const entries = await collectEntries(c.env, route.doName, commit.tree, c.var.cacheCtx);
-    if (!entries) {
-      log.warn("archive:file-cap-exceeded", { repoId: route.doName, ref, cap: MAX_FILES });
-      return c.text("archive too large", 413);
-    }
-
-    const mtime = commit.committer?.when ?? commit.author?.when ?? Math.floor(Date.now() / 1000);
-    const mtimeDate = new Date(mtime * 1000);
-    const env = c.env;
-    const cacheCtx = c.var.cacheCtx;
-    let bytesOut = 0;
-
-    // Lazily emit entries so the worker holds at most one blob payload at a
-    // time. Errors mid-stream cancel the readable — a partial tar fails
-    // closed on the consumer's integrity checks either way.
-    const { readable, controller: tar } = createTarPacker();
-    const pump = (async () => {
-      for (const f of entries) {
-        if (f.type === "file" && f.oid) {
-          const blob = await readObject(env, route.doName, f.oid, cacheCtx);
-          if (!blob || blob.type !== "blob") continue;
-          const size = blob.payload.length;
-          bytesOut += size;
-          if (bytesOut > MAX_BYTES) {
-            log.warn("archive:byte-cap-exceeded", { repoId: route.doName, ref, cap: MAX_BYTES });
-            throw new Error("archive byte cap exceeded");
-          }
-          const body = tar.add({
-            name: f.path,
-            size,
-            mtime: mtimeDate,
-            mode: f.mode,
-            type: "file",
-            uid: 0,
-            gid: 0,
-            uname: "git",
-            gname: "git",
-          });
-          const writer = body.getWriter();
-          await writer.write(blob.payload);
-          await writer.close();
-        } else {
-          const body = tar.add({
-            name: f.path,
-            size: 0,
-            mtime: mtimeDate,
-            mode: f.mode,
-            type: f.type === "dir" ? "directory" : "symlink",
-            uid: 0,
-            gid: 0,
-            uname: "git",
-            gname: "git",
-            linkname: f.type === "symlink" ? f.linkname : undefined,
-          });
-          await body.getWriter().close();
-        }
-      }
-      tar.finalize();
-      log.info("archive:stream-complete", { repoId: route.doName, ref, commitOid, bytesOut });
-    })();
-    pump.catch((err: unknown) => {
-      log.warn("archive:pump-failed", {
-        repoId: route.doName,
-        ref,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      void readable.cancel(err);
-    });
-
-    log.debug("archive:stream-start", {
-      repoId: route.doName,
-      ref,
+    const stream = await openRepoTar({
+      env: c.env,
+      doName: route.doName,
       commitOid,
-      files: entries.length,
+      cacheCtx: c.var.cacheCtx,
+      log,
     });
+    if (!stream) return c.text("archive too large", 413);
+    const { readable } = stream;
+
     return new Response(readable, {
       headers: {
         "Content-Type": "application/x-tar",

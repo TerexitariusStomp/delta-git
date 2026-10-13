@@ -7,6 +7,7 @@ import { createLogger } from "@/worker/common/logger";
 import { readRepoPipelines } from "@/worker/api/gitness/stores";
 import { createExecution } from "@/worker/api/gitness/executions";
 import { syncWorkflowPipelines } from "@/worker/api/gitness/workflows";
+import { enqueueRunnerDispatch } from "./runner";
 import type { RepoQueueMessageHandle, PipelineTriggerQueueMessage } from "./types";
 
 import { branchMatches } from "@/worker/api/gitness/stores";
@@ -63,6 +64,11 @@ export async function handlePipelineTriggerMessage(
   }
   if (spawned > 0) {
     log.info("pipeline:triggered", { ref: body.ref, sha: body.sha, spawned });
+    // Nudge the built-in delegate — it claims whatever client runners
+    // leave pending after the grace delay.
+    await enqueueRunnerDispatch(env, body.repoId).catch((err) =>
+      log.warn("pipeline:runner-dispatch-failed", { error: String(err) })
+    );
   }
   message.ack();
 }

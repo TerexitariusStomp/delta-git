@@ -8,6 +8,7 @@ import { handleDeployMessage } from "./deploy";
 import { handleAdjudicateMessage } from "./adjudicate";
 import { handleWebhookMessage } from "./webhook";
 import { handlePipelineTriggerMessage } from "./pipeline";
+import { handleRunnerDispatchMessage } from "./runner";
 import { handleKnowledgeRefreshMessage } from "./knowledge";
 import { RepoTaskQueueMessageSchema } from "./types";
 import { handleArtifactsEventBatch } from "./artifactsEvents";
@@ -74,6 +75,9 @@ export async function handleRepoTaskQueue(
         break;
       case "pipeline-trigger":
         await handlePipelineTriggerMessage(message, body, env);
+        break;
+      case "runner-dispatch":
+        await handleRunnerDispatchMessage(message, body, env);
         break;
       case "knowledge-refresh":
         await handleKnowledgeRefreshMessage(message, body, env);
