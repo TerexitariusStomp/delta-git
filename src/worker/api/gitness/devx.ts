@@ -41,6 +41,13 @@ import { getRepoStub, newPrefixedId } from "@/worker/common";
 import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound } from "./shared";
 import type { GitnessContext } from "./shared";
+import { workspaceSandbox } from "@/worker/compute/sandbox";
+import { openRepoTar } from "@/worker/routes/archive";
+import { findRepositoryById } from "@/worker/db/d1/dal/repositories";
+import { createLogger } from "@/worker/common/logger";
+import type { DevEnvironmentRow } from "@/worker/db/d1/schema/devx";
+
+const log = createLogger(undefined, { service: "DevxWorkspaces" });
 
 async function resolveMemberSpace(
   c: GitnessContext,
@@ -169,6 +176,98 @@ export function registerGitnessDevx(router: AppRouter) {
     return c.json({ identifier }, 201);
   });
 
+  // --- workspace surface (running environments only) ---------------------------------
+  //
+  // exec / files / preview all require the owning space's membership —
+  // workspace previews are authenticated by default (see docs/security.md).
+
+  /** Resolve the sandbox for a *running* env owned by this space. */
+  async function runningEnv(
+    c: GitnessContext
+  ): Promise<{ ns: { id: string; slug: string }; row: DevEnvironmentRow } | Response> {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref") ?? "");
+    if (ns instanceof Response) return ns;
+    const rows = await listDevEnvironments(c.var.db, ns.id);
+    const row = rows.find((r) => r.id === c.req.param("id") || r.identifier === c.req.param("id"));
+    if (!row) return gNotFound(c, "environment");
+    if (row.status !== "running") return gErr(c, 409, "environment is not running");
+    await updateDevEnvironment(c.var.db, row.id, { lastUsedAt: Date.now() }).catch(() => undefined);
+    return { ns, row };
+  }
+
+  // Command exec — one-shot shell commands in the staged worktree. The SPA
+  // terminal panel drives this; it is intentionally request/response
+  // rather than a pty so the audit trail stays simple.
+  router.post("/api/v1/spaces/:space_ref{.+}/dev-environments/:id/exec", async (c) => {
+    const resolved = await runningEnv(c);
+    if (resolved instanceof Response) return resolved;
+    const body = (await c.req.json().catch(() => null)) as { command?: string } | null;
+    const command = body?.command?.trim();
+    if (!command) return gErr(c, 400, "command required");
+    const sandbox = workspaceSandbox(c.env, resolved.ns.slug, resolved.row.id);
+    const result = await sandbox
+      .exec(`cd /workspace/repo 2>/dev/null || cd /workspace; ${command}`, { timeout: 60_000 })
+      .catch(() => null);
+    if (!result) return gErr(c, 502, "workspace unreachable");
+    return c.json({
+      exit_code: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  });
+
+  // File read/list for the browser workspace panel.
+  router.get("/api/v1/spaces/:space_ref{.+}/dev-environments/:id/workspace", async (c) => {
+    const resolved = await runningEnv(c);
+    if (resolved instanceof Response) return resolved;
+    const path = c.req.query("path") ?? "/workspace/repo";
+    const sandbox = workspaceSandbox(c.env, resolved.ns.slug, resolved.row.id);
+    const listing = await sandbox.listFiles(path).catch(() => null);
+    if (listing?.success) {
+      return c.json({ path, entries: listing.files ?? [] });
+    }
+    // Not a directory — try reading it as a file.
+    const file = await sandbox.readFile(path, { encoding: "utf-8" }).catch(() => null);
+    if (file && file.success && typeof file.content === "string") {
+      return c.json({ path, content: file.content });
+    }
+    return gErr(c, 404, "path not found");
+  });
+
+  router.put("/api/v1/spaces/:space_ref{.+}/dev-environments/:id/workspace", async (c) => {
+    const resolved = await runningEnv(c);
+    if (resolved instanceof Response) return resolved;
+    const path = c.req.query("path");
+    if (!path) return gErr(c, 400, "path required");
+    const content = await c.req.text();
+    const sandbox = workspaceSandbox(c.env, resolved.ns.slug, resolved.row.id);
+    const write = await sandbox.writeFile(path, content).catch(() => null);
+    if (!write?.success) return gErr(c, 502, "write failed");
+    return c.json({ path, bytes: content.length });
+  });
+
+  // Preview proxy — authenticated forwarding to a port inside the user's
+  // own workspace container (`?port=`; path suffix via `?path=`).
+  router.get("/api/v1/spaces/:space_ref{.+}/dev-environments/:id/preview", async (c) => {
+    const resolved = await runningEnv(c);
+    if (resolved instanceof Response) return resolved;
+    const port = parseInt(c.req.query("port") ?? "8080", 10);
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+      return gErr(c, 400, "port must be 1024-65535");
+    }
+    const path = c.req.query("path") ?? "/";
+    if (!path.startsWith("/")) return gErr(c, 400, "path must be absolute");
+    const sandbox = workspaceSandbox(c.env, resolved.ns.slug, resolved.row.id);
+    const upstream = await sandbox
+      .containerFetch(`http://localhost:${port}${path}`, { method: "GET" }, port)
+      .catch(() => null);
+    if (!upstream) return gErr(c, 502, "preview unreachable");
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: upstream.headers,
+    });
+  });
+
   router.post("/api/v1/spaces/:space_ref{.+}/dev-environments/:id/:action", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
@@ -177,11 +276,77 @@ export function registerGitnessDevx(router: AppRouter) {
     const rows = await listDevEnvironments(c.var.db, ns.id);
     const row = rows.find((r) => r.id === c.req.param("id") || r.identifier === c.req.param("id"));
     if (!row) return gNotFound(c, "environment");
-    await updateDevEnvironment(c.var.db, row.id, {
-      status: action === "start" ? "running" : "stopped",
-      lastUsedAt: action === "start" ? Date.now() : row.lastUsedAt,
-    });
-    return c.json({ status: action === "start" ? "running" : "stopped" });
+
+    if (action === "stop") {
+      // Kill any running processes; the container auto-sleeps on its own
+      // inactivity timer, so there's no explicit destroy call to miss.
+      const sandbox = workspaceSandbox(c.env, ns.slug, row.id);
+      const killed = await sandbox.killAllProcesses().catch((err: unknown) => {
+        log.warn("devenv:stop-kill-failed", { envId: row.id, error: String(err) });
+        return -1;
+      });
+      await updateDevEnvironment(c.var.db, row.id, { status: "stopped" });
+      return c.json({ status: "stopped", killed_processes: killed });
+    }
+
+    // start — provision the workspace container and stage the linked
+    // repo's worktree so the environment opens at a usable checkout.
+    await updateDevEnvironment(c.var.db, row.id, { status: "provisioning" });
+    try {
+      const sandbox = workspaceSandbox(c.env, ns.slug, row.id);
+      let staged: { repo?: string; files?: number } = {};
+      if (row.repositoryId) {
+        const repo = await findRepositoryById(c.var.db, row.repositoryId);
+        if (repo) {
+          const stub = getRepoStub(c.env, repo.doName);
+          const { refs, head } = await stub.getHeadAndRefs();
+          const commitOid =
+            (head.target ? refs.find((r) => r.name === head.target)?.oid : undefined) ??
+            refs.find((r) => r.name === "refs/heads/main")?.oid ??
+            refs[0]?.oid;
+          if (commitOid) {
+            const tar = await openRepoTar({
+              env: c.env,
+              doName: repo.doName,
+              commitOid,
+              cacheCtx: c.var.cacheCtx,
+              log,
+            });
+            if (tar) {
+              const write = await sandbox.writeFile("/workspace/repo.tar", tar.readable);
+              if (!write.success) throw new Error("worktree upload failed");
+              const unpack = await sandbox.exec(
+                "mkdir -p /workspace/repo && tar -xf /workspace/repo.tar -C /workspace/repo && rm -f /workspace/repo.tar",
+                { timeout: 120_000 }
+              );
+              if (!unpack.success) {
+                throw new Error(`worktree extract failed (exit ${unpack.exitCode})`);
+              }
+              await tar.done.catch(() => undefined);
+              staged = { repo: repo.doName, files: tar.files };
+            }
+          }
+        }
+      }
+      await updateDevEnvironment(c.var.db, row.id, {
+        status: "running",
+        lastUsedAt: Date.now(),
+      });
+      log.info("devenv:started", { envId: row.id, namespace: ns.slug, ...staged });
+      return c.json({ status: "running", staged });
+    } catch (error) {
+      await updateDevEnvironment(c.var.db, row.id, { status: "error" }).catch(() => undefined);
+      log.warn("devenv:start-failed", {
+        envId: row.id,
+        namespace: ns.slug,
+        error: String(error),
+      });
+      return gErr(
+        c,
+        500,
+        `environment failed to start: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   });
 
   // --- database records + migration ledger -------------------------------------------------

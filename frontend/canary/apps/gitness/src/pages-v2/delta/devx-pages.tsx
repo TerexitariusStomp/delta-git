@@ -128,11 +128,136 @@ interface DevEnvItem {
   last_used: number | null;
 }
 
+interface ExecResult {
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Terminal + file editor + preview for a running workspace. */
+function WorkspacePanel({ space, envId }: { space: string; envId: string }) {
+  const [command, setCommand] = useState("");
+  const [history, setHistory] = useState<{ cmd: string; out: string; code: number }[]>([]);
+  const [filePath, setFilePath] = useState("/workspace/repo");
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [listing, setListing] = useState<{ name: string; type?: string }[] | null>(null);
+  const [previewPort, setPreviewPort] = useState("8080");
+
+  const exec = useMutation(
+    (cmd: string) =>
+      deltaApi<ExecResult>(`/api/v1/spaces/${space}/dev-environments/${envId}/exec`, {
+        method: "POST",
+        body: JSON.stringify({ command: cmd }),
+      }),
+    {
+      onSuccess: (res, cmd) => {
+        const out = [res.stdout, res.stderr].filter(Boolean).join("\n");
+        setHistory((h) => [...h, { cmd, out, code: res.exit_code }]);
+      },
+    }
+  );
+
+  const openPath = useMutation((path: string) =>
+    deltaApi<{ entries?: { name: string; type?: string }[]; content?: string }>(
+      `/api/v1/spaces/${space}/dev-environments/${envId}/workspace?path=${encodeURIComponent(path)}`
+    ).then((res) => {
+      setListing(res.entries ?? null);
+      setFileContent(res.content ?? null);
+      return res;
+    })
+  );
+  const saveFile = useMutation(() =>
+    deltaApi(`/api/v1/spaces/${space}/dev-environments/${envId}/workspace?path=${encodeURIComponent(filePath)}`, {
+      method: "PUT",
+      body: fileContent ?? "",
+    })
+  );
+
+  return (
+    <div className="mt-cn-md rounded-cn-md border border-cn-borders-2 p-cn-md">
+      <Text variant="heading-subsection" className="mb-cn-sm">
+        Workspace: {envId}
+      </Text>
+
+      <Text variant="body-strong" className="mb-cn-xs">Terminal</Text>
+      <div className="mb-cn-sm max-h-64 overflow-y-auto rounded bg-cn-background-2 p-cn-sm font-mono text-cn-size-2">
+        {history.map((h, i) => (
+          <div key={i}>
+            <div className="text-cn-3">$ {h.cmd}</div>
+            <pre className="whitespace-pre-wrap">{h.out}</pre>
+            <div className="text-cn-3">exit {h.code}</div>
+          </div>
+        ))}
+        {history.length === 0 && <Text className="text-cn-3">Run a command in the staged worktree.</Text>}
+      </div>
+      <div className="mb-cn-md flex gap-cn-sm">
+        <TextInput
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+          placeholder="npm test"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && command.trim()) {
+              exec.mutate(command);
+              setCommand("");
+            }
+          }}
+        />
+        <Button disabled={!command.trim() || exec.isLoading} onClick={() => { exec.mutate(command); setCommand(""); }}>
+          Run
+        </Button>
+      </div>
+
+      <Text variant="body-strong" className="mb-cn-xs">Files</Text>
+      <div className="mb-cn-sm flex gap-cn-sm">
+        <TextInput value={filePath} onChange={(e) => setFilePath(e.target.value)} />
+        <Button variant="ghost" onClick={() => openPath.mutate(filePath)}>Open</Button>
+      </div>
+      {listing && (
+        <div className="mb-cn-sm font-mono text-cn-size-2">
+          {listing.map((f) => (
+            <div key={f.name} className="cursor-pointer hover:underline" onClick={() => {
+              const next = filePath.endsWith("/") ? filePath + f.name : `${filePath}/${f.name}`;
+              setFilePath(next);
+              openPath.mutate(next);
+            }}>{f.name}</div>
+          ))}
+        </div>
+      )}
+      {fileContent !== null && (
+        <div className="mb-cn-md">
+          <textarea
+            className="h-48 w-full rounded border border-cn-borders-2 bg-cn-background-2 p-cn-sm font-mono text-cn-size-2"
+            value={fileContent}
+            onChange={(e) => setFileContent(e.target.value)}
+          />
+          <Button className="mt-cn-xs" disabled={saveFile.isLoading} onClick={() => saveFile.mutate()}>
+            Save
+          </Button>
+        </div>
+      )}
+
+      <Text variant="body-strong" className="mb-cn-xs">Preview</Text>
+      <div className="flex items-end gap-cn-sm">
+        <TextInput label="Port" value={previewPort} onChange={(e) => setPreviewPort(e.target.value)} />
+        <a
+          className="text-cn-1 underline"
+          href={`/api/v1/spaces/${space}/dev-environments/${envId}/preview?port=${previewPort}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open preview
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export function DevEnvironmentsPage() {
   const { spaces, space, setSpace } = useSpacePicker();
   const queryClient = useQueryClient();
   const [identifier, setIdentifier] = useState("");
   const [repo, setRepo] = useState("");
+  const [openEnv, setOpenEnv] = useState<string | null>(null);
 
   const { data } = useQuery(
     ["devenvs", space],
@@ -194,20 +319,32 @@ export function DevEnvironmentsPage() {
               <Table.Cell>{e.machine_type}</Table.Cell>
               <Table.Cell>{e.last_used ? new Date(e.last_used).toLocaleString() : "never"}</Table.Cell>
               <Table.Cell>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    act.mutate({ id: e.identifier, action: e.status === "running" ? "stop" : "start" })
-                  }
-                >
-                  {e.status === "running" ? "Stop" : "Start"}
-                </Button>
+                <div className="flex gap-cn-xs">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      act.mutate({ id: e.identifier, action: e.status === "running" ? "stop" : "start" })
+                    }
+                  >
+                    {e.status === "running" ? "Stop" : "Start"}
+                  </Button>
+                  {e.status === "running" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setOpenEnv(openEnv === e.identifier ? null : e.identifier)}
+                    >
+                      {openEnv === e.identifier ? "Close" : "Open"}
+                    </Button>
+                  )}
+                </div>
               </Table.Cell>
             </Table.Row>
           ))}
         </Table.Body>
       </Table.Root>
+      {space && openEnv && <WorkspacePanel space={space} envId={openEnv} />}
       {(data ?? []).length === 0 && <EmptyNote text="No dev environments." />}
     </PageShell>
   );

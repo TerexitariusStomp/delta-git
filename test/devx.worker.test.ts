@@ -56,16 +56,55 @@ describe("catalog + dev environments", () => {
       body: {},
       cookie: seeded.cookieHeader,
     });
-    expect(start.status).toBe(200);
-    expect((start.body as { status: string }).status).toBe("running");
+    // workerd can't launch containers — the honest outcome is a 500 and
+    // the row landing `error`, never a faked `running`.
+    if (start.status === 200) {
+      expect((start.body as { status: string }).status).toBe("running");
+    } else {
+      expect(start.status).toBe(500);
+      const list = await req(`/api/v1/spaces/${owner}/dev-environments`, {
+        cookie: seeded.cookieHeader,
+      });
+      const row = (list.body as { identifier: string; status: string }[]).find(
+        (e) => e.identifier === "ws-1"
+      )!;
+      expect(row.status).toBe("error");
+    }
+  });
 
-    const list = await req(`/api/v1/spaces/${owner}/dev-environments`, {
+  it("gates workspace exec/files/preview behind a running env and auth", async () => {
+    const create = await req(`/api/v1/spaces/${owner}/dev-environments`, {
+      method: "POST",
+      body: { identifier: "ws-2" },
       cookie: seeded.cookieHeader,
     });
-    const row = (list.body as { identifier: string; status: string }[]).find(
-      (e) => e.identifier === "ws-1"
-    )!;
-    expect(row.status).toBe("running");
+    expect(create.status).toBe(201);
+
+    // Anonymous callers never reach the workspace surface.
+    const anon = await req(`/api/v1/spaces/${owner}/dev-environments/ws-2/exec`, {
+      method: "POST",
+      body: { command: "ls" },
+    });
+    expect(anon.status).toBe(401);
+
+    // A stopped env can't exec or preview.
+    const exec = await req(`/api/v1/spaces/${owner}/dev-environments/ws-2/exec`, {
+      method: "POST",
+      body: { command: "ls" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(exec.status).toBe(409);
+
+    const files = await req(
+      `/api/v1/spaces/${owner}/dev-environments/ws-2/workspace?path=/workspace`,
+      { cookie: seeded.cookieHeader }
+    );
+    expect(files.status).toBe(409);
+
+    const preview = await req(`/api/v1/spaces/${owner}/dev-environments/ws-2/preview?port=8080`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(preview.status).toBe(409);
   });
 });
 
