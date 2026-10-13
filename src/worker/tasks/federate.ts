@@ -1,6 +1,7 @@
 import type { FederateQueueMessage } from "./types";
 
 import { createLogger } from "@/worker/common";
+import { jobSandbox } from "@/worker/compute/sandbox";
 import { bytesToHex } from "@/worker/common/hex";
 import { collectPushObjects, parseAdvertisedRefs, pushRefToRemote } from "@/worker/git/remote/push";
 import { repoDidFor } from "@/worker/agent/dids";
@@ -15,9 +16,12 @@ import { namespaces, repositories } from "@/worker/db/d1/schema";
 // message; this module pushes the delta to configured mirror targets so
 // public repos don't ride our infra:
 //   - `https://` git remotes get a real smart-HTTP receive-pack push
-//   - `ssh://`, `rad://`, `tangled://` targets can't be reached from a
-//     Worker, so they get a signed relay webhook — an off-box contrib agent
-//     (see docs/agent-integration.md) performs the actual push.
+//   - `ssh://`/`git@` targets push inside a ForgeSandbox under the platform
+//     mirror identity (`MIRROR_SSH_PRIVATE_KEY`); without the key they fall
+//     back to the signed relay webhook.
+//   - `rad://`/`tangled://` targets get a signed relay webhook — an off-box
+//     contrib agent (see docs/agent-integration.md) performs the actual
+//     protocol-specific push.
 //
 // Mirror targets come from the queue message, falling back to the
 // `FEDERATE_TARGETS` env var (JSON array of {name,url}) and the repo's
@@ -67,6 +71,58 @@ async function relayPushRequest(
 }
 
 // ---------------------------------------------------------------------------
+// In-container ssh:// mirror pushes
+// ---------------------------------------------------------------------------
+//
+// Workers can't open TCP/22, so ssh targets historically deferred to a
+// relay. The ForgeSandbox image carries openssh-client + git: clone the
+// repo's public smart-HTTP remote inside the container and `git push
+// --mirror` to the ssh target under the platform mirror identity
+// (`MIRROR_SSH_PRIVATE_KEY` secret — an ed25519 deploy key enrolled at the
+// target). Only public repos ever reach this path.
+async function sshMirrorPush(
+  env: Env,
+  target: FederateTarget,
+  cloneSource: string,
+  jobKey: string
+): Promise<{ ok: boolean; detail: string }> {
+  const key = (env as { MIRROR_SSH_PRIVATE_KEY?: string }).MIRROR_SSH_PRIVATE_KEY;
+  if (!key?.trim()) return { ok: false, detail: "no-mirror-key" };
+
+  const sandbox = jobSandbox(env, jobKey, "federate", target.name, {
+    containerTimeouts: { instanceGetTimeoutMS: 60_000 },
+  });
+  try {
+    const write = await sandbox.writeFile("/root/.ssh/mirror_key", `${key.trim()}\n`);
+    if (!write.success) return { ok: false, detail: "key-write-failed" };
+    const sshCommand =
+      "ssh -i /root/.ssh/mirror_key -o StrictHostKeyChecking=accept-new " +
+      "-o UserKnownHostsFile=/root/.ssh/known_hosts -o IdentitiesOnly=yes";
+    const clone = await sandbox.exec(
+      `mkdir -p /root/.ssh && chmod 700 /root/.ssh && chmod 600 /root/.ssh/mirror_key && ` +
+        `rm -rf /tmp/mirror && git clone --mirror '${cloneSource}' /tmp/mirror`,
+      { timeout: 300_000 }
+    );
+    if (!clone.success) {
+      return { ok: false, detail: `clone failed: ${(clone.stderr || clone.stdout).slice(0, 200)}` };
+    }
+    const push = await sandbox.exec(`git -C /tmp/mirror push --mirror '${target.url}'`, {
+      timeout: 300_000,
+      env: { GIT_SSH_COMMAND: sshCommand },
+    });
+    if (!push.success) {
+      return { ok: false, detail: `push failed: ${(push.stderr || push.stdout).slice(0, 200)}` };
+    }
+    return { ok: true, detail: "ssh-pushed" };
+  } catch (e) {
+    return { ok: false, detail: `sandbox: ${String(e).slice(0, 120)}` };
+  } finally {
+    // The private key lives only for the duration of the push.
+    await sandbox.exec("rm -f /root/.ssh/mirror_key /root/.ssh/known_hosts").catch(() => undefined);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Task entrypoint
 // ---------------------------------------------------------------------------
 
@@ -105,6 +161,8 @@ export async function runFederateTask(
   // by `do_name`, not primary key.
   let targets: FederateTarget[] = msg.targets?.map((url) => ({ name: url, url })) ?? [];
   let repoDid: string | undefined;
+  let nsSlug: string | undefined;
+  let repoSlug: string | undefined;
   if (msg.repoId) {
     const db = createDb(env.DB);
     const repo = await findRepositoryByDoName(db, msg.repoId);
@@ -118,6 +176,8 @@ export async function runFederateTask(
         .where(eq(namespaces.id, repo.namespaceId))
         .limit(1);
       const slug = ns[0]?.slug ?? msg.repoId;
+      nsSlug = ns[0]?.slug;
+      repoSlug = repo.slug;
       repoDid = repo.did ?? (await repoDidFor(slug, repo.slug));
       if (!repo.did) {
         await db.update(repositories).set({ did: repoDid }).where(eq(repositories.id, repo.id));
@@ -162,6 +222,35 @@ export async function runFederateTask(
           deps.fetch
         );
         results.push(`${target.name}:${r.ok ? "ok" : "fail"}(${r.detail})`);
+        if (!r.ok) retry = true;
+      } else if (target.url.startsWith("ssh://") || target.url.startsWith("git@")) {
+        // In-container mirror push under the platform SSH identity. The
+        // clone source is our own public smart-HTTP remote — only public
+        // repos ever reach federation.
+        const origin = (env as { PUBLIC_ORIGIN?: string }).PUBLIC_ORIGIN;
+        const cloneSource =
+          origin && repoSlug && nsSlug
+            ? `${origin}/${nsSlug}/${repoSlug}.git`
+            : null;
+        let r: { ok: boolean; detail: string };
+        if (cloneSource) {
+          r = await sshMirrorPush(env, target, cloneSource, msg.repoId ?? msg.doId);
+        } else {
+          r = { ok: false, detail: "no-clone-source" };
+        }
+        if (!r.ok && r.detail === "no-mirror-key") {
+          // No platform key enrolled → the relay path remains the escape
+          // hatch for off-box push agents.
+          r = await relayPushRequest(env, target, {
+            repoDid: repoDid ?? msg.doId,
+            doId: msg.doId,
+            ref: msg.ref,
+            sha: msg.sha,
+          });
+          results.push(`${target.name}:${r.ok ? "relayed" : "fail"}(${r.detail})`);
+        } else {
+          results.push(`${target.name}:${r.ok ? "ok" : "fail"}(${r.detail})`);
+        }
         if (!r.ok) retry = true;
       } else {
         const r = await relayPushRequest(env, target, {

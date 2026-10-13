@@ -193,3 +193,28 @@ it("federate: end-to-end mirror push lands on a second repo", async () => {
   );
   expect(again.detail).toContain("up-to-date");
 });
+
+it("federate: ssh target without a mirror key falls back to the relay path", async () => {
+  const owner = "o";
+  const srcRepo = uniqueRepoId("r-fed-ssh");
+  const src = await setupRepoForTests(env, owner, srcRepo);
+  const { c2 } = await seedTwoCommitHistory(owner, srcRepo);
+
+  // No MIRROR_SSH_PRIVATE_KEY and no FEDERATION_RELAY_URL in the test env —
+  // the ssh branch must degrade through relay → honest no-relay detail,
+  // and mark the run retryable rather than silently "ok".
+  const outcome = await runFederateTask(
+    env,
+    {
+      kind: "federate",
+      doId: env.REPO_DO.idFromName(src.doName).toString(),
+      repoId: src.doName,
+      ref: "refs/heads/main",
+      sha: c2.oid,
+      targets: ["ssh://git@mirror.example/team/repo.git"],
+    },
+    { fetch: selfFetch }
+  );
+  expect(outcome.retry).toBe(true);
+  expect(outcome.detail).toContain("no-relay-configured");
+});
