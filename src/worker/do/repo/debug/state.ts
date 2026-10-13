@@ -5,6 +5,7 @@ import { asTypedStorage } from "../repoState";
 import { doPrefix, r2LooseKey } from "@/worker/keys";
 import { getDb, listPackCatalog } from "../db";
 import { activeLeaseOrUndefined, getActivePackCatalogSnapshot } from "../catalog";
+import { getActiveReceiveLeases } from "../catalog/leases";
 import { toDebugPackState } from "./types";
 
 async function listLooseSample(ctx: DurableObjectState): Promise<string[]> {
@@ -59,7 +60,7 @@ export async function debugState(ctx: DurableObjectState, env: Env): Promise<Deb
     .map(toDebugPackState);
   const packStats = catalogRows.map(toDebugPackState);
 
-  const receiveLease = activeLeaseOrUndefined(await store.get("receiveLease"), now);
+  const receiveLeases = await getActiveReceiveLeases(store, now);
   const compactLease = activeLeaseOrUndefined(await store.get("compactLease"), now);
   const compactionWantedAt = await store.get("compactionWantedAt");
 
@@ -80,7 +81,7 @@ export async function debugState(ctx: DurableObjectState, env: Env): Promise<Deb
     activePacks,
     supersededPacks,
     packCatalogVersion: (await store.get("packsetVersion")) || 0,
-    receiveLease,
+    receiveLeases,
     compaction: {
       running: !!compactLease,
       queued: typeof compactionWantedAt === "number",

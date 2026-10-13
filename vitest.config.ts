@@ -1,9 +1,88 @@
 // @ts-nocheck
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "path";
 import { BASE_TEST_BINDINGS } from "./test/vitest.bindings";
 import { defineConfig } from "vitest/config";
+
+/**
+ * vitest-pool-workers validates wrangler.jsonc with a schema that doesn't
+ * yet know the `containers` field, so tests fail config validation. Strip
+ * the field (container DOs are never exercised in workerd anyway) into a
+ * temp config file at load time. The stripper is string-aware so `//`
+ * inside URLs and string values survives.
+ */
+function stripJsoncComments(source: string): string {
+  let out = "";
+  let inString = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (inLineComment) {
+      if (ch === "\n") {
+        inLineComment = false;
+        out += ch;
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      out += ch;
+      if (ch === "\\") {
+        out += next ?? "";
+        i++;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function writeTestWranglerConfig(): string {
+  const parsed = JSON.parse(stripJsoncComments(readFileSync("./wrangler.jsonc", "utf8")));
+  delete parsed.containers;
+  // The container DO class can't run under workerd — drop its binding and
+  // migration so the pool sees only plain DOs.
+  parsed.durable_objects.bindings = parsed.durable_objects.bindings.filter(
+    (binding) => binding.name !== "FORGE_SANDBOX"
+  );
+  parsed.migrations = parsed.migrations.map((migration) => ({
+    ...migration,
+    new_sqlite_classes: migration.new_sqlite_classes?.filter((name) => name !== "ForgeSandbox"),
+  }));
+  // The config must live at the repo root: wrangler resolves relative paths
+  // (assets.directory, d1 migrations_dir, main) against the config's own
+  // directory, so a /tmp location would silently break asset serving and D1.
+  const configPath = path.join(__dirname, ".vitest.wrangler.json");
+  writeFileSync(configPath, JSON.stringify(parsed, null, 2));
+  return configPath;
+}
 
 const AUTH_TEST_FILE = "test/auth.worker.test.ts";
 const INLINE_DEPS = ["@noble/hashes", "pako"];
@@ -16,7 +95,7 @@ export default defineConfig({
     cloudflareTest({
       main: "./src/worker/index.ts",
       wrangler: {
-        configPath: "./wrangler.jsonc",
+        configPath: writeTestWranglerConfig(),
       },
 
       // Windows workaround: disable isolatedStorage to avoid EBUSY teardown failures

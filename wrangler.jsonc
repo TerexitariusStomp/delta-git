@@ -31,9 +31,33 @@
       {
         "name": "FIREHOSE_DO",
         "class_name": "FirehoseAgent"
+      },
+      {
+        // Platform compute — every "real effect" module runs here: CI
+        // executions, security scans, SBOMs, cert probes, federation
+        // mirrors, dev workspaces. One DO class; instances are addressed
+        // by id prefix (`job-*` for jobs, `ws-*` for workspaces) so they
+        // get their own container.
+        "name": "FORGE_SANDBOX",
+        "class_name": "ForgeSandbox"
       }
     ]
   },
+  // DO-managed containers: each ForgeSandbox instance gets its own
+  // container built from containers/forge/Dockerfile.
+  "containers": [
+    {
+      "name": "forge-sandbox",
+      "class_name": "ForgeSandbox",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "forge": {
+          "dockerfile": "containers/forge/Dockerfile",
+          "build_context": "containers/forge"
+        }
+      }
+    }
+  ],
   "migrations": [
     {
       "tag": "v1",
@@ -61,6 +85,13 @@
         "AdjudicatorAgent",
         "RepoAgent",
         "FirehoseAgent"
+      ]
+    },
+    {
+      "tag": "v5",
+      // ForgeSandbox — DO-managed container class for platform compute.
+      "new_sqlite_classes": [
+        "ForgeSandbox"
       ]
     }
   ],

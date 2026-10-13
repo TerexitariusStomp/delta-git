@@ -165,3 +165,4 @@ export default {
 
 export { RepoDurableObject } from "./do/repo/repoDO";
 export { AdjudicatorAgent, RepoAgent, FirehoseAgent } from "./agent/runtime";
+export { ForgeSandbox } from "./do/sandbox/forgeSandbox";

@@ -5,6 +5,11 @@ import type { Ref } from "../repoState";
 export const RECEIVE_LEASE_TTL_MS = 30 * 60_000;
 export const COMPACT_LEASE_TTL_MS = 20 * 60_000;
 export const LEASE_RETRY_AFTER_SECONDS = 10;
+// Cap on simultaneous staged receives per repo. Only finalize is
+// serialized (by the DO's own RPC serialization); concurrent staging is
+// safe because pack keys embed the unique lease token and finalize
+// re-validates commands against the current refs.
+export const MAX_CONCURRENT_RECEIVES = 8;
 export const COMPACTION_REARM_DELAY_MS = 60_000;
 export const COMPACTION_WAKE_DELAY_MS = 5_000;
 export const DEFAULT_HEAD: Head = { target: "refs/heads/main", unborn: true };

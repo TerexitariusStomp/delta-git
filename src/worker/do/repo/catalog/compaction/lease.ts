@@ -17,7 +17,7 @@ import {
   supersedePackCatalogRows,
   upsertPackCatalogRow,
 } from "../../db";
-import { clearExpiredLeases } from "../leases";
+import { clearExpiredLeases, hasActiveReceiveLease } from "../leases";
 import { getActivePackCatalogSnapshot } from "../state";
 import {
   bumpPacksetVersion,
@@ -65,8 +65,7 @@ export async function beginCompactionState(args: {
   }
 
   const now = Date.now();
-  const receiveLease = activeLeaseOrUndefined(await store.get("receiveLease"), now);
-  if (receiveLease) {
+  if (await hasActiveReceiveLease(store, now)) {
     return {
       ok: false,
       status: "busy",
@@ -160,8 +159,7 @@ export async function commitCompactionState(args: {
     };
   }
 
-  const receiveLease = activeLeaseOrUndefined(await store.get("receiveLease"), Date.now());
-  if (receiveLease) {
+  if (await hasActiveReceiveLease(store, Date.now())) {
     await store.delete("compactLease");
     return {
       status: "retry",
@@ -265,7 +263,7 @@ export async function rearmCompactionQueueFromAlarm(args: {
   if (typeof wantedAt !== "number") return false;
 
   const now = Date.now();
-  if (activeLeaseOrUndefined(await store.get("receiveLease"), now)) return false;
+  if (await hasActiveReceiveLease(store, now)) return false;
   if (activeLeaseOrUndefined(await store.get("compactLease"), now)) return false;
 
   const doId = args.ctx.id.toString();

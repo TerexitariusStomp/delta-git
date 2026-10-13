@@ -18,6 +18,7 @@ import {
   upsertPackCatalogRow,
 } from "../db";
 import { planDivergence } from "./diverge";
+import { getActiveReceiveLeases, removeReceiveLease } from "./leases";
 import { appendOpLogEntry } from "./oplog";
 import { DEFAULT_HEAD, bumpPacksetVersion, ensureRepoMetadataDefaults } from "./shared";
 import { catalogNeedsCompaction, scheduleCompactionWake } from "./compaction/plan";
@@ -82,8 +83,11 @@ export async function finalizeReceiveState(args: {
   const store = asTypedStorage<RepoStateSchema>(args.ctx.storage);
   await ensureRepoMetadataDefaults(store);
 
-  const lease = await store.get("receiveLease");
-  if (!lease || lease.token !== args.token) {
+  // The token must match one lease in the map — several receives may be
+  // staged concurrently, each holding its own token.
+  const active = await getActiveReceiveLeases(store, Date.now());
+  const lease = active.find((candidate) => candidate.token === args.token);
+  if (!lease) {
     return {
       status: "lease_mismatch",
       message: "Receive lease is no longer active for this request.",
@@ -95,7 +99,7 @@ export async function finalizeReceiveState(args: {
     .filter((command) => !isValidRefName(command.ref))
     .map((command) => ({ ref: command.ref, ok: false, msg: "invalid" satisfies string }));
   if (invalidStatuses.length > 0) {
-    await store.delete("receiveLease");
+    await removeReceiveLease(store, args.token);
     args.logger?.warn("receive:finalize-invalid-ref", {
       invalidCount: invalidStatuses.length,
     });
@@ -127,7 +131,7 @@ export async function finalizeReceiveState(args: {
       openIntentCounts,
     });
     if (plan.kind === "rejected") {
-      await store.delete("receiveLease");
+      await removeReceiveLease(store, args.token);
       args.logger?.warn("receive:finalize-ref-conflict", {
         conflictCount: statuses.filter((status) => !status.ok).length,
       });
@@ -142,7 +146,7 @@ export async function finalizeReceiveState(args: {
     // braces for invariants the planner is responsible for upholding.
     const revalidated = validateReceiveCommands(currentRefs, plan.commands);
     if (!revalidated.every((status) => status.ok)) {
-      await store.delete("receiveLease");
+      await removeReceiveLease(store, args.token);
       args.logger?.warn("receive:finalize-delta-invalid", {
         conflictCount: revalidated.filter((status) => !status.ok).length,
       });
@@ -197,7 +201,7 @@ export async function finalizeReceiveState(args: {
   await store.put("refs", nextRefs);
   await store.put("head", nextHead);
   await store.put("refsVersion", nextRefsVersion);
-  await store.delete("receiveLease");
+  await removeReceiveLease(store, args.token);
 
   const db = getDb(args.ctx.storage);
   const now = Date.now();

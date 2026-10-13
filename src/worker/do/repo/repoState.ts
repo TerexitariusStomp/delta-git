@@ -17,7 +17,17 @@ export type RepoStateSchema = {
   refsVersion: number;
   packsetVersion: number;
   nextPackSeq: number;
+  /**
+   * Legacy single receive lease — read-migrated into `receiveLeases` on
+   * first access, never written by current code.
+   */
   receiveLease: RepoLease | undefined;
+  /**
+   * Active receive leases, keyed by lease token. Multiple receives may be
+   * staged concurrently; only finalize (ref validation + commit) is
+   * serialized by the DO. Compaction still requires zero active leases.
+   */
+  receiveLeases: Record<string, RepoLease> | undefined;
   compactLease: RepoLease | undefined;
   compactionWantedAt: number | undefined;
   lastAccessMs: number;
@@ -32,15 +42,15 @@ export type TypedStorage<S> = {
 };
 
 export function asTypedStorage<S>(storage: DurableObjectStorage): TypedStorage<S> {
-  async function get<K extends keyof S & string>(key: K): Promise<S[K] | undefined>;
-  async function get<K extends keyof S & string>(keys: K[]): Promise<Map<K, S[K] | undefined>>;
-  async function get(keyOrKeys: any): Promise<any> {
-    return storage.get(keyOrKeys as any);
-  }
-  const put = <K extends keyof S & string>(key: K, value: S[K]) =>
-    storage.put(key as string, value);
-  const del = <K extends keyof S & string>(key: K) => storage.delete(key as string);
-  return { get: get as any, put: put as any, delete: del as any };
+  // The cast on `get` is deliberate: DO storage's Map overload loses the
+  // schema's key typing, so we re-narrow it to the declared signature.
+  const get: TypedStorage<S>["get"] = ((keyOrKeys: string | string[]) =>
+    (Array.isArray(keyOrKeys)
+      ? storage.get(keyOrKeys)
+      : storage.get(keyOrKeys))) as TypedStorage<S>["get"];
+  const put = <K extends keyof S & string>(key: K, value: S[K]) => storage.put(key, value);
+  const del = <K extends keyof S & string>(key: K) => storage.delete(key);
+  return { get, put, delete: del };
 }
 
 // Key helpers for template-literal key families

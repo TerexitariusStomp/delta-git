@@ -4,6 +4,7 @@ import { getConfig } from "./repoConfig";
 import { createLogger } from "@/worker/common";
 import { activeLeaseOrUndefined } from "./catalog/activity";
 import { COMPACTION_REARM_DELAY_MS } from "./catalog/shared";
+import { getActiveReceiveLeases } from "./catalog/leases";
 import { getDb, nextMatchDeadline } from "./db";
 
 /**
@@ -29,15 +30,15 @@ export async function planNextAlarm(
 
   // 1) Re-arm compaction via alarms when a compaction request or lease is active.
   try {
-    const [compactionWantedAt, receiveLease, compactLease] = await Promise.all([
+    const [compactionWantedAt, compactLease] = await Promise.all([
       store.get("compactionWantedAt"),
-      store.get("receiveLease"),
       store.get("compactLease"),
     ]);
 
-    const activeReceiveLease = activeLeaseOrUndefined(receiveLease, now);
-    if (activeReceiveLease) {
-      candidate(activeReceiveLease.expiresAt, "compaction");
+    // Re-arm at the earliest lease expiry — expired leases are swept by
+    // clearExpiredLeases on the next begin/compaction attempt.
+    for (const lease of await getActiveReceiveLeases(store, now)) {
+      candidate(lease.expiresAt, "compaction");
     }
 
     const activeCompactLease = activeLeaseOrUndefined(compactLease, now);

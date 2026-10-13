@@ -6,6 +6,7 @@ import type { ReceiveStatus } from "@/worker/git/operations/validation";
 
 import { clientAbortedResponse, createLogger, getRepoStub } from "@/worker/common";
 import { canDivergeStatuses } from "@/worker/do/repo/catalog/diverge";
+import type { BeginReceiveResult } from "@/worker/do/repo/catalog/shared";
 import {
   MAX_SIMULTANEOUS_CONNECTIONS,
   SubrequestLimiter,
@@ -35,6 +36,13 @@ import {
 
 const RECEIVE_SUBREQUEST_BUDGET = 5_000;
 
+// How long a blocked receive waits in line for a lease before giving up.
+// Stock git doesn't retry 503s, so a busy repo used to be a hard failure —
+// now the worker holds the request briefly and the sibling receive almost
+// always finishes inside the window. 25s sits comfortably under the
+// subrequest and CPU budgets while covering real receive durations.
+const LEASE_WAIT_BUDGET_MS = 25_000;
+
 type RepoStub = DurableObjectStub<RepoDurableObject>;
 type RepoStateChangeHandler = (change: {
   changed: boolean;
@@ -50,6 +58,51 @@ function countReceiveSubrequest(cacheCtx: CacheContext, log: Logger, op: string,
 
 function logReceiveEnd(log: Logger, status: number, extra?: Record<string, unknown>) {
   log.info("receive:end", { status, ...extra });
+}
+
+/**
+ * Acquire a receive lease, waiting in line when the repo already has
+ * MAX_CONCURRENT_RECEIVES staged or a compaction is holding the catalog.
+ * Returns the last `ok:false` result once the wait budget is spent —
+ * the caller still emits the 503, but stock git almost never sees it now.
+ */
+async function beginReceiveWithWait(args: {
+  stub: RepoStub;
+  request: Request;
+  cacheCtx: CacheContext;
+  log: Logger;
+  /** Wait budget override — tests shrink this so the busy path is fast. */
+  waitBudgetMs?: number | undefined;
+}): Promise<BeginReceiveResult> {
+  const { stub, request, cacheCtx, log } = args;
+  const waitBudgetMs = args.waitBudgetMs ?? LEASE_WAIT_BUDGET_MS;
+  countReceiveSubrequest(cacheCtx, log, "do:begin-receive");
+  let begin = await stub.beginReceive();
+  if (begin.ok) return begin;
+
+  const started = Date.now();
+  let attempts = 0;
+  let delay = 250;
+  while (Date.now() - started < waitBudgetMs) {
+    if (request.signal.aborted) break;
+    // Jittered backoff — sibling receives finish at unrelated times, so a
+    // fixed cadence just adds contention.
+    await new Promise((resolve) => setTimeout(resolve, delay + Math.floor(Math.random() * delay)));
+    delay = Math.min(Math.floor(delay * 1.6), 2_000);
+    attempts++;
+    countReceiveSubrequest(cacheCtx, log, "do:begin-receive");
+    begin = await stub.beginReceive();
+    if (begin.ok) {
+      log.info("receive:lease-wait", { attempts, waitedMs: Date.now() - started });
+      return begin;
+    }
+  }
+  log.warn("receive:lease-wait-exhausted", {
+    attempts,
+    waitedMs: Date.now() - started,
+    aborted: request.signal.aborted,
+  });
+  return begin;
 }
 
 function buildReceiveCacheContext(
@@ -253,6 +306,11 @@ export async function handleStreamingReceivePackPOST(
     namespaceId?: string | undefined;
     /** "owner/repo" slug carried into `push` webhook payloads. */
     repoSlug?: string | undefined;
+    /**
+     * Lease wait-budget override in ms — test hook so the busy path can be
+     * exercised without a real 25s wait. Production callers omit it.
+     */
+    waitBudgetMs?: number | undefined;
   }
 ): Promise<Response> {
   const stub = getRepoStub(env, repoId);
@@ -273,8 +331,13 @@ export async function handleStreamingReceivePackPOST(
 
   const { cacheCtx, limiter } = buildReceiveCacheContext(request, ctx, repoId);
 
-  countReceiveSubrequest(cacheCtx, log, "do:begin-receive");
-  const begin = await stub.beginReceive();
+  const begin = await beginReceiveWithWait({
+    stub,
+    request,
+    cacheCtx,
+    log,
+    waitBudgetMs: options?.waitBudgetMs,
+  });
   if (!begin.ok) {
     log.warn("receive:block-busy", { retryAfter: begin.retryAfter, mode: "streaming" });
     logReceiveEnd(log, 503, { reason: "receive-lease-active" });
@@ -285,6 +348,14 @@ export async function handleStreamingReceivePackPOST(
         "Content-Type": "text/plain; charset=utf-8",
       },
     });
+  }
+  if (request.signal.aborted) {
+    // The client went away while we waited in line — release the lease
+    // immediately so it doesn't occupy a slot for its full TTL.
+    countReceiveSubrequest(cacheCtx, log, "do:abort-receive");
+    await stub.abortReceive(begin.lease.token).catch(() => {});
+    logReceiveEnd(log, 499, { reason: "client-aborted-after-wait" });
+    return clientAbortedResponse();
   }
 
   let pipelineStarted = false;

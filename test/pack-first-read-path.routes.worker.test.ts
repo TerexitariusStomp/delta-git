@@ -253,10 +253,12 @@ describe("pack-first read path routes", () => {
     await runDOWithRetry(seeded.getStub, async (_instance, state) => {
       const store = asTypedStorage<RepoStateSchema>(state.storage);
       const now = Date.now();
-      await store.put("receiveLease", {
-        token: "test-receive-lease",
-        createdAt: now,
-        expiresAt: now + 60_000,
+      await store.put("receiveLeases", {
+        "test-receive-lease": {
+          token: "test-receive-lease",
+          createdAt: now,
+          expiresAt: now + 60_000,
+        },
       });
     });
 
@@ -266,8 +268,8 @@ describe("pack-first read path routes", () => {
     );
     expect(response.status).toBe(200);
     const json = (await response.json()) as {
-      receiveLease?: { token: string };
+      receiveLeases?: Array<{ token: string }>;
     };
-    expect(json.receiveLease?.token).toBe("test-receive-lease");
+    expect(json.receiveLeases?.map((lease) => lease.token)).toContain("test-receive-lease");
   });
 });

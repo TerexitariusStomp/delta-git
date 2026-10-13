@@ -33,7 +33,7 @@ export type DebugStateSnapshot = {
   activePacks: DebugPackState[];
   supersededPacks: DebugPackState[];
   packCatalogVersion: number;
-  receiveLease?: RepoLease;
+  receiveLeases?: RepoLease[];
   compaction: DebugCompactionState;
   looseSample: string[];
   dbSizeBytes?: number;

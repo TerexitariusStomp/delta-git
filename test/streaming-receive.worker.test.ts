@@ -700,7 +700,7 @@ describe("streaming receive-pack", () => {
     expect(retryPush.commitOid).not.toBe(seeded.nextCommit.oid);
   });
 
-  it("returns 503 when a streaming receive lease is already active", async () => {
+  it("returns 503 when every concurrent receive slot is held", async () => {
     const owner = "o";
     const repo = uniqueRepoId("stream-receive-busy");
     await setupRepoForTests(env, owner, repo);
@@ -708,22 +708,39 @@ describe("streaming receive-pack", () => {
     const seeded = await seedPackFirstRepo(repoId);
     await promoteToStreaming(owner, repo);
 
-    const begin = await callStubWithRetry<any>(seeded.getStub, (stub) => stub.beginReceive());
-    if (!begin.ok) {
-      throw new Error("expected test receive lease to be granted");
+    // Busy now means all MAX_CONCURRENT_RECEIVES slots are held — a
+    // single lease no longer blocks a sibling push.
+    const heldTokens: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const begin = await callStubWithRetry<any>(seeded.getStub, (stub) => stub.beginReceive());
+      if (!begin.ok) {
+        throw new Error(`expected test receive lease ${i} to be granted`);
+      }
+      heldTokens.push(begin.lease.token);
     }
 
-    const response = await pushBody(
-      `https://example.com/${owner}/${repo}/git-receive-pack`,
-      concatChunks([
-        pktLine(`${zero40()} ${seeded.nextCommit.oid} refs/heads/main\0 report-status\n`),
-        flushPkt(),
-      ])
+    const response = await handleStreamingReceivePackPOST(
+      env,
+      repoId,
+      new Request(`https://example.com/${owner}/${repo}/git-receive-pack`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-git-receive-pack-request" },
+        body: toRequestBody(
+          concatChunks([
+            pktLine(`${zero40()} ${seeded.nextCommit.oid} refs/heads/main\0 report-status\n`),
+            flushPkt(),
+          ])
+        ),
+      }),
+      createExecutionContext(),
+      { waitBudgetMs: 100 }
     );
     expect(response.status).toBe(503);
     expect(response.headers.get("Retry-After")).toBe("10");
 
-    await callStubWithRetry(seeded.getStub, (stub) => stub.abortReceive(begin.lease.token));
+    for (const token of heldTokens) {
+      await callStubWithRetry(seeded.getStub, (stub) => stub.abortReceive(token));
+    }
   });
 
   it("rejects invalid refs without leaving staged receive packs behind", async () => {
