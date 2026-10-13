@@ -9,6 +9,7 @@ import { handleAdjudicateMessage } from "./adjudicate";
 import { handleWebhookMessage } from "./webhook";
 import { handlePipelineTriggerMessage } from "./pipeline";
 import { handleRunnerDispatchMessage } from "./runner";
+import { handleSecurityScanMessage, handleSupplyChainBuildMessage } from "./securityScan";
 import { handleKnowledgeRefreshMessage } from "./knowledge";
 import { RepoTaskQueueMessageSchema } from "./types";
 import { handleArtifactsEventBatch } from "./artifactsEvents";
@@ -78,6 +79,12 @@ export async function handleRepoTaskQueue(
         break;
       case "runner-dispatch":
         await handleRunnerDispatchMessage(message, body, env);
+        break;
+      case "security-scan":
+        await handleSecurityScanMessage(message, body, env);
+        break;
+      case "supply-chain-build":
+        await handleSupplyChainBuildMessage(message, body, env);
         break;
       case "knowledge-refresh":
         await handleKnowledgeRefreshMessage(message, body, env);

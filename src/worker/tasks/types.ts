@@ -175,6 +175,26 @@ export const RunnerDispatchQueueMessageSchema = z.object({
 
 export type RunnerDispatchQueueMessage = z.infer<typeof RunnerDispatchQueueMessageSchema>;
 
+// Platform security scan: a queued `security_tests` row whose target is a
+// repo on this forge gets a real scan in a ForgeSandbox (gitleaks/trivy/
+// osv-scanner) and the row is updated with the findings.
+export const SecurityScanQueueMessageSchema = z.object({
+  kind: z.literal("security-scan"),
+  testId: z.string(),
+});
+
+export type SecurityScanQueueMessage = z.infer<typeof SecurityScanQueueMessageSchema>;
+
+// Supply-chain build: a `supply_chain_docs` row created without a document
+// gets a real one — syft SBOM for `sbom`, a DSSE-signed in-toto statement
+// for `provenance`/`attestation`.
+export const SupplyChainBuildQueueMessageSchema = z.object({
+  kind: z.literal("supply-chain-build"),
+  docId: z.string(),
+});
+
+export type SupplyChainBuildQueueMessage = z.infer<typeof SupplyChainBuildQueueMessageSchema>;
+
 export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   CompactionQueueMessageSchema,
   CompactionDeleteQueueMessageSchema,
@@ -191,6 +211,8 @@ export const RepoTaskQueueMessageSchema = z.discriminatedUnion("kind", [
   PipelineTriggerQueueMessageSchema,
   KnowledgeRefreshQueueMessageSchema,
   RunnerDispatchQueueMessageSchema,
+  SecurityScanQueueMessageSchema,
+  SupplyChainBuildQueueMessageSchema,
 ]);
 
 export type RepoTaskQueueMessage = z.infer<typeof RepoTaskQueueMessageSchema>;

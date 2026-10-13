@@ -582,6 +582,12 @@ export function registerGitnessDevx(router: AppRouter) {
       createdAt: Date.now(),
       finishedAt: null,
     });
+    if (repositoryId) {
+      // Repo-backed targets get a REAL platform scan — the sandbox image's
+      // pinned gitleaks/trivy/osv-scanner run against a staged worktree.
+      // Non-repo targets stay queued for client delegates via /result.
+      await c.env.REPO_TASKS_QUEUE.send({ kind: "security-scan", testId: id });
+    }
     return c.json({ id }, 201);
   });
 
@@ -633,23 +639,32 @@ export function registerGitnessDevx(router: AppRouter) {
       commit_oid?: string;
       document?: Record<string, unknown>;
     } | null;
-    if (!body?.kind || !body?.repo || !body.document) {
-      return gErr(c, 400, "kind + repo + document required");
+    if (!body?.kind || !body?.repo) {
+      return gErr(c, 400, "kind + repo required");
     }
     const route = await findRepositoryByDoName(c.var.db, `${ns.slug}/${body.repo}`);
     if (!route) return gNotFound(c, "repository");
     const id = newPrefixedId("sc");
+    // No document → the platform builds a real one: syft for `sbom`, a
+    // DSSE-signed in-toto statement for `provenance`/`attestation`. A
+    // supplied document is stored as-is (client-generated artifact).
+    const generating = body.document === undefined;
     await insertSupplyChainDoc(c.var.db, {
       id,
       namespaceId: ns.id,
       repositoryId: route.id,
       kind: body.kind,
       commitOid: body.commit_oid ?? null,
-      document: JSON.stringify(body.document),
+      document: generating
+        ? JSON.stringify({ status: "generating", kind: body.kind })
+        : JSON.stringify(body.document),
       createdBy: ns.userId,
       createdAt: Date.now(),
     });
-    return c.json({ id }, 201);
+    if (generating) {
+      await c.env.REPO_TASKS_QUEUE.send({ kind: "supply-chain-build", docId: id });
+    }
+    return c.json({ id, status: generating ? "generating" : "stored" }, 201);
   });
 
   router.get("/api/v1/spaces/:space_ref{.+}/supply-chain/:id", async (c) => {

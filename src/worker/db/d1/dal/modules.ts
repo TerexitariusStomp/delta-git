@@ -684,6 +684,13 @@ export async function insertSupplyChainDoc(db: Db, row: NewSupplyChainDocRow): P
 export async function findSupplyChainDoc(db: Db, id: string) {
   return db.select().from(supplyChainDocs).where(eq(supplyChainDocs.id, id)).get();
 }
+export async function updateSupplyChainDoc(
+  db: Db,
+  id: string,
+  patch: Partial<SupplyChainDocRow>
+): Promise<void> {
+  await db.update(supplyChainDocs).set(patch).where(eq(supplyChainDocs.id, id)).run();
+}
 
 export async function listDashboards(db: Db, namespaceId: string): Promise<DashboardRow[]> {
   return db.select().from(dashboards).where(eq(dashboards.namespaceId, namespaceId)).all();

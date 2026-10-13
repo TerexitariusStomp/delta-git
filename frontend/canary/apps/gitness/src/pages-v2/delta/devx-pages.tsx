@@ -626,19 +626,62 @@ interface SecurityTestItem {
 
 export function SecurityTestsPage() {
   const { spaces, space, setSpace } = useSpacePicker();
+  const queryClient = useQueryClient();
+  const [kind, setKind] = useState("secrets");
+  const [repo, setRepo] = useState("");
   const { data } = useQuery(
     ["security-tests", space],
     () => deltaApi<SecurityTestItem[]>(`/api/v1/spaces/${space}/security-tests`),
-    { enabled: !!space }
+    {
+      enabled: !!space,
+      // Queued/running scans update as the platform sandbox finishes.
+      refetchInterval: (rows) =>
+        Array.isArray(rows) && rows.some((t) => t.status === "queued" || t.status === "running")
+          ? 5000
+          : false,
+    }
+  );
+  const create = useMutation(
+    () =>
+      deltaApi(`/api/v1/spaces/${space}/security-tests`, {
+        method: "POST",
+        body: JSON.stringify({ kind, target: `${space}/${repo}`, repo }),
+      }),
+    { onSuccess: () => queryClient.invalidateQueries(["security-tests", space]) }
   );
 
   return (
     <PageShell title="Security tests">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
       <Text className="mb-cn-md text-cn-3">
-        SAST/DAST/secrets/deps jobs — queued here, executed by delegates or the dgit CLI on
-        client machines, results posted back.
+        Repo targets run on the platform — pinned gitleaks / trivy / osv-scanner in a sandbox.
+        External targets stay queued for delegates and the dgit CLI.
       </Text>
+      <div className="mb-cn-lg flex items-end gap-cn-md">
+        <select
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+        >
+          <option value="secrets">secrets — gitleaks</option>
+          <option value="sast">sast — trivy fs</option>
+          <option value="deps">deps — osv-scanner</option>
+        </select>
+        <TextInput
+          label="Repository"
+          value={repo}
+          onChange={(e) => setRepo(e.target.value)}
+          placeholder="repo-name"
+        />
+        <Button disabled={!repo.trim() || create.isLoading} onClick={() => create.mutate()}>
+          Run scan
+        </Button>
+        {create.isError && (
+          <StatusBadge variant="status" theme="danger">
+            {(create.error as Error)?.message ?? "queue failed"}
+          </StatusBadge>
+        )}
+      </div>
       <Table.Root>
         <Table.Header>
           <Table.Row>
@@ -690,18 +733,55 @@ interface SupplyChainItem {
 
 export function SupplyChainPage() {
   const { spaces, space, setSpace } = useSpacePicker();
+  const queryClient = useQueryClient();
+  const [kind, setKind] = useState("sbom");
+  const [repo, setRepo] = useState("");
   const { data } = useQuery(
     ["supply-chain", space],
     () => deltaApi<SupplyChainItem[]>(`/api/v1/spaces/${space}/supply-chain`),
-    { enabled: !!space }
+    { enabled: !!space, refetchInterval: 8000 }
+  );
+  const generate = useMutation(
+    () =>
+      deltaApi(`/api/v1/spaces/${space}/supply-chain`, {
+        method: "POST",
+        body: JSON.stringify({ kind, repo }),
+      }),
+    { onSuccess: () => queryClient.invalidateQueries(["supply-chain", space]) }
   );
 
   return (
     <PageShell title="Supply chain">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
       <Text className="mb-cn-md text-cn-3">
-        SBOMs, provenance statements, and attestations bound to repos and commits.
+        SBOMs (syft), provenance statements and attestations — generated on the platform and
+        DSSE-signed with the node key.
       </Text>
+      <div className="mb-cn-lg flex items-end gap-cn-md">
+        <select
+          className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+        >
+          <option value="sbom">sbom — syft spdx-json</option>
+          <option value="provenance">provenance — in-toto DSSE</option>
+          <option value="attestation">attestation — in-toto DSSE</option>
+        </select>
+        <TextInput
+          label="Repository"
+          value={repo}
+          onChange={(e) => setRepo(e.target.value)}
+          placeholder="repo-name"
+        />
+        <Button disabled={!repo.trim() || generate.isLoading} onClick={() => generate.mutate()}>
+          Generate
+        </Button>
+        {generate.isError && (
+          <StatusBadge variant="status" theme="danger">
+            {(generate.error as Error)?.message ?? "generate failed"}
+          </StatusBadge>
+        )}
+      </div>
       <Table.Root>
         <Table.Header>
           <Table.Row>
