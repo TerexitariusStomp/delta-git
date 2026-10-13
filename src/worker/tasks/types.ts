@@ -74,6 +74,10 @@ export const DeployQueueMessageSchema = z.object({
   ref: z.string(),
   sha: z.string(),
   actor: z.string().optional(),
+  // GitOps reconcile: deploy as `dg-<repo>-<environment>` and converge the
+  // target's sync ledger when the deploy lands.
+  environment: z.string().optional(),
+  gitopsTargetId: z.string().optional(),
 });
 
 export type DeployQueueMessage = z.infer<typeof DeployQueueMessageSchema>;

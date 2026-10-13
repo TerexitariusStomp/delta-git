@@ -714,18 +714,63 @@ interface GitopsItem {
 
 export function GitOpsPage() {
   const { spaces, space, setSpace } = useSpacePicker();
+  const queryClient = useQueryClient();
+  const [identifier, setIdentifier] = useState("");
+  const [repo, setRepo] = useState("");
+  const [branch, setBranch] = useState("main");
+  const [envName, setEnvName] = useState("prod");
+  const [syncNote, setSyncNote] = useState<string | null>(null);
   const { data } = useQuery(
     ["gitops", space],
     () => deltaApi<GitopsItem[]>(`/api/v1/spaces/${space}/gitops`),
     { enabled: !!space }
+  );
+  const create = useMutation(
+    () =>
+      deltaApi(`/api/v1/spaces/${space}/gitops`, {
+        method: "POST",
+        body: JSON.stringify({ identifier, repo, branch, target_environment: envName }),
+      }),
+    {
+      onSuccess: () => {
+        setIdentifier("");
+        queryClient.invalidateQueries(["gitops", space]);
+      },
+    }
+  );
+  const sync = useMutation(
+    (id: string) =>
+      deltaApi<{ drifted: boolean; applying: boolean; oid: string }>(
+        `/api/v1/spaces/${space}/gitops/${id}/sync`,
+        { method: "POST", body: "{}" }
+      ),
+    {
+      onSuccess: (res) => {
+        setSyncNote(
+          res.drifted ? "Drift detected — deploy enqueued" : "No drift — already converged"
+        );
+        queryClient.invalidateQueries(["gitops", space]);
+      },
+    }
   );
 
   return (
     <PageShell title="GitOps">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
       <Text className="mb-cn-md text-cn-3">
-        Declarative sync targets — a repo+branch reconciled into an environment.
+        Declarative sync targets — pushes to a tracked branch auto-deploy into the environment
+        as dg-&lt;repo&gt;-&lt;env&gt;; sync reconciles drift on demand.
       </Text>
+      <div className="mb-cn-lg flex items-end gap-cn-md">
+        <TextInput label="Identifier" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="prod-deploy" />
+        <TextInput label="Repo" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="repo-name" />
+        <TextInput label="Branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
+        <TextInput label="Environment" value={envName} onChange={(e) => setEnvName(e.target.value)} />
+        <Button disabled={!identifier.trim() || !repo.trim() || create.isLoading} onClick={() => create.mutate()}>
+          Add target
+        </Button>
+        {syncNote && <StatusBadge variant="status" theme="info">{syncNote}</StatusBadge>}
+      </div>
       <Table.Root>
         <Table.Header>
           <Table.Row>
@@ -733,6 +778,7 @@ export function GitOpsPage() {
             <Table.Head>Branch</Table.Head>
             <Table.Head>Environment</Table.Head>
             <Table.Head>Last sync</Table.Head>
+            <Table.Head></Table.Head>
           </Table.Row>
         </Table.Header>
         <Table.Body>
@@ -747,6 +793,11 @@ export function GitOpsPage() {
               </Table.Cell>
               <Table.Cell>
                 {g.last_sync ? new Date(g.last_sync).toLocaleString() : "pending"}
+              </Table.Cell>
+              <Table.Cell>
+                <Button variant="ghost" size="sm" disabled={sync.isLoading} onClick={() => sync.mutate(g.identifier)}>
+                  Sync
+                </Button>
               </Table.Cell>
             </Table.Row>
           ))}

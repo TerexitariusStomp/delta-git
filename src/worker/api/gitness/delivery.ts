@@ -35,7 +35,6 @@ import {
   listPolicies,
   listTickets,
   updateFreezeWindow,
-  updateGitopsTarget,
   updateIacState,
   updateTicket,
 } from "@/worker/db/d1/dal/modules";
@@ -999,10 +998,11 @@ export function registerGitnessFlags(router: AppRouter) {
   });
 
   // --- gitops reconcile ----------------------------------------------------------------
-  // POST /gitops/{id}/sync — reads the target branch head from the repo DO;
-  // drift = head ≠ last_sync_oid. The reconcile job records the new head as
-  // synced (the "apply" half lands wherever the environment lives — connector
-  // delivery is the follow-on; the drift ledger is real now).
+  // POST /gitops/{id}/sync — reads the target branch head; drift = head ≠
+  // last_sync_oid. A drifted target applies for real: the deploy lane runs
+  // `dg-<repo>-<environment>` and converges the ledger on success (the
+  // ledger only moves when the deploy lands, so a failed apply keeps the
+  // drift visible).
   router.post("/api/v1/spaces/:space_ref{.+}/gitops/:id/sync", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
@@ -1017,11 +1017,20 @@ export function registerGitnessFlags(router: AppRouter) {
     const head = refs.find((r) => r.name === branchRef)?.oid ?? null;
     if (!head) return gErr(c, 400, `branch ${row.branch} has no head`);
     const drifted = row.lastSyncOid !== head;
-    await updateGitopsTarget(c.var.db, row.id, {
-      lastSyncOid: head,
-      lastSyncAt: Date.now(),
+    if (!drifted) {
+      return c.json({ drifted: false, oid: head, applying: false });
+    }
+    await c.env.REPO_TASKS_QUEUE.send({
+      kind: "deploy",
+      doId: stub.id.toString(),
+      repoId: repo.doName,
+      ref: branchRef,
+      sha: head,
+      actor: ns.userId,
+      environment: row.targetEnvironment,
+      gitopsTargetId: row.id,
     });
-    return c.json({ drifted, oid: head, synced_at: Date.now() });
+    return c.json({ drifted: true, oid: head, applying: true });
   });
 }
 import { findRepositoryById } from "@/worker/db/d1/dal/repositories";

@@ -13,6 +13,7 @@ import {
 import { doPrefix, r2PackKey } from "@/worker/keys";
 import { createDb } from "@/worker/db/d1/client";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
+import { listGitopsTargets } from "@/worker/db/d1/dal/modules";
 import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
 import { deliverNotification } from "@/worker/notify/notify";
 import { findScanRunForHead, scanStatusSatisfiesPolicy } from "@/worker/db/d1/dal/scanRuns";
@@ -573,6 +574,44 @@ export async function executeReceivePipeline(
           command.newOid
         ).catch(() => {})
       );
+      // GitOps auto-reconcile: enabled targets bound to this repo+branch
+      // deploy the new head into their environment (the ledger converges
+      // in the deploy task once the deploy lands).
+      if (args.namespaceId) {
+        const namespaceId = args.namespaceId;
+        const doId = args.stub.id.toString();
+        args.ctx.waitUntil(
+          (async () => {
+            const db = createDb(args.env.DB);
+            const repoRow = await findRepositoryByDoName(db, args.repoId);
+            if (!repoRow) return;
+            const targets = (await listGitopsTargets(db, namespaceId)).filter(
+              (t) =>
+                t.enabled === 1 &&
+                t.repositoryId === repoRow.id &&
+                `refs/heads/${t.branch}` === command.ref &&
+                t.lastSyncOid !== command.newOid
+            );
+            for (const target of targets) {
+              await args.env.REPO_TASKS_QUEUE.send({
+                kind: "deploy",
+                doId,
+                repoId: args.repoId,
+                ref: command.ref,
+                sha: command.newOid,
+                actor: args.actor,
+                environment: target.targetEnvironment,
+                gitopsTargetId: target.id,
+              });
+            }
+          })().catch((error) => {
+            args.log.warn("receive:gitops-reconcile-failed", {
+              repoId: args.repoId,
+              error: String(error),
+            });
+          })
+        );
+      }
       // Repo webhook subscribers (e.g. wp-cloud push→redeploy) get a `push`
       // event per advanced heads ref — same fan-out path as agent pushes.
       args.ctx.waitUntil(

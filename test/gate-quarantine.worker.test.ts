@@ -138,7 +138,7 @@ describe("delivery gates quarantine pushes", () => {
     });
     expect(enforce.status).toBe(201);
     // The freeze override doesn't cover the policy — push quarantines again.
-    const { res, statuses, commitOid } = await pushMain("policy-four\n");
+    const { res, statuses } = await pushMain("policy-four\n");
     expect(res.status).toBe(200);
     expect(statuses).toContain("ok refs/heads/main");
     const refs = await refsNow();

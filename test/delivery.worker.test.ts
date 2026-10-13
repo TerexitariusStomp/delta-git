@@ -254,7 +254,7 @@ describe("feature flags + overrides + gitops sync", () => {
     expect(row.active).toBe(true);
   });
 
-  it("gitops sync reports drift then converges on the recorded head", async () => {
+  it("gitops sync reports drift and applies through the deploy lane", async () => {
     // Seed a real pack + main ref so the DO has a head to compare against.
     const { seedPackFirstRepo } = await import("./util/pack-first");
     await seedPackFirstRepo(`${owner}/${seeded.repoSlug}`);
@@ -272,14 +272,19 @@ describe("feature flags + overrides + gitops sync", () => {
       cookie: seeded.cookieHeader,
     });
     expect(first.status).toBe(200);
-    expect((first.body as { drifted: boolean }).drifted).toBe(true);
+    const firstBody = first.body as { drifted: boolean; applying: boolean };
+    expect(firstBody.drifted).toBe(true);
+    // Real reconcile: the deploy lane was enqueued, not just a ledger bump.
+    expect(firstBody.applying).toBe(true);
 
+    // The ledger only converges when the deploy lands — a still-pending
+    // apply keeps the drift visible instead of faking convergence.
     const second = await req(`/api/v1/spaces/${owner}/gitops/prod-deploy/sync`, {
       method: "POST",
       body: {},
       cookie: seeded.cookieHeader,
     });
     expect(second.status).toBe(200);
-    expect((second.body as { drifted: boolean }).drifted).toBe(false);
+    expect((second.body as { drifted: boolean }).drifted).toBe(true);
   });
 });

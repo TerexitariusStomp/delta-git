@@ -9,6 +9,7 @@ import { decryptRepoSecret } from "@/worker/agent/secrets";
 import { createDb } from "@/worker/db/d1/client";
 import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
 import { evaluateDeliveryGates } from "@/worker/api/gitness/delivery";
+import { updateGitopsTarget } from "@/worker/db/d1/dal/modules";
 
 // Deploy-on-commit.
 //
@@ -163,7 +164,16 @@ export async function handleDeployMessage(
     .replace(/[^a-z0-9-]/gi, "-")
     .toLowerCase()
     .slice(0, 32);
-  const scriptName = `dg-${repoSlug}-${branch}`.slice(0, 60);
+  // GitOps targets deploy per-environment; plain deploy-on-commit stays
+  // per-branch. The context string is how the UI groups statuses.
+  const deployTarget = (body.environment ?? branch)
+    .replace(/[^a-z0-9-]/gi, "-")
+    .toLowerCase()
+    .slice(0, 24);
+  const scriptName = `dg-${repoSlug}-${deployTarget}`.slice(0, 60);
+  const statusContext = body.environment
+    ? `delta-git/deploy/${body.environment}`
+    : "delta-git/deploy";
 
   const hasStatic =
     (await treeHasEntry(env, body.doId, treeOid, "site")) ||
@@ -186,7 +196,7 @@ export async function handleDeployMessage(
     await stub.setCommitStatus({
       row: {
         sha: body.sha,
-        context: "delta-git/deploy",
+        context: statusContext,
         state: result.ok ? "success" : "failure",
         description: result.detail.slice(0, 140),
         targetUrl: result.ok ? result.detail : null,
@@ -217,6 +227,22 @@ export async function handleDeployMessage(
       actor,
     });
     log.info("deploy:pages-live", { sha: body.sha, doId: body.doId });
+  }
+
+  // GitOps ledger convergence — the target reconciled to this head only
+  // when the deploy actually ran (a gate deny or no-deployable-content
+  // leaves the drift visible).
+  if (body.gitopsTargetId && (hasWorker || hasStatic) && body.repoId) {
+    const db = createDb(env.DB);
+    await updateGitopsTarget(db, body.gitopsTargetId, {
+      lastSyncOid: body.sha,
+      lastSyncAt: Date.now(),
+    }).catch((error) => {
+      log.warn("deploy:gitops-ledger-failed", {
+        targetId: body.gitopsTargetId,
+        error: String(error),
+      });
+    });
   }
 
   message.ack();
