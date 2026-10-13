@@ -2,9 +2,8 @@ import type { CacheContext } from "@/worker/cache";
 import { readLooseObjectRaw } from "./objects";
 import { resolveRef } from "./refs";
 import { readCommitInfo } from "./commits";
-import { listCommitChangedFiles } from "./diff";
-import { joinTreePath } from "./tree";
-import type { CommitInfo } from "./types";
+import { isTreeMode, joinTreePath, readTree } from "./tree";
+import type { CommitInfo, TreeEntry } from "./types";
 
 /** A single "last touched by" record for a directory listing row. */
 export type PathLastChange = {
@@ -32,25 +31,28 @@ export type DirLastChangeResult = {
 
 export type DirEntryForLastChange = { name: string; isDir: boolean };
 
-const DEFAULT_MAX_COMMITS = 50;
+const DEFAULT_MAX_COMMITS = 100;
 const DEFAULT_TIME_BUDGET_MS = 1500;
-// Floor for a single commit diff even when the outer budget is nearly spent:
-// the outer while-check re-verifies the overall budget before the next commit,
-// so giving each diff at least this much headroom can't blow the walk budget.
-const MIN_PER_COMMIT_DIFF_BUDGET_MS = 500;
+
+const EMPTY_TREE: TreeEntry[] = [];
 
 /**
  * Compute the most recent commit that touched each entry of a directory —
  * the GitHub file-table "last commit" column.
  *
- * Walks first-parent history from `ref`, diffing each commit against its
- * first parent and intersecting the changed-path set with the wanted entries.
- * Directory entries match any changed path underneath them (`dir/…`).
- * The first (newest) hit wins; entries left uncovered when the walk budget is
- * exhausted are simply absent from the result — callers render `—`.
+ * Walks first-parent history from `ref`. For each commit, every still-
+ * unmatched path is resolved in the commit's tree and its first parent's
+ * tree in lockstep: identical subtree oids short-circuit immediately, so
+ * an entry only counts as touched when its own blob/tree oid changed.
+ * Directory entries are covered for free — any descendant change alters
+ * the directory's tree oid, no changed-file enumeration needed (which
+ * also makes the walk immune to diff-truncation misses).
  *
- * Bounded by `opts.maxCommits`/`opts.timeBudgetMs`, and by the shared
- * subrequest soft budget inside `listCommitChangedFiles`.
+ * Cost is ~1 commit read + ~1 new tree read per step because per-path
+ * checks run in parallel and parsed trees are memoized across the walk
+ * (a commit's parent tree is the next commit's own). Paths left
+ * unresolved when the budget runs out are absent from the result —
+ * callers render `—`.
  */
 export async function listPathsLastChange(
   env: Env,
@@ -72,6 +74,10 @@ export async function listPathsLastChange(
   if (!headOid && /^[0-9a-f]{40}$/i.test(ref)) headOid = ref.toLowerCase();
   if (headOid) {
     const obj = await readLooseObjectRaw(env, repoId, headOid, cacheCtx);
+    if (obj && obj.type === "tree") {
+      // Raw tree refs can't walk — a tree has no parent history.
+      return null;
+    }
     if (obj && obj.type === "tag") {
       const text = new TextDecoder().decode(obj.payload);
       const m = text.match(/^object ([0-9a-f]{40})/m);
@@ -80,70 +86,100 @@ export async function listPathsLastChange(
   }
   if (!headOid) return null;
 
-  // Index wanted entries by their full repo-relative path. Directory entries
-  // match the path itself plus any descendant (`dir/` prefix).
+  // Per-walk memo of parsed tree entries. Storing the promise (not the
+  // resolved value) dedupes concurrent reads of the same tree both
+  // across the parallel per-path checks and across commits — the parent
+  // tree resolved in this step is re-read as the current tree next step.
+  const treeMemo = new Map<string, Promise<TreeEntry[]>>();
+  const readTreeEntries = (oid: string | null | undefined): Promise<TreeEntry[]> => {
+    if (!oid) return Promise.resolve(EMPTY_TREE);
+    let pending = treeMemo.get(oid);
+    if (!pending) {
+      pending = readTree(env, repoId, oid, cacheCtx).catch(() => EMPTY_TREE);
+      treeMemo.set(oid, pending);
+    }
+    return pending;
+  };
+
+  // Index wanted entries by their full repo-relative path.
   const unmatched = new Map<string, DirEntryForLastChange>();
   for (const w of wanted) {
     unmatched.set(joinTreePath(dirPath, w.name), w);
   }
   const result: Record<string, PathLastChange> = {};
-  const assign = (info: CommitInfo, changedPath: string) => {
-    const direct = unmatched.get(changedPath);
-    if (direct) {
-      unmatched.delete(changedPath);
-      result[direct.name] = toLastChange(info);
-      return;
+
+  // Whether `fullPath`'s entry oid differs between curTree and parTree.
+  // Descends segment by segment only while both sides still differ; a
+  // null tree reads as empty, which makes the root-commit case (no
+  // parent) resolve to "present in the tree → touched by the root".
+  const pathTouched = async (
+    curTree: string | null,
+    parTree: string | null,
+    fullPath: string
+  ): Promise<boolean> => {
+    const segs = fullPath.split("/");
+    let cur: string | null = curTree;
+    let par: string | null = parTree;
+    for (let i = 0; i < segs.length && cur; i++) {
+      const curEntries = await readTreeEntries(cur);
+      const parEntries = par === cur ? curEntries : await readTreeEntries(par);
+      const cn = curEntries.find((e) => e.name === segs[i]);
+      const pn = parEntries.find((e) => e.name === segs[i]);
+      // Identical entry oid (or absent on both sides) → untouched; any
+      // content change under a directory rewrites its tree oid.
+      if (cn?.oid === pn?.oid) return false;
+      if (i === segs.length - 1) return true;
+      // Descend only while both sides are still directories — a type
+      // change or missing ancestor means the path simply doesn't exist
+      // on one side, which is a difference by itself.
+      if (!cn || !pn || !isTreeMode(cn.mode) || !isTreeMode(pn.mode)) return true;
+      cur = cn.oid;
+      par = pn.oid;
     }
-    for (const [path, w] of unmatched) {
-      if (w.isDir && changedPath.startsWith(path + "/")) {
-        unmatched.delete(path);
-        result[w.name] = toLastChange(info);
-      }
-    }
+    return false;
   };
 
-  let oid: string | undefined = headOid;
   const seen = new Set<string>();
+  let info: CommitInfo;
+  try {
+    info = await readCommitInfo(env, repoId, headOid, cacheCtx);
+  } catch {
+    return null;
+  }
   let scanned = 0;
   let commitCount: number | undefined;
   while (
-    oid &&
-    !seen.has(oid) &&
+    !seen.has(info.oid) &&
     scanned < maxCommits &&
     unmatched.size > 0 &&
     Date.now() - startedAt < timeBudgetMs
   ) {
-    seen.add(oid);
-    let info: CommitInfo;
-    try {
-      info = await readCommitInfo(env, repoId, oid, cacheCtx);
-    } catch {
-      break;
-    }
+    seen.add(info.oid);
     scanned++;
-    const diff = await listCommitChangedFiles(env, repoId, oid, cacheCtx, {
-      // Truncated diffs still credit the paths they did report — unmatched
-      // entries just keep walking history. The time budget is the walk's own
-      // remaining budget (floored): a hard per-commit cap turns out flaky
-      // under parallel load because DO reads count against wall-clock.
-      maxFiles: 1000,
-      maxTreePairs: 4000,
-      timeBudgetMs: Math.max(
-        MIN_PER_COMMIT_DIFF_BUDGET_MS,
-        timeBudgetMs - (Date.now() - startedAt)
-      ),
-    });
-    for (const entry of diff.entries) {
-      assign(info, entry.path);
-      if (unmatched.size === 0) break;
+    const parOid = info.parents[0];
+    let parInfo: CommitInfo | undefined;
+    if (parOid) {
+      // The parent commit object doubles as next iteration's current —
+      // carry it forward instead of re-reading.
+      parInfo = await readCommitInfo(env, repoId, parOid, cacheCtx).catch(() => undefined);
     }
-    const next: string | undefined = info.parents[0];
-    if (!next) {
+    const commit = info;
+    const parTree = parInfo?.tree ?? null;
+    await Promise.all(
+      [...unmatched.entries()].map(async ([path, w]) => {
+        if (await pathTouched(commit.tree, parTree, path)) {
+          unmatched.delete(path);
+          result[w.name] = toLastChange(commit);
+        }
+      })
+    );
+    if (!parOid) {
       // Reached the root commit — the first-parent count is exact.
       commitCount = scanned;
       break;
     }
-    oid = next;
+    if (!parInfo) break;
+    info = parInfo;
   }
 
   return { headOid, entries: result, commitCount };

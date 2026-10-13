@@ -20,7 +20,6 @@ interface RepoSubheaderProps {
   showPipelinesTab?: boolean
   showSearchTab?: boolean
   summaryPath?: string
-  filesPath?: string
   commitsPath?: string
   isRepoEmpty?: boolean
   /** delta-git surfaces — absolute paths to repo-scoped delta views. */
@@ -31,15 +30,16 @@ interface RepoSubheaderProps {
  * GitHub-style tab order: Code | Issues | Pull requests | Discussions |
  * Actions | Projects | Wiki | Security | Insights, then the delta-native
  * surfaces (Intents | Ideas | Arena | Agents | Knowledge), then Commits /
- * Tags / Branches / Settings. Surfaces that have not landed yet route to a
- * stub page that explains the roadmap instead of a dead link.
+ * Tags / Branches / Settings. The Code tab covers both the summary view
+ * and the file browser — they merged under /summary/*, so no separate
+ * Files tab exists. Surfaces that have not landed yet route to a stub
+ * page that explains the roadmap instead of a dead link.
  */
 export const RepoSubheader = ({
   showPipelinesTab = true,
   showSearchTab = false,
   className,
   summaryPath,
-  filesPath,
   commitsPath,
   isRepoEmpty = false,
   deltaPaths
@@ -80,9 +80,6 @@ export const RepoSubheader = ({
               Knowledge
             </Tabs.Trigger>
           )}
-          <Tabs.Trigger value={filesPath || RepoTabsKeys.CODE} disabled={isRepoEmpty}>
-            {t('views:repos.files', 'Files')}
-          </Tabs.Trigger>
           <Tabs.Trigger value={commitsPath || RepoTabsKeys.COMMITS} disabled={isRepoEmpty}>
             {t('views:repos.commits', 'Commits')}
           </Tabs.Trigger>

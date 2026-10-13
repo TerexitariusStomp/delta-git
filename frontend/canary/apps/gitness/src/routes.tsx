@@ -1,4 +1,4 @@
-import { Navigate, redirect } from "react-router-dom";
+import { Navigate, redirect, useParams } from "react-router-dom";
 
 import { Breadcrumb, Layout, Sidebar } from "@harnessio/ui/components";
 import { ComponentProvider } from "@harnessio/ui/context";
@@ -134,6 +134,7 @@ import { RepoSettingsGeneralPageContainer } from "./pages-v2/repo/repo-settings-
 import { RepoSettingsRulesListContainer } from "./pages-v2/repo/repo-settings-rules-list-container";
 import { RepoSidebar } from "./pages-v2/repo/repo-sidebar";
 import RepoSummaryPage from "./pages-v2/repo/repo-summary";
+import { PathParams } from "./RouteDefinitions";
 import { RepoTagsListContainer } from "./pages-v2/repo/repo-tags-list-container";
 import { RepoBranchRulesContainer } from "./pages-v2/repo/rules/repo-branch-rules-container";
 import { RepoPushRulesContainer } from "./pages-v2/repo/rules/repo-push-rules-container.tsx";
@@ -174,6 +175,28 @@ enum Page {
   Search = "Search",
   Tags = "Tags",
 }
+
+/**
+ * Single entry for the merged Code surface (`/summary/*`). A bare ref
+ * renders the summary view — file table, README, About sidebar — while a
+ * `~` path or new//edit/ prefix renders the file browser/editor. `~`
+ * can't appear in a git refname, so its presence is a reliable browse
+ * marker regardless of how many slashes the ref itself contains.
+ */
+const RepoCodeEntry = () => {
+  const wildcard = useParams<PathParams>()["*"] ?? "";
+  const isBrowse =
+    wildcard.includes("~") || wildcard.startsWith("new/") || wildcard.startsWith("edit/");
+  return isBrowse ? (
+    <ExplorerPathsProvider>
+      <RepoSidebar>
+        <RepoCode />
+      </RepoSidebar>
+    </ExplorerPathsProvider>
+  ) : (
+    <RepoSummaryPage />
+  );
+};
 
 const labelsRoute = {
   path: "labels",
@@ -337,19 +360,13 @@ export const repoRoutes: CustomRouteObject[] = [
             },
           },
           {
+            // One "Code" surface: a bare ref shows the summary view (file
+            // table + README + About sidebar); a `~` path or new//edit/
+            // prefix browses the file tree. Both live under /summary so
+            // the Code tab's NavLink prefix match stays highlighted while
+            // browsing — there is no separate Files tab.
             path: "summary",
-            loader: ({ params }) => {
-              const wildcard = params["*"] || "";
-              if (wildcard.startsWith("edit/")) {
-                const cleanPath = wildcard.substring(5);
-                return redirect(`./${cleanPath}`);
-              } else if (wildcard.startsWith("new/")) {
-                const cleanPath = wildcard.substring(4);
-                return redirect(`./${cleanPath}`);
-              }
-              return null;
-            },
-            element: <RepoSummaryPage />,
+            element: <RepoCodeEntry />,
             handle: {
               breadcrumb: () => <span>{Page.Summary}</span>,
               routeName: RouteConstants.toRepoSummary,
@@ -359,12 +376,19 @@ export const repoRoutes: CustomRouteObject[] = [
             children: [
               {
                 path: "*",
-                element: <RepoSummaryPage />,
+                element: <RepoCodeEntry />,
                 handle: {
+                  routeName: RouteConstants.toRepoFiles,
                   publicAccess: true,
                 },
               },
             ],
+          },
+          {
+            // Legacy /files/* URLs — bookmarks and externally shared links
+            // keep resolving after the file browser moved under /summary.
+            path: "files/*",
+            loader: ({ params }) => redirect(`../summary/${params["*"] ?? ""}`),
           },
           {
             path: "commits",
@@ -427,47 +451,8 @@ export const repoRoutes: CustomRouteObject[] = [
             path: "edit/*",
             loader: ({ params }) => {
               const wildcard = params["*"] || "";
-              return redirect(`../files/edit/${wildcard}`);
+              return redirect(`../summary/edit/${wildcard}`);
             },
-            element: (
-              <ExplorerPathsProvider>
-                <RepoSidebar />
-              </ExplorerPathsProvider>
-            ),
-            handle: {
-              breadcrumb: () => <span>{Page.Files}</span>,
-              routeName: RouteConstants.toRepoFiles,
-            },
-          },
-          {
-            path: "files",
-            element: (
-              <ExplorerPathsProvider>
-                <RepoSidebar />
-              </ExplorerPathsProvider>
-            ),
-            handle: {
-              breadcrumb: () => <span>{Page.Files}</span>,
-              routeName: RouteConstants.toRepoFiles,
-            },
-            children: [
-              {
-                index: true,
-                element: <RepoCode />,
-                handle: {
-                  pageTitle: Page.Files,
-                  publicAccess: true,
-                },
-              },
-              {
-                path: "*",
-                element: <RepoCode />,
-                handle: {
-                  routeName: RouteConstants.toRepoFileDetails,
-                  publicAccess: true,
-                },
-              },
-            ],
           },
           {
             path: "tags",

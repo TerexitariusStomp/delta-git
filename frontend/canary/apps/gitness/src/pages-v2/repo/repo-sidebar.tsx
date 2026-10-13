@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -36,7 +36,7 @@ import { buildPathSearchList } from './transform-utils/path-transform'
 /**
  * TODO: This code was migrated from V2 and needs to be refactored.
  */
-export const RepoSidebar = () => {
+export const RepoSidebar = ({ children }: { children?: ReactNode }) => {
   const routes = useRoutes()
 
   const repoRef = useGetRepoRef()
@@ -239,7 +239,10 @@ export const RepoSidebar = () => {
 
         <DraggableSidebarDivider width={sidebarWidth} setWidth={setSidebarWidth} containerRef={containerRef} />
 
-        <Outlet />
+        {/* The merged code surface mounts this as a dispatch element, so
+            the content pane comes from children; legacy route-nested
+            usage still flows through <Outlet />. */}
+        {children ?? <Outlet />}
       </Layout.Flex>
       <CreateBranchDialog
         open={isCreateBranchDialogOpen}

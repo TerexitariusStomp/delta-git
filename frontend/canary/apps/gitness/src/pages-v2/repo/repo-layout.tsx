@@ -72,7 +72,6 @@ const RepoLayout = () => {
   const shouldHideLayout = matches.some(match => (match.handle as CustomHandle)?.hideLayout ?? false)
 
   const summaryPathRef = isComparePage ? defaultBranch : gitRefPath
-  const filesPathRef = isComparePage ? defaultBranch : gitRefPath
   const commitsPathRef = isComparePage ? defaultBranch : gitRefName
 
   if (repoFetchError) {
@@ -105,7 +104,6 @@ const RepoLayout = () => {
               showPipelinesTab={!isMFE}
               showSearchTab={isMFE}
               summaryPath={routes.toRepoSummary({ spaceId, repoId, '*': summaryPathRef })}
-              filesPath={routes.toRepoFiles({ spaceId, repoId, '*': filesPathRef })}
               commitsPath={toRepoCommits({ spaceId, repoId, fullGitRef, gitRefName: commitsPathRef })}
               isRepoEmpty={!!repoData?.is_empty}
               deltaPaths={{

@@ -531,13 +531,16 @@ describe("gitness /api/v1 write paths", () => {
       {
         branch: "pd-branch",
         message: "add pd.txt",
-        actions: [{ action: "CREATE", path: "pd.txt", encoding: "text", payload: "pd\n" }],
+        actions: [
+          { action: "CREATE", path: "pd.txt", encoding: "text", payload: "pd\n" },
+          { action: "CREATE", path: "dir/pd2.txt", encoding: "text", payload: "pd2\n" },
+        ],
       },
       w.cookieHeader
     );
     const res = await post(
       `/api/v1/repos/${ref}/path-details?git_ref=${encodeURIComponent("refs/heads/pd-branch")}`,
-      { paths: ["pd.txt", "missing.txt"] },
+      { paths: ["pd.txt", "dir", "dir/pd2.txt", "missing.txt"] },
       w.cookieHeader
     );
     expect(res.status).toBe(200);
@@ -549,7 +552,25 @@ describe("gitness /api/v1 write paths", () => {
     // message isn't asserted — only that a real commit touched the path.
     expect(hit?.last_commit?.sha).toMatch(/^[0-9a-f]{40}$/);
     expect(hit?.last_commit?.message).toBeTruthy();
+    // Directory and nested file paths resolve through the same walk —
+    // a descendant change rewrites the dir's tree oid, so both match.
+    for (const p of ["dir", "dir/pd2.txt"]) {
+      expect(details.find((d) => d.path === p)?.last_commit?.sha).toMatch(/^[0-9a-f]{40}$/);
+    }
     expect(details.find((d) => d.path === "missing.txt")?.last_commit).toBeUndefined();
+    // Repeat call hits the head-keyed result cache — same details, and
+    // the history walk is skipped entirely.
+    const again = await post(
+      `/api/v1/repos/${ref}/path-details?git_ref=${encodeURIComponent("refs/heads/pd-branch")}`,
+      { paths: ["pd.txt", "dir", "dir/pd2.txt", "missing.txt"] },
+      w.cookieHeader
+    );
+    expect(again.status).toBe(200);
+    expect(
+      (again.body as { details: { path: string; last_commit?: { sha: string } }[] }).details.map(
+        (d) => d.last_commit?.sha ?? null
+      )
+    ).toEqual(details.map((d) => d.last_commit?.sha ?? null));
   });
 
   it("PR assignees add/remove and surface on detail", async () => {

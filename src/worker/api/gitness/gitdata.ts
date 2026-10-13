@@ -13,7 +13,7 @@
 import { createTwoFilesPatch } from "diff";
 import type { AppRouter } from "@/worker/routes/hono";
 import type { CacheContext } from "@/worker/cache";
-import { buildCacheKeyFrom, cacheDeleteJSON } from "@/worker/cache";
+import { buildCacheKeyFrom, cacheDeleteJSON, cacheGetJSON, cachePutJSON } from "@/worker/cache";
 import {
   getHeadAndRefs,
   resolveRef,
@@ -24,6 +24,7 @@ import {
   readLooseObjectRaw,
   listCommitsFirstParentRange,
   listPathsLastChange,
+  type PathLastChange,
   isTreeMode,
   isSymlinkMode,
 } from "@/worker/git/operations/read";
@@ -62,10 +63,33 @@ const MAX_PATCH_BLOB_BYTES = 256 * 1024;
 const MAX_TOTAL_PATCH_BYTES = 1024 * 1024;
 const MAX_TREE_PAIRS = 2000;
 const DIVERGENCE_WALK_LIMIT = 512;
+const PATH_DETAIL_CACHE_TTL_SECONDS = 3600;
 
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+// JSON shape the SPA's batch path-details call expects per row. Cached as
+// the unit stored under /_cache/path-detail keyed by repo+head+path.
+type LastCommitJson = {
+  sha: string;
+  title: string;
+  message: string;
+  author: { identity: { name: string; email: string }; when: string };
+};
+
+function toLastCommitJson(lc: PathLastChange | undefined): LastCommitJson | null {
+  if (!lc) return null;
+  return {
+    sha: lc.oid,
+    title: lc.subject,
+    message: lc.subject,
+    author: {
+      identity: { name: lc.author ?? "", email: "" },
+      when: new Date(lc.when * 1000).toISOString(),
+    },
+  };
+}
 
 type ResolvedRef = { kind: "oid"; oid: string } | { kind: "error"; response: Response };
 
@@ -882,34 +906,67 @@ export function registerGitnessGitdata(router: AppRouter) {
       .filter((p) => p.length > 0)
       .slice(0, MAX_PATH_ENTRIES);
     if (!paths.length) return c.json({ details: [] });
+
+    // Result cache keyed per path by the ref's resolved head oid — a push
+    // moves head, so hits can never go stale, and repeat page loads skip
+    // the history walk entirely. Misses fall through to one batched walk.
+    const headOid =
+      (await resolveRef(c.env, access.route.doName, ref, access.cacheCtx)) ??
+      (/^[0-9a-f]{40}$/i.test(ref) ? ref.toLowerCase() : null);
+    const keyFor = (path: string) =>
+      buildCacheKeyFrom(c.req.raw, "/_cache/path-detail", {
+        repo: access.route.doName,
+        head: headOid ?? "",
+        path,
+      });
+    const resolved = new Map<string, LastCommitJson | null>();
+    const misses: string[] = [];
+    if (headOid) {
+      await Promise.all(
+        paths.map(async (path) => {
+          const hit = await cacheGetJSON<{ commit: LastCommitJson | null }>(keyFor(path));
+          if (hit && "commit" in hit) {
+            resolved.set(path, hit.commit);
+          } else {
+            misses.push(path);
+          }
+        })
+      );
+    } else {
+      misses.push(...paths);
+    }
+
     // dirPath "" keeps wanted names as full repo-relative paths. isDir true
     // is correct for both cases: directory paths match descendant changes,
     // file paths only ever hit the exact-match branch.
-    const lastChange = await listPathsLastChange(
-      c.env,
-      access.route.doName,
-      ref,
-      "",
-      paths.map((name) => ({ name, isDir: true })),
-      access.cacheCtx
-    ).catch(() => null);
-    const details = paths.map((path) => {
-      const lc = lastChange?.entries[path];
-      return {
-        path,
-        last_commit: lc
-          ? {
-              sha: lc.oid,
-              title: lc.subject,
-              message: lc.subject,
-              author: {
-                identity: { name: lc.author ?? "", email: "" },
-                when: new Date(lc.when * 1000).toISOString(),
-              },
-            }
-          : undefined,
-      };
-    });
+    const lastChange = misses.length
+      ? await listPathsLastChange(
+          c.env,
+          access.route.doName,
+          ref,
+          "",
+          misses.map((name) => ({ name, isDir: true })),
+          access.cacheCtx
+        ).catch(() => null)
+      : null;
+    if (headOid) {
+      await Promise.all(
+        misses.map(async (path) => {
+          const commit = toLastCommitJson(lastChange?.entries[path]);
+          resolved.set(path, commit);
+          await cachePutJSON(keyFor(path), { commit }, PATH_DETAIL_CACHE_TTL_SECONDS);
+        })
+      );
+    } else {
+      for (const path of misses) {
+        resolved.set(path, toLastCommitJson(lastChange?.entries[path]));
+      }
+    }
+
+    const details = paths.map((path) => ({
+      path,
+      last_commit: resolved.get(path) ?? undefined,
+    }));
     return c.json({ details });
   });
 
