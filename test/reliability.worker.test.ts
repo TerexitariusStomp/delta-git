@@ -179,6 +179,59 @@ describe("certificates + costs + chaos", () => {
     )!;
     expect(row.last_outcome).toBe("pass");
   });
+
+  it("runs a real endpoint chaos measurement", async () => {
+    await req(`/api/v1/spaces/${owner}/chaos`, {
+      method: "POST",
+      body: {
+        identifier: "probe-self",
+        kind: "endpoint",
+        spec: { path: "/api/v1/user", count: 8, concurrency: 4 },
+      },
+      cookie: seeded.cookieHeader,
+    });
+    const run = await req(`/api/v1/spaces/${owner}/chaos/probe-self/run`, {
+      method: "POST",
+      body: {},
+      cookie: seeded.cookieHeader,
+    });
+    expect(run.status).toBe(200);
+    const body = run.body as {
+      outcome: string;
+      report: { samples: number; measured: { statuses: Record<string, number> } };
+    };
+    expect(body.outcome).toBe("pass");
+    expect(body.report.samples).toBe(8);
+    // The session cookie rides along — /api/v1/user answers 200 for members.
+    expect(body.report.measured.statuses["200"]).toBe(8);
+  });
+
+  it("runs lease-contention chaos against the real 8-slot pool", async () => {
+    await req(`/api/v1/spaces/${owner}/chaos`, {
+      method: "POST",
+      body: {
+        identifier: "lease-flood",
+        kind: "lease-contention",
+        spec: { repo: seeded.repoSlug, attempts: 12 },
+      },
+      cookie: seeded.cookieHeader,
+    });
+    const run = await req(`/api/v1/spaces/${owner}/chaos/lease-flood/run`, {
+      method: "POST",
+      body: {},
+      cookie: seeded.cookieHeader,
+    });
+    expect(run.status).toBe(200);
+    const body = run.body as {
+      outcome: string;
+      report: { measured: { granted: number; busy: number } };
+    };
+    expect(body.outcome).toBe("pass");
+    // 12 concurrent begins against MAX_CONCURRENT_RECEIVES=8 — exactly 8
+    // hold, 4 get busy. Every held lease is aborted by the runner.
+    expect(body.report.measured.granted).toBe(8);
+    expect(body.report.measured.busy).toBe(4);
+  });
 });
 
 describe("scheduled handler", () => {

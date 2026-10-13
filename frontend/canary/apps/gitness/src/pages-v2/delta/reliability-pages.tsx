@@ -559,13 +559,34 @@ interface ChaosItem {
   kind: string;
   last_run: number | null;
   last_outcome: string | null;
+  last_report: { measured?: Record<string, unknown> } | null;
 }
+
+const CHAOS_SPECS: Record<string, { label: string; spec: Record<string, unknown>; needsRepo: boolean }> = {
+  endpoint: {
+    label: "endpoint probe — real HTTP measurement",
+    spec: { path: "/api/v1/user", count: 20, concurrency: 5 },
+    needsRepo: false,
+  },
+  "receive-flood": {
+    label: "receive flood — concurrent pushes at the lease pool",
+    spec: { pushes: 9 },
+    needsRepo: true,
+  },
+  "lease-contention": {
+    label: "lease contention — beginReceive flood on the repo DO",
+    spec: { attempts: 12 },
+    needsRepo: true,
+  },
+};
 
 export function ChaosPage() {
   const { spaces, space, setSpace } = useSpacePicker();
   const queryClient = useQueryClient();
   const [identifier, setIdentifier] = useState("");
-  const [kind, setKind] = useState("latency");
+  const [kind, setKind] = useState("endpoint");
+  const [repo, setRepo] = useState("");
+  const [runReport, setRunReport] = useState<{ id: string; json: string } | null>(null);
 
   const { data } = useQuery(
     ["chaos", space],
@@ -576,7 +597,11 @@ export function ChaosPage() {
     () =>
       deltaApi(`/api/v1/spaces/${space}/chaos`, {
         method: "POST",
-        body: JSON.stringify({ identifier, kind }),
+        body: JSON.stringify({
+          identifier,
+          kind,
+          spec: { ...CHAOS_SPECS[kind].spec, ...(CHAOS_SPECS[kind].needsRepo ? { repo } : {}) },
+        }),
       }),
     {
       onSuccess: () => {
@@ -585,34 +610,45 @@ export function ChaosPage() {
       },
     }
   );
-  const recordRun = useMutation(
-    (vars: { id: string; outcome: string }) =>
-      deltaApi(`/api/v1/spaces/${space}/chaos/${vars.id}/runs`, {
+  const run = useMutation(
+    (id: string) =>
+      deltaApi<{ outcome: string; report: unknown }>(`/api/v1/spaces/${space}/chaos/${id}/run`, {
         method: "POST",
-        body: JSON.stringify({ outcome: vars.outcome }),
+        body: "{}",
       }),
-    { onSuccess: () => queryClient.invalidateQueries(["chaos", space]) }
+    {
+      onSuccess: (res, id) => {
+        setRunReport({ id, json: JSON.stringify(res.report, null, 2) });
+        queryClient.invalidateQueries(["chaos", space]);
+      },
+    }
   );
 
   return (
     <PageShell title="Chaos engineering">
       <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
       <Text className="mb-cn-md text-cn-3">
-        Experiment definitions + outcome ledger. Experiments run on your own infra; record the
-        result here.
+        Experiments execute on the platform — real HTTP probes, receive floods, and lease
+        contention measured live, reports stored per experiment.
       </Text>
       <div className="mb-cn-lg flex items-end gap-cn-md">
-        <TextInput label="Identifier" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="latency-poke" />
+        <TextInput label="Identifier" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="lease-flood" />
         <select
           className="rounded-cn-2 border border-cn-2 bg-cn-1 px-cn-md py-cn-sm text-cn-1"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
         >
-          <option value="latency">latency</option>
-          <option value="failure">failure</option>
-          <option value="resource">resource</option>
+          {Object.entries(CHAOS_SPECS).map(([k, v]) => (
+            <option key={k} value={k}>{v.label}</option>
+          ))}
         </select>
-        <Button disabled={!identifier.trim() || create.isLoading} onClick={() => create.mutate()}>
+        {CHAOS_SPECS[kind].needsRepo && (
+          <TextInput label="Repo" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="repo-name" />
+        )}
+        <Button
+          disabled={!identifier.trim() || (CHAOS_SPECS[kind].needsRepo && !repo.trim()) || create.isLoading}
+          onClick={() => create.mutate()}
+        >
           Create
         </Button>
       </div>
@@ -644,19 +680,19 @@ export function ChaosPage() {
                 )}
               </Table.Cell>
               <Table.Cell>
-                <div className="flex gap-cn-sm">
-                  <Button variant="ghost" size="sm" onClick={() => recordRun.mutate({ id: x.identifier, outcome: "pass" })}>
-                    Pass
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => recordRun.mutate({ id: x.identifier, outcome: "fail" })}>
-                    Fail
-                  </Button>
-                </div>
+                <Button variant="ghost" size="sm" disabled={run.isLoading} onClick={() => run.mutate(x.identifier)}>
+                  Run
+                </Button>
               </Table.Cell>
             </Table.Row>
           ))}
         </Table.Body>
       </Table.Root>
+      {runReport && (
+        <pre className="mt-cn-md max-h-96 overflow-auto rounded-cn-2 border border-cn-2 bg-cn-1 p-cn-sm text-cn-1">
+          {runReport.json}
+        </pre>
+      )}
       {(data ?? []).length === 0 && <EmptyNote text="No chaos experiments." />}
     </PageShell>
   );

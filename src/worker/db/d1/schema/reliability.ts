@@ -195,6 +195,9 @@ export const chaosExperiments = sqliteTable(
     spec: text("spec").notNull().default("{}"), // JSON experiment definition
     lastRunAt: integer("last_run_at"),
     lastOutcome: text("last_outcome"), // pass | fail | aborted
+    // JSON ChaosReport from the last in-worker run — measured numbers,
+    // percentiles, status histograms. Client-recorded runs leave this null.
+    lastReport: text("last_report"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [

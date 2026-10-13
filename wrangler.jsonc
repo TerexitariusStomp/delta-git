@@ -14,6 +14,10 @@
     "global_fetch_strictly_public"
   ],
   "workers_dev": true,
+  // Self service binding — internal loopback for platform-side traffic that
+  // must traverse the real HTTP surface (chaos endpoint probing, internal
+  // receive floods). Avoids the public-egress fetch path.
+  "services": [{ "binding": "SELF", "service": "git-on-cloudflare" }],
   "durable_objects": {
     "bindings": [
       {

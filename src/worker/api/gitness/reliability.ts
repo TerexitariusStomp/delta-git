@@ -45,6 +45,7 @@ import { deliverNotification } from "@/worker/notify/notify";
 import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound } from "./shared";
 import type { GitnessContext } from "./shared";
+import { runChaosExperiment } from "./chaos";
 
 async function resolveMemberSpace(
   c: GitnessContext,
@@ -604,6 +605,7 @@ export function registerGitnessReliability(router: AppRouter) {
         repository_id: x.repositoryId,
         last_run: x.lastRunAt,
         last_outcome: x.lastOutcome,
+        last_report: x.lastReport ? (JSON.parse(x.lastReport) as Record<string, unknown>) : null,
       }))
     );
   });
@@ -634,8 +636,43 @@ export function registerGitnessReliability(router: AppRouter) {
     return c.json({ identifier }, 201);
   });
 
-  // Record a run outcome — the experiment itself runs wherever its spec
-  // targets (client infra); this endpoint is the result ledger.
+  // Execute an experiment ON THE PLATFORM and store the measured report.
+  // This is the real run path — endpoint probing, receive floods, and
+  // lease contention all happen here with real numbers.
+  router.post("/api/v1/spaces/:space_ref{.+}/chaos/:id/run", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const rows = await listChaosExperiments(c.var.db, ns.id);
+    const row = rows.find((x) => x.id === c.req.param("id") || x.identifier === c.req.param("id"));
+    if (!row) return gNotFound(c, "experiment");
+    let result;
+    try {
+      result = await runChaosExperiment(
+        c,
+        ns.slug,
+        ns.userId,
+        row.kind,
+        JSON.parse(row.spec) as Record<string, unknown>
+      );
+    } catch (error) {
+      await updateChaosExperiment(c.var.db, row.id, {
+        lastRunAt: Date.now(),
+        lastOutcome: "aborted",
+        lastReport: JSON.stringify({ error: String(error) }),
+      });
+      return c.json({ outcome: "aborted", error: String(error) }, 200);
+    }
+    await updateChaosExperiment(c.var.db, row.id, {
+      lastRunAt: Date.now(),
+      lastOutcome: result.outcome,
+      lastReport: JSON.stringify(result.report),
+    });
+    return c.json({ outcome: result.outcome, report: result.report });
+  });
+
+  // Record a run outcome — experiments that execute on client infra (e.g.
+  // chaos against external systems) report results here; the ledger stays
+  // the single read path for both execution modes.
   router.post("/api/v1/spaces/:space_ref{.+}/chaos/:id/runs", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
