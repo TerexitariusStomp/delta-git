@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 
@@ -46,7 +47,10 @@ export default function App() {
                 <DialogProvider>
                   <ExitConfirmProvider>
                     <NavigationProvider routes={routes}>
-                      <RouterProvider router={router} />
+                      {/* Single Suspense boundary for lazily-chunked pages (routes.tsx). */}
+                      <Suspense fallback={null}>
+                        <RouterProvider router={router} />
+                      </Suspense>
                     </NavigationProvider>
                   </ExitConfirmProvider>
                 </DialogProvider>

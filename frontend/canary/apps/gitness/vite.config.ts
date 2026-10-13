@@ -76,6 +76,29 @@ export default defineConfig({
     }
   },
   build: {
-    assetsDir: ''
+    // Hashed assets under /assets/ so _headers can give them an
+    // immutable cache lifetime (the SPA shell itself stays uncached).
+    assetsDir: 'assets',
+    rollupOptions: {
+      output: {
+        // Vendor chunks only for packages the entry eagerly needs — rollup
+        // 4.34 lacks onlyExplicitManualChunks, so each manual chunk absorbs
+        // the matched package's deps; a shared dep pulled eagerly would drag
+        // the whole vendor chunk into index.html's preload list. Heavy lazy
+        // libs (mermaid, shiki, cytoscape) get their own chunks automatically
+        // because only dynamic imports reach them.
+        manualChunks(id: string) {
+          // Match exact package dirs — under pnpm, `.pnpm/<pkg>@x/node_modules/
+          // <dep>/` paths contain dep names too; a broad `.includes()` sweep
+          // would capture unrelated deps.
+          const inPkg = (names: string[]) => names.some((n) => id.includes(`/node_modules/${n}/`))
+          if (id.includes('node_modules')) {
+            if (inPkg(['monaco-editor', 'monaco-yaml', '@harnessio/yaml-editor'])) return 'vendor-monaco'
+            if (inPkg(['react', 'react-dom', 'scheduler', 'react-router', 'react-router-dom', '@remix-run']))
+              return 'vendor-react'
+          }
+        }
+      }
+    }
   }
 })

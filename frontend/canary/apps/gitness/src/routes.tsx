@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { Navigate, redirect, useParams } from "react-router-dom";
 
 import { Breadcrumb, Layout, Sidebar } from "@harnessio/ui/components";
@@ -20,76 +21,185 @@ import { RbacSplitButton } from "./framework/rbac/rbac-split-button";
 import { CustomRouteObject, RouteConstants } from "./framework/routing/types";
 import { MFERouteRenderer } from "./MFERouteRenderer";
 import { CreateProject } from "./pages-v2/create-project";
-import { DeltaArenaFeedPage, DeltaLeaderboardPage } from "./pages-v2/delta/global-pages";
-import {
-  AdminResourceGroupsPage,
-  AdminRolesPage,
-  AdminServiceAccountsPage,
-  AdminUserGroupsPage,
-} from "./pages-v2/delta/admin-rbac-pages";
-import { RepoDeltaKnowledgePage } from "./pages-v2/delta/knowledge-page";
-import { ArtifactsPage, EnvironmentsPage, NotificationsPage } from "./pages-v2/delta/module-pages";
 import { ExplorePage } from "./pages-v2/explore-page";
-import {
-  ConnectorsPage,
-  DelegatesPage,
-  ExternalTicketsPage,
-  FeatureFlagsPage,
-  FileStorePage,
-  FreezeWindowsPage,
-  GitOpsPage,
-  IaCPage,
-  PoliciesPage,
-  SpaceTemplatesPage,
-  VariablesPage,
-} from "./pages-v2/delta/delivery-pages";
-import {
-  CertificatesPage,
-  ChaosPage,
-  CloudCostsPage,
-  IncidentsPage,
-  MonitorsPage,
-  ServiceReliabilityPage,
-  SloDowntimePage,
-} from "./pages-v2/delta/reliability-pages";
-import {
-  DashboardsPage,
-  DatabasesPage,
-  DevEnvironmentsPage,
-  DevInsightsPage,
-  DevPortalPage,
-  SecurityTestsPage,
-  SupplyChainPage,
-} from "./pages-v2/delta/devx-pages";
-import { SecretsVaultPage } from "./pages-v2/delta/secrets-vault-page";
-import {
-  RepoDeltaAgentsPage,
-  RepoDeltaArenaMatchPage,
-  RepoDeltaArenaPage,
-  RepoDeltaIdeasPage,
-  RepoDeltaIntentsPage,
-  RepoNetworkPage,
-} from "./pages-v2/delta/repo-pages";
-import {
-  RepoIssueDetailPage,
-  RepoIssueNewPage,
-  RepoIssuesPage,
-} from "./pages-v2/repo/repo-issues-page";
-import {
-  RepoDiscussionDetailPage,
-  RepoDiscussionNewPage,
-  RepoDiscussionsPage,
-} from "./pages-v2/repo/repo-discussions-page";
-import { RepoWikiEditPage, RepoWikiPage } from "./pages-v2/repo/repo-wiki-page";
-import { RepoInsightsPage } from "./pages-v2/repo/repo-insights-page";
-import { RepoProjectBoardPage, RepoProjectsPage } from "./pages-v2/repo/repo-projects-page";
-import { RepoSecurityPage } from "./pages-v2/repo/repo-security-page";
-import {
-  RepoReleaseDetailPage,
-  RepoReleaseNewPage,
-  RepoReleasesPage,
-} from "./pages-v2/repo/repo-releases-page";
-import { LandingPage } from "./pages-v2/landing-page-container";
+
+// Page-level code splitting: every delta + repo page module is a lazy
+// chunk so the entry bundle stays small. A single <Suspense> boundary
+// wraps <RouterProvider> in App.tsx.
+const DeltaArenaFeedPage = lazy(() =>
+  import("./pages-v2/delta/global-pages").then((m) => ({ default: m.DeltaArenaFeedPage })),
+);
+const DeltaLeaderboardPage = lazy(() =>
+  import("./pages-v2/delta/global-pages").then((m) => ({ default: m.DeltaLeaderboardPage })),
+);
+const AdminResourceGroupsPage = lazy(() =>
+  import("./pages-v2/delta/admin-rbac-pages").then((m) => ({ default: m.AdminResourceGroupsPage })),
+);
+const AdminRolesPage = lazy(() =>
+  import("./pages-v2/delta/admin-rbac-pages").then((m) => ({ default: m.AdminRolesPage })),
+);
+const AdminServiceAccountsPage = lazy(() =>
+  import("./pages-v2/delta/admin-rbac-pages").then((m) => ({ default: m.AdminServiceAccountsPage })),
+);
+const AdminUserGroupsPage = lazy(() =>
+  import("./pages-v2/delta/admin-rbac-pages").then((m) => ({ default: m.AdminUserGroupsPage })),
+);
+const RepoDeltaKnowledgePage = lazy(() =>
+  import("./pages-v2/delta/knowledge-page").then((m) => ({ default: m.RepoDeltaKnowledgePage })),
+);
+const ArtifactsPage = lazy(() =>
+  import("./pages-v2/delta/module-pages").then((m) => ({ default: m.ArtifactsPage })),
+);
+const EnvironmentsPage = lazy(() =>
+  import("./pages-v2/delta/module-pages").then((m) => ({ default: m.EnvironmentsPage })),
+);
+const NotificationsPage = lazy(() =>
+  import("./pages-v2/delta/module-pages").then((m) => ({ default: m.NotificationsPage })),
+);
+const ConnectorsPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.ConnectorsPage })),
+);
+const DelegatesPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.DelegatesPage })),
+);
+const ExternalTicketsPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.ExternalTicketsPage })),
+);
+const FeatureFlagsPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.FeatureFlagsPage })),
+);
+const FileStorePage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.FileStorePage })),
+);
+const FreezeWindowsPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.FreezeWindowsPage })),
+);
+const GitOpsPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.GitOpsPage })),
+);
+const IaCPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.IaCPage })),
+);
+const PoliciesPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.PoliciesPage })),
+);
+const SpaceTemplatesPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.SpaceTemplatesPage })),
+);
+const VariablesPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.VariablesPage })),
+);
+const CertificatesPage = lazy(() =>
+  import("./pages-v2/delta/reliability-pages").then((m) => ({ default: m.CertificatesPage })),
+);
+const ChaosPage = lazy(() =>
+  import("./pages-v2/delta/reliability-pages").then((m) => ({ default: m.ChaosPage })),
+);
+const CloudCostsPage = lazy(() =>
+  import("./pages-v2/delta/reliability-pages").then((m) => ({ default: m.CloudCostsPage })),
+);
+const IncidentsPage = lazy(() =>
+  import("./pages-v2/delta/reliability-pages").then((m) => ({ default: m.IncidentsPage })),
+);
+const MonitorsPage = lazy(() =>
+  import("./pages-v2/delta/reliability-pages").then((m) => ({ default: m.MonitorsPage })),
+);
+const ServiceReliabilityPage = lazy(() =>
+  import("./pages-v2/delta/reliability-pages").then((m) => ({ default: m.ServiceReliabilityPage })),
+);
+const SloDowntimePage = lazy(() =>
+  import("./pages-v2/delta/reliability-pages").then((m) => ({ default: m.SloDowntimePage })),
+);
+const DashboardsPage = lazy(() =>
+  import("./pages-v2/delta/devx-pages").then((m) => ({ default: m.DashboardsPage })),
+);
+const DatabasesPage = lazy(() =>
+  import("./pages-v2/delta/devx-pages").then((m) => ({ default: m.DatabasesPage })),
+);
+const DevEnvironmentsPage = lazy(() =>
+  import("./pages-v2/delta/devx-pages").then((m) => ({ default: m.DevEnvironmentsPage })),
+);
+const DevInsightsPage = lazy(() =>
+  import("./pages-v2/delta/devx-pages").then((m) => ({ default: m.DevInsightsPage })),
+);
+const DevPortalPage = lazy(() =>
+  import("./pages-v2/delta/devx-pages").then((m) => ({ default: m.DevPortalPage })),
+);
+const SecurityTestsPage = lazy(() =>
+  import("./pages-v2/delta/devx-pages").then((m) => ({ default: m.SecurityTestsPage })),
+);
+const SupplyChainPage = lazy(() =>
+  import("./pages-v2/delta/devx-pages").then((m) => ({ default: m.SupplyChainPage })),
+);
+const SecretsVaultPage = lazy(() =>
+  import("./pages-v2/delta/secrets-vault-page").then((m) => ({ default: m.SecretsVaultPage })),
+);
+const RepoDeltaAgentsPage = lazy(() =>
+  import("./pages-v2/delta/repo-pages").then((m) => ({ default: m.RepoDeltaAgentsPage })),
+);
+const RepoDeltaArenaMatchPage = lazy(() =>
+  import("./pages-v2/delta/repo-pages").then((m) => ({ default: m.RepoDeltaArenaMatchPage })),
+);
+const RepoDeltaArenaPage = lazy(() =>
+  import("./pages-v2/delta/repo-pages").then((m) => ({ default: m.RepoDeltaArenaPage })),
+);
+const RepoDeltaIdeasPage = lazy(() =>
+  import("./pages-v2/delta/repo-pages").then((m) => ({ default: m.RepoDeltaIdeasPage })),
+);
+const RepoDeltaIntentsPage = lazy(() =>
+  import("./pages-v2/delta/repo-pages").then((m) => ({ default: m.RepoDeltaIntentsPage })),
+);
+const RepoNetworkPage = lazy(() =>
+  import("./pages-v2/delta/repo-pages").then((m) => ({ default: m.RepoNetworkPage })),
+);
+const RepoIssueDetailPage = lazy(() =>
+  import("./pages-v2/repo/repo-issues-page").then((m) => ({ default: m.RepoIssueDetailPage })),
+);
+const RepoIssueNewPage = lazy(() =>
+  import("./pages-v2/repo/repo-issues-page").then((m) => ({ default: m.RepoIssueNewPage })),
+);
+const RepoIssuesPage = lazy(() =>
+  import("./pages-v2/repo/repo-issues-page").then((m) => ({ default: m.RepoIssuesPage })),
+);
+const RepoDiscussionDetailPage = lazy(() =>
+  import("./pages-v2/repo/repo-discussions-page").then((m) => ({ default: m.RepoDiscussionDetailPage })),
+);
+const RepoDiscussionNewPage = lazy(() =>
+  import("./pages-v2/repo/repo-discussions-page").then((m) => ({ default: m.RepoDiscussionNewPage })),
+);
+const RepoDiscussionsPage = lazy(() =>
+  import("./pages-v2/repo/repo-discussions-page").then((m) => ({ default: m.RepoDiscussionsPage })),
+);
+const RepoWikiEditPage = lazy(() =>
+  import("./pages-v2/repo/repo-wiki-page").then((m) => ({ default: m.RepoWikiEditPage })),
+);
+const RepoWikiPage = lazy(() =>
+  import("./pages-v2/repo/repo-wiki-page").then((m) => ({ default: m.RepoWikiPage })),
+);
+const RepoInsightsPage = lazy(() =>
+  import("./pages-v2/repo/repo-insights-page").then((m) => ({ default: m.RepoInsightsPage })),
+);
+const RepoProjectBoardPage = lazy(() =>
+  import("./pages-v2/repo/repo-projects-page").then((m) => ({ default: m.RepoProjectBoardPage })),
+);
+const RepoProjectsPage = lazy(() =>
+  import("./pages-v2/repo/repo-projects-page").then((m) => ({ default: m.RepoProjectsPage })),
+);
+const RepoSecurityPage = lazy(() =>
+  import("./pages-v2/repo/repo-security-page").then((m) => ({ default: m.RepoSecurityPage })),
+);
+const RepoReleaseDetailPage = lazy(() =>
+  import("./pages-v2/repo/repo-releases-page").then((m) => ({ default: m.RepoReleaseDetailPage })),
+);
+const RepoReleaseNewPage = lazy(() =>
+  import("./pages-v2/repo/repo-releases-page").then((m) => ({ default: m.RepoReleaseNewPage })),
+);
+const RepoReleasesPage = lazy(() =>
+  import("./pages-v2/repo/repo-releases-page").then((m) => ({ default: m.RepoReleasesPage })),
+);
+const LandingPage = lazy(() =>
+  import("./pages-v2/landing-page-container").then((m) => ({ default: m.LandingPage })),
+);
 import { Logout } from "./pages-v2/logout";
 import { SettingsProfileGeneralPage } from "./pages-v2/profile-settings/profile-settings-general-container";
 import { SettingsProfileKeysPage } from "./pages-v2/profile-settings/profile-settings-keys-container";
