@@ -78,6 +78,42 @@ widespread auth port.
 - DO state snapshots (`do/<id>/snapshots/latest.json`) enable coordination-state
   rebuild without trusting a live DO.
 
+## Compute sandbox threat model
+
+Platform jobs (CI runs, security scans, mirror pushes, chaos) and dev
+workspaces run untrusted-ish code inside ForgeSandbox containers
+(`src/worker/compute/`).
+
+**Isolation.** Sandbox ids are derived `job-{ns}-{kind}-{id}` /
+`ws-{ns}-{id}` through `compute/sandbox.ts` — the only sanctioned way to
+obtain a stub. There is no ambient sandbox registry; cross-space access
+requires bypassing the helper. Job sandboxes sleep after 10m idle,
+workspaces after 30m.
+
+**Auth.** Every workspace surface (exec, files, preview) requires owning
+space membership — previews are never public. Job sandboxes are
+queue-internal; no HTTP route touches them directly.
+
+**Egress.** Jobs get an in-container iptables default-DROP policy
+(`compute/egress.ts`) resolved per kind: `ci` → package registries + VCS
+hosts; `security-scan` → vuln DBs + self; `federate` → self + target host
+only. The policy applies *before* job-controlled code or secrets stage.
+When the container lacks NET_ADMIN the apply fails open — every caller
+logs `*-egress-not-enforced` rather than pretending; the federate path is
+the exception and fails closed because it holds the mirror key.
+
+**Secrets.** User secrets are client-sealed — no code path can hand one to
+a container. Platform material (mirror SSH key) is written to disk inside
+the sandbox (mode 600), never via argv or env, and deleted in `finally`
+before the job returns. `runJob`'s `envVars` field is documented
+never-secrets.
+
+**Residual risks** (accepted, documented): DNS stays open inside locked
+sandboxes (needed for runtime resolution) so DNS-tunnel exfil is
+theoretically possible; NET_ADMIN-less containers run egress-open; a
+compromised sandbox has no path to other spaces' data because creds never
+enter the image.
+
 ## Abuse controls
 
 See `docs/ops.md` for the ceilings table. Rate limits are KV token buckets;

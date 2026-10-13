@@ -23,6 +23,7 @@ import {
 } from "@/worker/db/d1/dal/modules";
 import { findRepositoryById } from "@/worker/db/d1/dal/repositories";
 import { jobSandbox } from "@/worker/compute/sandbox";
+import { applyEgressPolicy, JOB_EGRESS_ALLOWLISTS } from "@/worker/compute/egress";
 import { openRepoTar } from "@/worker/routes/archive";
 import { loadNodeKey } from "@/worker/agent/repCert";
 import type {
@@ -48,6 +49,12 @@ async function stageWorktree(args: { env: Env; doName: string; commitOid: string
   const sandbox = jobSandbox(env, doName, "scan", jobId, {
     containerTimeouts: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 120_000 },
   });
+  // Lock egress to the vuln-DB/GitHub allowlist before the repo contents
+  // are staged — scanned code is untrusted input.
+  const egress = await applyEgressPolicy(sandbox, JOB_EGRESS_ALLOWLISTS["security-scan"]);
+  if (!egress.enforced) {
+    log.warn("scan:egress-not-enforced", { jobId, detail: egress.detail });
+  }
   const tar = await openRepoTar({
     env,
     doName,

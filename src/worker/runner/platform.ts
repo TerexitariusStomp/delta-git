@@ -26,6 +26,7 @@ import {
   type RepoExecutionLogLine,
 } from "@/worker/api/gitness/stores";
 import { parseWorkflowSpec } from "./spec";
+import { applyEgressPolicy, JOB_EGRESS_ALLOWLISTS } from "@/worker/compute/egress";
 
 const log = createLogger(undefined, { service: "PlatformRunner" });
 
@@ -69,8 +70,17 @@ export function sandboxStepExecutor(env: Env, doName: string, jobId: string): St
   const sandbox = jobSandbox(env, doName, "ci", jobId, {
     containerTimeouts: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 120_000 },
   });
+  // Egress policy lands before any workflow-controlled command runs —
+  // CI steps are arbitrary user code, so the sandbox locks to the
+  // registry/VCS allowlist first. Failure to enforce is logged, not
+  // hidden (see docs/security.md for the threat model).
+  const egressApplied = applyEgressPolicy(sandbox, JOB_EGRESS_ALLOWLISTS.ci).then((r) => {
+    if (!r.enforced) log.warn("runner:egress-not-enforced", { jobId, detail: r.detail });
+    return r;
+  });
   return {
     async stage(commitOid) {
+      await egressApplied;
       const tar = await openRepoTar({
         env,
         doName,

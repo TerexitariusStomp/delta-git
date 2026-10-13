@@ -12,3 +12,12 @@ jobs:
         run: npm run typecheck
       - name: unit tests
         run: npm test
+  image-scan:
+    name: image-scan
+    steps:
+      # The forge image's base + toolchain, scanned by the trivy binary the
+      # image itself ships — the same version that runs user-facing scans.
+      - name: scan base image
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 docker.io/cloudflare/sandbox:0.12.6
+      - name: dockerfile audit
+        run: trivy config --severity HIGH,CRITICAL --exit-code 1 containers/forge/Dockerfile

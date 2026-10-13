@@ -15,6 +15,7 @@
 
 import { getSandbox, type SandboxOptions } from "@cloudflare/sandbox";
 import type { ForgeSandbox } from "@/worker/do/sandbox/forgeSandbox";
+import { applyEgressPolicy, JOB_EGRESS_ALLOWLISTS, type EgressPolicyResult } from "./egress";
 
 /** Jobs are meant to finish and go away; workspaces linger for a user. */
 const JOB_SLEEP_AFTER = "10m";
@@ -71,6 +72,8 @@ export interface JobSpec {
   ref?: string;
   /** env vars exported for the commands — NEVER secrets. */
   envVars?: Record<string, string>;
+  /** Extra egress domains beyond the kind's allowlist (job-declared). */
+  egressAllow?: string[];
   /** Per-job timeout override, capped at JOB_TIMEOUT_MS. */
   timeoutMs?: number;
 }
@@ -83,6 +86,8 @@ export interface JobResult {
   exitCode: number;
   /** Files collected back out of the sandbox after the run. */
   artifacts: Record<string, string>;
+  /** Whether the in-container egress policy was enforced for the run. */
+  egress?: EgressPolicyResult;
   durationMs: number;
 }
 
@@ -113,6 +118,13 @@ export async function runJob(
     const sandbox = jobSandbox(env, namespaceSlug, kind, jobId, {
       containerTimeouts: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 120_000 },
     });
+    // Egress policy lands before any job-controlled code runs. Kinds with
+    // no allowlist stay open (workspaces are dev environments).
+    const allowlist = JOB_EGRESS_ALLOWLISTS[kind];
+    let egress: EgressPolicyResult | undefined;
+    if (allowlist) {
+      egress = await applyEgressPolicy(sandbox, [...allowlist, ...(spec.egressAllow ?? [])]);
+    }
     if (spec.envVars) await sandbox.setEnvVars(spec.envVars);
     if (spec.files) {
       for (const [path, contents] of Object.entries(spec.files)) {
@@ -161,6 +173,7 @@ export async function runJob(
       output: output.join("\n"),
       exitCode,
       artifacts,
+      egress,
       durationMs: Date.now() - started,
     };
   } catch (error) {

@@ -2,6 +2,7 @@ import type { FederateQueueMessage } from "./types";
 
 import { createLogger } from "@/worker/common";
 import { jobSandbox } from "@/worker/compute/sandbox";
+import { applyEgressPolicy } from "@/worker/compute/egress";
 import { bytesToHex } from "@/worker/common/hex";
 import { collectPushObjects, parseAdvertisedRefs, pushRefToRemote } from "@/worker/git/remote/push";
 import { repoDidFor } from "@/worker/agent/dids";
@@ -93,6 +94,18 @@ async function sshMirrorPush(
     containerTimeouts: { instanceGetTimeoutMS: 60_000 },
   });
   try {
+    // Egress locks to exactly the two hosts this job needs — our own
+    // smart-HTTP origin (clone source) and the ssh target. The mirror key
+    // is only written after the policy is applied.
+    const allow = [new URL(cloneSource).hostname];
+    const sshHost = target.url.startsWith("git@")
+      ? target.url.split("@")[1]?.split(":")[0]
+      : new URL(target.url).hostname;
+    if (sshHost) allow.push(sshHost);
+    const egress = await applyEgressPolicy(sandbox, allow);
+    if (!egress.enforced) {
+      return { ok: false, detail: `egress-policy-unenforced: ${egress.detail}` };
+    }
     const write = await sandbox.writeFile("/root/.ssh/mirror_key", `${key.trim()}\n`);
     if (!write.success) return { ok: false, detail: "key-write-failed" };
     const sshCommand =
