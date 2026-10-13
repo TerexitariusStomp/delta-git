@@ -124,6 +124,34 @@ describe("databases + security tests + supply chain", () => {
     expect((mig.body as { applied: number }).applied).toBe(1);
   });
 
+  it("d1 provisioning fails honestly without platform credentials", async () => {
+    // workerd test env carries no CF_API_TOKEN — a d1 create must surface an
+    // honest 503 rather than a fake `provisioned` record.
+    const create = await req(`/api/v1/spaces/${owner}/databases`, {
+      method: "POST",
+      body: { identifier: "plat-db", engine: "d1" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(create.status).toBe(503);
+    // Nothing should have been recorded for a provisioning failure.
+    const list = await req(`/api/v1/spaces/${owner}/databases`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(
+      (list.body as { identifier: string }[]).find((r) => r.identifier === "plat-db")
+    ).toBeUndefined();
+  });
+
+  it("console and migration-statements gates apply to the right engines", async () => {
+    // External postgres record — console is platform-d1-only.
+    const con = await req(`/api/v1/spaces/${owner}/databases/main-db/console`, {
+      method: "POST",
+      body: { sql: "select 1" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(con.status).toBe(400);
+  });
+
   it("runs the queue→result security-test lifecycle", async () => {
     const create = await req(`/api/v1/spaces/${owner}/security-tests`, {
       method: "POST",

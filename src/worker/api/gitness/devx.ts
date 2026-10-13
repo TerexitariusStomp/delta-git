@@ -45,6 +45,7 @@ import { workspaceSandbox } from "@/worker/compute/sandbox";
 import { openRepoTar } from "@/worker/routes/archive";
 import { findRepositoryById } from "@/worker/db/d1/dal/repositories";
 import { createLogger } from "@/worker/common/logger";
+import { cfApi } from "@/worker/common/cloudflareApi";
 import type { DevEnvironmentRow } from "@/worker/db/d1/schema/devx";
 
 const log = createLogger(undefined, { service: "DevxWorkspaces" });
@@ -367,6 +368,11 @@ export function registerGitnessDevx(router: AppRouter) {
     );
   });
 
+  // Provision — `engine: "d1"` (the default) creates a real D1 database on
+  // the platform account and stores its uuid in `host` (the connection
+  // handle, never credentials). Other engines stay BYO record-tracked —
+  // we can't provision someone's external postgres from here, so `status:
+  // external` says so honestly.
   router.post("/api/v1/spaces/:space_ref{.+}/databases", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
@@ -379,26 +385,93 @@ export function registerGitnessDevx(router: AppRouter) {
     if (!identifier || !isValidOwnerRepo(identifier)) {
       return gErr(c, 400, "valid identifier required");
     }
+    const engine = body?.engine ?? "d1";
+
+    let host: string | null = body?.host ?? null;
+    let status = "external";
+    if (engine === "d1") {
+      const name = `dg-${ns.slug}-${identifier}`.slice(0, 63);
+      const created = await cfApi(c.env, "/d1/database", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      if (!created.configured) {
+        return gErr(
+          c,
+          503,
+          "platform database provisioning unavailable (CF_API_TOKEN not configured)"
+        );
+      }
+      if (!created.ok) {
+        return gErr(c, 502, `d1 create failed: ${created.errors.join(", ") || "unknown"}`);
+      }
+      const result = created.result as { uuid?: string; name?: string } | undefined;
+      if (!result?.uuid) return gErr(c, 502, "d1 create returned no uuid");
+      host = result.uuid;
+      status = "provisioned";
+    }
+
     await insertDatabaseRecord(c.var.db, {
       id: newPrefixedId("db"),
       namespaceId: ns.id,
       identifier,
-      engine: body?.engine ?? "postgres",
-      host: body?.host ?? null,
-      status: "provisioned",
+      engine,
+      host,
+      status,
       migrations: "[]",
       createdAt: Date.now(),
     });
-    return c.json({ identifier }, 201);
+    return c.json({ identifier, engine, status }, 201);
   });
 
+  /** Run one or more SQL statements against a provisioned D1 database. */
+  async function queryPlatformD1(
+    c: GitnessContext,
+    host: string,
+    sql: string
+  ): Promise<{ ok: boolean; result?: unknown; error?: Response }> {
+    const res = await cfApi(c.env, `/d1/database/${host}/query`, {
+      method: "POST",
+      body: JSON.stringify({ sql }),
+    });
+    if (!res.configured) {
+      return {
+        ok: false,
+        error: gErr(c, 503, "platform database access unavailable (CF_API_TOKEN not configured)"),
+      };
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: gErr(c, 502, `d1 query failed: ${res.errors.join(", ") || `http ${res.status}`}`),
+      };
+    }
+    return { ok: true, result: res.result };
+  }
+
+  // Apply a migration — for platform D1 records the `statements` SQL runs
+  // for real and the ledger entry is only appended on success. External
+  // records keep the ledger-only behavior (the SQL ran on the client's
+  // own database).
   router.post("/api/v1/spaces/:space_ref{.+}/databases/:id/migrations", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
     const row = await findDatabaseRecord(c.var.db, ns.id, c.req.param("id"));
     if (!row) return gNotFound(c, "database");
-    const body = (await c.req.json().catch(() => null)) as { version?: string } | null;
+    const body = (await c.req.json().catch(() => null)) as {
+      version?: string;
+      statements?: string;
+    } | null;
     if (!body?.version?.trim()) return gErr(c, 400, "version required");
+
+    if (row.engine === "d1" && row.host) {
+      if (!body.statements?.trim()) {
+        return gErr(c, 400, "statements required for platform D1 databases");
+      }
+      const ran = await queryPlatformD1(c, row.host, body.statements);
+      if (!ran.ok) return ran.error!;
+    }
+
     const migrations = JSON.parse(row.migrations) as {
       version: string;
       appliedAt: number;
@@ -413,11 +486,45 @@ export function registerGitnessDevx(router: AppRouter) {
     return c.json({ applied: migrations.length });
   });
 
+  // SQL console — executes against the provisioned D1 database. Member-
+  // gated by the same space check as every other mutating surface.
+  router.post("/api/v1/spaces/:space_ref{.+}/databases/:id/console", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const row = await findDatabaseRecord(c.var.db, ns.id, c.req.param("id"));
+    if (!row) return gNotFound(c, "database");
+    if (row.engine !== "d1" || !row.host) {
+      return gErr(c, 400, "console is only available for platform D1 databases");
+    }
+    const body = (await c.req.json().catch(() => null)) as { sql?: string } | null;
+    if (!body?.sql?.trim()) return gErr(c, 400, "sql required");
+    const ran = await queryPlatformD1(c, row.host, body.sql);
+    if (!ran.ok) return ran.error!;
+    return c.json({ result: ran.result });
+  });
+
   router.delete("/api/v1/spaces/:space_ref{.+}/databases/:id", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
     const row = await findDatabaseRecord(c.var.db, ns.id, c.req.param("id"));
     if (!row) return gNotFound(c, "database");
+    if (row.engine === "d1" && row.host) {
+      // Delete the real database first — if that fails the record stays so
+      // the remote isn't orphaned silently.
+      const dropped = await cfApi(c.env, `/d1/database/${row.host}`, { method: "DELETE" });
+      if (dropped.configured && !dropped.ok) {
+        return gErr(
+          c,
+          502,
+          `d1 delete failed: ${dropped.errors.join(", ") || `http ${dropped.status}`}`
+        );
+      }
+      // Unconfigured platform → can't reach the remote; still drop the row
+      // but flag it so the operator knows a remote may linger.
+      if (!dropped.configured) {
+        log.warn("db:remote-orphaned", { dbId: row.id, reason: "cf-credentials-missing" });
+      }
+    }
     await deleteDatabaseRecord(c.var.db, row.id);
     return c.body(null, 204);
   });

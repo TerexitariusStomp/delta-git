@@ -431,8 +431,8 @@ export function DatabasesPage() {
   const { spaces, space, setSpace } = useSpacePicker();
   const queryClient = useQueryClient();
   const [identifier, setIdentifier] = useState("");
-  const [engine, setEngine] = useState("postgres");
-  const [version, setVersion] = useState("");
+  const [engine, setEngine] = useState("d1");
+  const [openDb, setOpenDb] = useState<string | null>(null);
 
   const { data } = useQuery(
     ["databases", space],
@@ -452,19 +452,6 @@ export function DatabasesPage() {
       },
     }
   );
-  const applyMigration = useMutation(
-    (vars: { id: string; version: string }) =>
-      deltaApi(`/api/v1/spaces/${space}/databases/${vars.id}/migrations`, {
-        method: "POST",
-        body: JSON.stringify({ version: vars.version }),
-      }),
-    {
-      onSuccess: () => {
-        setVersion("");
-        queryClient.invalidateQueries(["databases", space]);
-      },
-    }
-  );
 
   return (
     <PageShell title="Databases">
@@ -476,21 +463,24 @@ export function DatabasesPage() {
           value={engine}
           onChange={(e) => setEngine(e.target.value)}
         >
-          <option value="postgres">postgres</option>
-          <option value="mysql">mysql</option>
-          <option value="sqlite">sqlite</option>
-          <option value="d1">d1</option>
+          <option value="d1">d1 — provisioned on the platform</option>
+          <option value="postgres">postgres — external</option>
+          <option value="mysql">mysql — external</option>
+          <option value="sqlite">sqlite — external</option>
         </select>
         <Button disabled={!identifier.trim() || create.isLoading} onClick={() => create.mutate()}>
-          Register
+          {engine === "d1" ? "Provision" : "Register"}
         </Button>
       </div>
+      {create.isError && (
+        <StatusBadge variant="status" theme="danger">{(create.error as Error)?.message ?? "create failed"}</StatusBadge>
+      )}
       <Table.Root>
         <Table.Header>
           <Table.Row>
             <Table.Head>Identifier</Table.Head>
             <Table.Head>Engine</Table.Head>
-            <Table.Head>Host</Table.Head>
+            <Table.Head>Status</Table.Head>
             <Table.Head>Migrations</Table.Head>
             <Table.Head></Table.Head>
           </Table.Row>
@@ -502,31 +492,123 @@ export function DatabasesPage() {
               <Table.Cell>
                 <StatusBadge variant="outline">{d.engine}</StatusBadge>
               </Table.Cell>
-              <Table.Cell>{d.host ?? "—"}</Table.Cell>
+              <Table.Cell>
+                <StatusBadge variant="status" theme={d.status === "provisioned" ? "success" : "muted"}>
+                  {d.status}
+                </StatusBadge>
+              </Table.Cell>
               <Table.Cell>{d.migrations.length}</Table.Cell>
               <Table.Cell>
-                <div className="flex items-center gap-cn-sm">
-                  <TextInput
-                    value={version}
-                    onChange={(e) => setVersion(e.target.value)}
-                    placeholder="0002_add_idx"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!version.trim()}
-                    onClick={() => applyMigration.mutate({ id: d.identifier, version })}
-                  >
-                    Apply
-                  </Button>
-                </div>
+                <Button variant="ghost" size="sm" onClick={() => setOpenDb(openDb === d.id ? null : d.id)}>
+                  {openDb === d.id ? "Close" : "Console"}
+                </Button>
               </Table.Cell>
             </Table.Row>
           ))}
         </Table.Body>
       </Table.Root>
       {(data ?? []).length === 0 && <EmptyNote text="No databases registered." />}
+      {space && openDb && data?.find((d) => d.id === openDb) && (
+        <DatabasePanel space={space} db={data.find((d) => d.id === openDb)!} />
+      )}
     </PageShell>
+  );
+}
+
+/** SQL console + migration apply for one database. Platform D1 records run
+ * statements for real; external records only track the ledger. */
+function DatabasePanel({ space, db }: { space: string; db: DbItem }) {
+  const queryClient = useQueryClient();
+  const [version, setVersion] = useState("");
+  const [migrationSql, setMigrationSql] = useState("");
+  const [consoleSql, setConsoleSql] = useState("");
+  const [consoleResult, setConsoleResult] = useState<string | null>(null);
+  const isD1 = db.engine === "d1" && db.status === "provisioned";
+
+  const applyMigration = useMutation(
+    () =>
+      deltaApi(`/api/v1/spaces/${space}/databases/${db.identifier}/migrations`, {
+        method: "POST",
+        body: JSON.stringify({ version, statements: migrationSql }),
+      }),
+    {
+      onSuccess: () => {
+        setVersion("");
+        setMigrationSql("");
+        queryClient.invalidateQueries(["databases", space]);
+      },
+    }
+  );
+  const runConsole = useMutation(async () => {
+    const res = await deltaApi<{ result: unknown }>(
+      `/api/v1/spaces/${space}/databases/${db.identifier}/console`,
+      { method: "POST", body: JSON.stringify({ sql: consoleSql }) }
+    );
+    setConsoleResult(JSON.stringify(res.result, null, 2));
+  });
+
+  return (
+    <div className="mt-cn-lg rounded-cn-3 border border-cn-2 bg-cn-2 p-cn-lg">
+      <div className="mb-cn-md font-semibold text-cn-1">
+        {db.identifier} — {isD1 ? "platform D1" : "external ledger"}
+      </div>
+      {isD1 && (
+        <div className="mb-cn-lg">
+          <div className="mb-cn-sm text-cn-2">Console</div>
+          <textarea
+            className="mb-cn-sm h-20 w-full rounded-cn-2 border border-cn-2 bg-cn-1 p-cn-sm font-mono text-cn-1"
+            value={consoleSql}
+            onChange={(e) => setConsoleSql(e.target.value)}
+            placeholder="select * from sqlite_master"
+          />
+          <div className="flex items-center gap-cn-sm">
+            <Button size="sm" disabled={!consoleSql.trim() || runConsole.isLoading} onClick={() => runConsole.mutate()}>
+              Run
+            </Button>
+            {runConsole.isError && (
+              <StatusBadge variant="status" theme="danger">{(runConsole.error as Error)?.message ?? "query failed"}</StatusBadge>
+            )}
+          </div>
+          {consoleResult && (
+            <pre className="mt-cn-sm max-h-64 overflow-auto rounded-cn-2 border border-cn-2 bg-cn-1 p-cn-sm text-cn-1">
+              {consoleResult}
+            </pre>
+          )}
+        </div>
+      )}
+      <div className="mb-cn-sm text-cn-2">Apply migration</div>
+      <div className="flex items-end gap-cn-md">
+        <TextInput label="Version" value={version} onChange={(e) => setVersion(e.target.value)} placeholder="0001_init" />
+        {isD1 && (
+          <textarea
+            className="h-16 flex-1 rounded-cn-2 border border-cn-2 bg-cn-1 p-cn-sm font-mono text-cn-1"
+            value={migrationSql}
+            onChange={(e) => setMigrationSql(e.target.value)}
+            placeholder="create table ..."
+          />
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!version.trim() || (isD1 && !migrationSql.trim()) || applyMigration.isLoading}
+          onClick={() => applyMigration.mutate()}
+        >
+          Apply
+        </Button>
+      </div>
+      {applyMigration.isError && (
+        <StatusBadge variant="status" theme="danger">{(applyMigration.error as Error)?.message ?? "migration failed"}</StatusBadge>
+      )}
+      {db.migrations.length > 0 && (
+        <div className="mt-cn-md text-cn-2">
+          {db.migrations.map((m) => (
+            <div key={m.version}>
+              {m.version} — {new Date(m.appliedAt).toLocaleString()}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
