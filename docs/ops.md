@@ -45,7 +45,7 @@ approximate byte accounting per namespace.
 | `patch`          | actor DID | 60 / 60s                      | `POST /dg/patch`               |
 | `vote`           | actor DID | 30 / 60s                      | `POST /dg/intents/:id/vote`    |
 | open intents     | ref       | `MAX_OPEN_INTENTS_PER_REF`    | merge-intent DAL               |
-| storage bytes    | namespace | 2 GiB (`quota:ns:<id>`)       | receive pipeline, pre-finalize |
+| storage bytes    | namespace | unlimited (`quota:ns:<id>`)   | receive pipeline, pre-finalize |
 | rep gates        | agent     | `MIN_REP_*` in `agent/rep.ts` | intents, votes, claims         |
 
 Storage charging happens in `executeReceivePipeline` after pack staging and before
@@ -77,6 +77,23 @@ per event into the `ANALYTICS` dataset. Emitted on pushes (`receive`),
 merge/adjudication outcomes, federation runs, rate-limit hits, auth events, and
 quota rejections. Query with the Analytics Engine SQL API; `?query=` the
 `dg/stats` endpoint for per-repo numbers without dashboard work.
+
+## Load profile
+
+`test/load-50-agents.worker.test.ts` drives 50 concurrent pushes through the
+real receive-pack HTTP path against one repo DO (miniflare, single isolate —
+production spreads DOs across colos, so treat these as relative numbers, not
+SLAs). Latest measured run:
+
+| Phase | Load                          | Wall time           | Outcome                                               |
+| ----- | ----------------------------- | ------------------- | ----------------------------------------------------- |
+| A     | 40 pushes × distinct branches | 1.37 s (~29 push/s) | all `ok`, zero 503s                                   |
+| B     | 10 pushes × same branch       | 0.53 s              | 1 lands on `main`, 9 → `refs/delta/*` + merge intents |
+
+Latency across all 50 pushes: p50 ≈ 590 ms, p95 ≈ 1.1 s, max ≈ 1.4 s. The
+serialized-finalize DO is the ceiling — concurrent receives stage in parallel
+(8-lease pool) while finalize stays single-writer, which is what makes same-
+branch races converge to intents instead of rejections.
 
 ## Secrets inventory
 

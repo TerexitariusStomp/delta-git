@@ -1677,7 +1677,7 @@ describe("namespace quotas", () => {
       repos: { count: number; limit: number };
       rate_limits: { repo_create_per_hour: number };
     };
-    expect(q.storage.limit_bytes).toBe(2 * 1024 * 1024 * 1024);
+    expect(q.storage.limit_bytes).toBe(Number.MAX_SAFE_INTEGER);
     expect(q.repos.count).toBeGreaterThanOrEqual(1);
     expect(q.repos.limit).toBe(500);
     expect(q.rate_limits.repo_create_per_hour).toBe(10);

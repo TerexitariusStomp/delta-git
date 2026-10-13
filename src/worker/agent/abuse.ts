@@ -123,8 +123,12 @@ export const LIMITS = {
 // Storage quotas — approximate byte accounting per namespace in KV
 // ---------------------------------------------------------------------------
 
-/** Default per-namespace storage quota: 2 GiB. */
-export const DEFAULT_STORAGE_QUOTA_BYTES = 2 * 1024 * 1024 * 1024;
+/**
+ * Default per-namespace storage quota: effectively unlimited for now — the
+ * accounting machinery stays so a real ceiling can be reintroduced per
+ * namespace without code changes.
+ */
+export const DEFAULT_STORAGE_QUOTA_BYTES = Number.MAX_SAFE_INTEGER;
 
 /** Default per-namespace repository count quota (gists included). */
 export const DEFAULT_REPO_COUNT_QUOTA = 500;
@@ -148,7 +152,9 @@ export async function chargeStorageQuota(
 ): Promise<boolean> {
   if (bytes <= 0) return true;
   const used = await getStorageUsed(kv, namespaceId);
-  if (used + bytes > quotaBytes) return false;
+  // `quotaBytes - used` (not `used + bytes`) so the check stays exact when the
+  // quota is near MAX_SAFE_INTEGER.
+  if (bytes > quotaBytes - used) return false;
   await kv.put(`${QUOTA_PREFIX}${namespaceId}`, String(used + bytes));
   return true;
 }
