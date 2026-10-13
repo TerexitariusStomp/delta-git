@@ -77,7 +77,8 @@ function gitAsync(args: string[], cwd: string): Promise<string> {
       "git",
       args,
       { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
-      (err, stdout, stderr) => (err ? reject(Object.assign(err, { stderr })) : resolve(stdout + stderr))
+      (err, stdout, stderr) =>
+        err ? reject(Object.assign(err, { stderr })) : resolve(stdout + stderr)
     );
   });
 }
@@ -122,19 +123,43 @@ async function main() {
   // ---- Beat 2: PAT mint ------------------------------------------------------
   const pat = await api(
     `/auth/api/tokens`,
-    { method: "POST", body: JSON.stringify({ scope: "namespace", name: "dry-run", namespaceSlug: namespace, level: "push" }) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        scope: "namespace",
+        name: "dry-run",
+        namespaceSlug: namespace,
+        level: "push",
+      }),
+    },
     cookie
   );
   const patPlain = pat.data.plaintext as string | undefined;
-  beat("PAT mint", pat.res.status === 200 && !!patPlain, `${pat.res.status} prefix=${pat.data.prefix ?? JSON.stringify(pat.data)}`);
+  beat(
+    "PAT mint",
+    pat.res.status === 200 && !!patPlain,
+    `${pat.res.status} prefix=${pat.data.prefix ?? JSON.stringify(pat.data)}`
+  );
 
   // ---- Beat 3: artifacts repo + art_v1 token (beat 2 of the video) -----------
   const artRepo = await api(
     `/auth/api/repositories`,
-    { method: "POST", body: JSON.stringify({ namespaceSlug: namespace, slug: `${REPO}-art`, backend: "artifacts", visibility: "public" }) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        namespaceSlug: namespace,
+        slug: `${REPO}-art`,
+        backend: "artifacts",
+        visibility: "public",
+      }),
+    },
     cookie
   );
-  beat("artifacts repo create", artRepo.res.status < 400, `${artRepo.res.status} ${artRepo.res.status >= 400 ? JSON.stringify(artRepo.data) : ""}`);
+  beat(
+    "artifacts repo create",
+    artRepo.res.status < 400,
+    `${artRepo.res.status} ${artRepo.res.status >= 400 ? JSON.stringify(artRepo.data) : ""}`
+  );
 
   // The /api/dg/* surface resolves repos route-cache-only; the KV record is
   // warmed by an async route-cache-sync queue task — poll until it lands.
@@ -156,23 +181,46 @@ async function main() {
     body: JSON.stringify({ scope: "write" }),
   });
   const artToken = (tok.data.token ?? tok.data.plaintext) as string | undefined;
-  beat("artifacts art_v1 token", !!artToken, `${tok.res.status} ${artToken ? artToken.slice(0, 12) + "…" : JSON.stringify(tok.data)}`);
+  beat(
+    "artifacts art_v1 token",
+    !!artToken,
+    `${tok.res.status} ${artToken ? artToken.slice(0, 12) + "…" : JSON.stringify(tok.data)}`
+  );
 
   // The git remote 302s to the artifacts service — capture the Location.
-  const refsProbe = await fetch(`${BASE}/${namespace}/${REPO}-art.git/info/refs?service=git-upload-pack`, {
-    headers: { Authorization: basic },
-    redirect: "manual",
-  });
+  const refsProbe = await fetch(
+    `${BASE}/${namespace}/${REPO}-art.git/info/refs?service=git-upload-pack`,
+    {
+      headers: { Authorization: basic },
+      redirect: "manual",
+    }
+  );
   const artRemote = refsProbe.headers.get("location") ?? "";
-  beat("artifacts remote 302", refsProbe.status === 302 && /artifacts/.test(artRemote), `${refsProbe.status} → ${artRemote.slice(0, 80)}`);
+  beat(
+    "artifacts remote 302",
+    refsProbe.status === 302 && /artifacts/.test(artRemote),
+    `${refsProbe.status} → ${artRemote.slice(0, 80)}`
+  );
 
   // ---- Beat 4: r2 repo + push race → refs/delta/* -----------------------------
   const repo = await api(
     `/auth/api/repositories`,
-    { method: "POST", body: JSON.stringify({ namespaceSlug: namespace, slug: REPO, backend: "do", visibility: "public" }) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        namespaceSlug: namespace,
+        slug: REPO,
+        backend: "do",
+        visibility: "public",
+      }),
+    },
     cookie
   );
-  beat("do repo create", repo.res.status < 400, `${repo.res.status} ${repo.res.status >= 400 ? JSON.stringify(repo.data) : ""}`);
+  beat(
+    "do repo create",
+    repo.res.status < 400,
+    `${repo.res.status} ${repo.res.status >= 400 ? JSON.stringify(repo.data) : ""}`
+  );
   await waitCache(REPO);
 
   // Git auth: Basic username must equal the namespace slug (AGENTS.md).
@@ -217,7 +265,10 @@ async function main() {
         webcrypto.getRandomValues(blob.subarray(off, off + 65536));
       writeFileSync(join(dirC, `fill-${attempt}.bin`), blob);
       git(["add", "-A"], dirC);
-      git(["-c", "user.email=c@dg", "-c", "user.name=c", "commit", "-m", `agent C head ${attempt}`], dirC);
+      git(
+        ["-c", "user.email=c@dg", "-c", "user.name=c", "commit", "-m", `agent C head ${attempt}`],
+        dirC
+      );
       const pushC = gitAsync(["push", remoteHttp, `HEAD:${branch}`], dirC);
       await sleep(1000); // let C advertise, then B races its small pack in
       const pushB = gitAsync(["push", remoteHttp, `HEAD:${branch}`], dirB);
@@ -229,14 +280,21 @@ async function main() {
       intentId = list[0]?.id;
       if (!intentId) console.log(`  race attempt ${attempt}: no delta yet`);
     }
-    beat("race: divergent push → refs/delta/* + intent", !!intentId, intentId ?? "no delta after 5 attempts");
+    beat(
+      "race: divergent push → refs/delta/* + intent",
+      !!intentId,
+      intentId ?? "no delta after 5 attempts"
+    );
   } finally {
     rmSync(dirA, { recursive: true, force: true });
     rmSync(dirB, { recursive: true, force: true });
   }
 
   // ---- Handoff vars for seed-arena -------------------------------------------
-  wf("/tmp/dg-dry-run.env", `DG_BASE_URL=${BASE}\nDG_PAT=${patPlain}\nDG_COOKIE=${cookie}\nDG_OWNER=${namespace}\nDG_REPO=arena-demo\n`);
+  wf(
+    "/tmp/dg-dry-run.env",
+    `DG_BASE_URL=${BASE}\nDG_PAT=${patPlain}\nDG_COOKIE=${cookie}\nDG_OWNER=${namespace}\nDG_REPO=arena-demo\n`
+  );
   console.log(`\ncookie+pat → /tmp/dg-dry-run.env  (owner=${namespace})`);
   console.log("\n=== beat summary ===");
   for (const r of results) console.log(` ${r.ok ? "✓" : "✗"} ${r.beat}: ${r.detail}`);

@@ -674,7 +674,7 @@ Only after that migration completed could the repo be promoted during cutover.
 
 ### Emergency rollback (removed in closure release)
 
-The emergency backfill tool described here was used during the phase-3 canary rollout and has been removed in the closure release. See `docs/streaming-push-closure-plan.md` for details.
+The emergency backfill tool described here was used during the phase-3 canary rollout and has been removed in the closure release. See `docs/archive/streaming-push-closure-plan.md` for details.
 
 ## Compatibility Surface
 
@@ -950,7 +950,7 @@ The rollout is successful only if all of the following are true:
 
 ## Closure Release Implementation Checklist (completed)
 
-All items below were completed in the closure release. See `docs/streaming-push-closure-plan.md` for the full implementation plan.
+All items below were completed in the closure release. See `docs/archive/streaming-push-closure-plan.md` for the full implementation plan.
 
 1. ~~Remove emergency backfill tool~~ -- done
 2. ~~Remove `/admin/hydrate` aliases and `startHydration`/`clearHydration` RPCs~~ -- done

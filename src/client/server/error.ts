@@ -15,18 +15,18 @@ export async function handleError(
 ): Promise<Response> {
   const debug = String(env.LOG_LEVEL || "").toLowerCase() === "debug";
   const httpError = isHttpError(error) ? error : undefined;
-  const status =
-    httpError?.status ?? (/not found/i.test(String((error as any)?.message)) ? 404 : 500);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const status = httpError?.status ?? (/not found/i.test(errorMessage) ? 404 : 500);
 
   try {
     const html = await renderUiView(env, "error", {
       title: fallbackTitle,
-      message: String((error as any)?.message || error),
+      message: errorMessage,
       owner: extra?.owner,
       repo: extra?.repo,
       refEnc: extra?.refEnc,
       path: extra?.path,
-      stack: debug ? String((error as any)?.stack || "") : undefined,
+      stack: debug && error instanceof Error ? error.stack : undefined,
     });
     if (html) {
       return new Response(html, {
@@ -36,11 +36,8 @@ export async function handleError(
     }
   } catch {}
 
-  return new Response(
-    `<h2>Error</h2><pre>${escapeHtml(String((error as any)?.message || error))}</pre>`,
-    {
-      status,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    }
-  );
+  return new Response(`<h2>Error</h2><pre>${escapeHtml(errorMessage)}</pre>`, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
 }

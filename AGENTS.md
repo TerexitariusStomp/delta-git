@@ -108,12 +108,17 @@ Write changes against the current source tree, not the docs alone. Some document
 - `src/client/islands/`: client-only interactive modules (did-signin, shell)
 - `src/client/entries/`: Vite client entrypoints used by SSR pages
 - `frontend/canary/`: vendored Harness/Gitness SPA workspace (Apache-2.0)
-- `src/worker/api/gitness/`: `/api/v1` facade — translates the SPA's API onto delta-git primitives
+- `src/worker/api/gitness/`: `/api/v1` facade — translates the SPA's API onto delta-git primitives (includes the delivery/devx/reliability module routes)
 - `src/worker/routes/spa.ts`: SPA asset serving + client-route fallback (registered last)
+- `src/worker/compute/`: ForgeSandbox access (`sandbox.ts` — the single chokepoint for container work) and in-container egress policy (`egress.ts`)
+- `src/worker/tasks/`: queue consumers — deploy, federation mirror-out, security-scan/supply-chain builds
+- `src/worker/runner/`: built-in Cloudflare pipeline runner (`.delta/workflows/*.yml` spec parse + ForgeSandbox execution)
+- `src/worker/db/d1/`: D1 schema + DAL — same rule as the repo DO: no raw queries outside `dal/`
+- `containers/forge/`: the container image used for CI jobs, workspaces, scans, and ssh federation
 - `src/shared/web/`: browser-safe request parsing, formatting, MIME/JSON helpers
 - `src/worker/common/`: Worker response, logging, compression, stubs, progress helpers
 - `test/`: Vitest worker integration tests and Node unit tests
-- `docs/`: architecture and API notes; useful, but verify against source before relying on path details
+- `docs/`: architecture and API notes; useful, but verify against source before relying on path details (`docs/archive/` holds completed migration plans)
 
 ## Core Invariants
 
@@ -122,7 +127,7 @@ Write changes against the current source tree, not the docs alone. Some document
 - The repo Durable Object is the source of truth for a single repository. Keep refs/HEAD authority there.
 - SQLite access for repo metadata must go through `src/worker/do/repo/db/dal.ts`. Do not add ad hoc raw Drizzle queries in unrelated files.
 - `RepoDurableObject.fetch()` intentionally exposes only a small HTTP surface. Keep typed RPC methods as the default internal interface.
-- Receive uses a lease model: one active receive lease at a time, acquired via `beginReceive()` and committed via `finalizeReceive()`. Concurrent pushes receive `503 Retry-After: 10`.
+- Receive uses a multi-lease model: up to 8 concurrent receive leases per repo (token-keyed rows, acquired via `beginReceive()`, committed via `finalizeReceive()`). A ninth pusher waits in line with a bounded budget before `503 Retry-After`. Re-validation happens at finalize — a push whose base moved during its window is re-validated, not failed.
 - Git fetch paths are streaming-sensitive. Avoid unnecessary buffering on upload-pack and pack assembly paths.
 - Git pushes require a D1-backed PAT with `level = "push"`; HTTP Basic username must match the route namespace slug.
 - The SPA owns all page routing; `registerSpaRoutes` in `src/worker/routes/spa.ts` must stay registered last and must never shadow `/api`, `/auth`, `/xrpc`, `/mcp`, `/info`, `/objects`, or `/.well-known` paths. SSR rendering (auth/404/error only) goes through `renderUiView()` and the view registry in `src/client/server/registry.tsx`.

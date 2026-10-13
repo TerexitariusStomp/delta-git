@@ -17,7 +17,9 @@ export class HttpError extends Error {
 }
 
 export function isHttpError(e: unknown): e is HttpError {
+  // Duck-typed so a HttpError crossing an RPC/bundle boundary (losing its
+  // prototype) still matches — `instanceof HttpError` alone would miss it.
   return (
-    e instanceof Error && (e as any).name === "HttpError" && typeof (e as any).status === "number"
+    e instanceof Error && e.name === "HttpError" && "status" in e && typeof e.status === "number"
   );
 }
