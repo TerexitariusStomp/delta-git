@@ -789,16 +789,24 @@ export async function evaluateDeliveryGates(
 ): Promise<GateResult> {
   const windows = await listFreezeWindows(db, namespaceId);
   const now = new Date();
+  // Unexpired overrides exempt their subject: "freeze:<id>" skips a window,
+  // "policy:<id>" demotes that policy's denies to warnings.
+  const activeOverrides = (await listOverrides(db, namespaceId)).filter(
+    (o) => !o.expiresAt || o.expiresAt > now.getTime()
+  );
+  const overridden = (subject: string) => activeOverrides.some((o) => o.subject === subject);
   for (const w of windows) {
     if (w.enabled !== 1) continue;
     if (w.appliesTo !== "all" && w.appliesTo !== ctx.op) continue;
-    if (freezeWindowActive(w.schedule, now)) {
-      return {
-        ok: false,
-        deny: `freeze window "${w.identifier}" is active (${w.schedule} UTC) — ${ctx.op} is gated until it closes`,
-        warnings: [],
-      };
-    }
+    if (!freezeWindowActive(w.schedule, now)) continue;
+    // Overrides may name the window by row id or identifier — both are
+    // stable handles a UI or CLI would plausibly use.
+    if (overridden(`freeze:${w.id}`) || overridden(`freeze:${w.identifier}`)) continue;
+    return {
+      ok: false,
+      deny: `freeze window "${w.identifier}" is active (${w.schedule} UTC) — ${ctx.op} is gated until it closes`,
+      warnings: [],
+    };
   }
   const warnings: string[] = [];
   for (const p of await listEnabledPolicies(db, namespaceId, ctx.op)) {
@@ -806,7 +814,8 @@ export async function evaluateDeliveryGates(
     for (const rule of rules) {
       if (!ruleMatches(rule, ctx)) continue;
       const msg = rule.message ?? `policy "${p.identifier}" ${rule.action}s this ${ctx.op}`;
-      if (rule.action === "deny" && p.enforcement === "enforce") {
+      const exempt = overridden(`policy:${p.id}`) || overridden(`policy:${p.identifier}`);
+      if (rule.action === "deny" && p.enforcement === "enforce" && !exempt) {
         return { ok: false, deny: msg, warnings };
       }
       warnings.push(msg);

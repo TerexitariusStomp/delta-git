@@ -158,3 +158,96 @@ export function planDivergence(args: {
   if (diverged === 0) return { kind: "rejected" };
   return { kind: "plan", commands: rewritten, statuses: outStatuses, intents };
 }
+
+// ---------------------------------------------------------------------------
+// Quarantine — delivery-gate (freeze window / enforce policy) denials.
+//
+// A gated push must not be rejected: the "never reject a push" contract means
+// the objects land and a merge intent holds them until the gate closes. Every
+// non-delete `refs/heads/` command rewrites to a delta ref exactly like a
+// divergent push; deletes and non-heads refs can't be held, so they get a
+// truthful deny status — the push is only *fully* refused when nothing was
+// quarantinable.
+// ---------------------------------------------------------------------------
+
+export type QuarantinePlan = {
+  kind: "quarantined";
+  /** Rewritten delta-ref commands to apply. */
+  commands: ReceiveCommand[];
+  /** Per-original-command statuses the client sees. */
+  statuses: ReceiveStatus[];
+  intents: MergeIntentRow[];
+};
+
+/** Nothing quarantinable — every command was a delete or non-heads ref. */
+export type QuarantineRejected = { kind: "rejected"; statuses: ReceiveStatus[] };
+
+export type QuarantineOutcome = QuarantinePlan | QuarantineRejected;
+
+export function planQuarantine(args: {
+  currentRefs: Array<{ name: string; oid: string }>;
+  commands: ReceiveCommand[];
+  actor: string;
+  now: number;
+  /** Open intent counts keyed by target ref — flood guard per ref. */
+  openIntentCounts: Map<string, number>;
+  /** The gate's deny message, surfaced to the client per held ref. */
+  reason: string;
+}): QuarantineOutcome {
+  const currentByName = new Map(args.currentRefs.map((r) => [r.name, r.oid] as const));
+  const rewritten: ReceiveCommand[] = [];
+  const outStatuses: ReceiveStatus[] = [];
+  const intents: MergeIntentRow[] = [];
+  let held = 0;
+
+  for (const command of args.commands) {
+    const holdable =
+      !isZeroOid(command.newOid) &&
+      command.ref.startsWith(DIVERGEABLE_PREFIX) &&
+      !command.ref.startsWith(DELTA_PREFIX);
+    if (!holdable) {
+      outStatuses.push({ ref: command.ref, ok: false, msg: args.reason });
+      continue;
+    }
+    const openForRef = args.openIntentCounts.get(command.ref) ?? 0;
+    if (openForRef >= MAX_OPEN_INTENTS_PER_REF) {
+      outStatuses.push({ ref: command.ref, ok: false, msg: "too many open merge intents" });
+      continue;
+    }
+    args.openIntentCounts.set(command.ref, openForRef + 1);
+
+    const deltaRef = deltaRefFor(command.ref, command.newOid);
+    const intentId = mergeIntentIdFor(command.ref, command.newOid);
+    const existing = currentByName.get(deltaRef);
+    if (existing !== undefined) {
+      if (existing.toLowerCase() === command.newOid.toLowerCase()) {
+        // Idempotent replay of an already-quarantined push.
+        outStatuses.push({ ref: command.ref, ok: true, msg: `quarantined ${intentId}` });
+        continue;
+      }
+      outStatuses.push({ ref: command.ref, ok: false, msg: "delta ref collision" });
+      continue;
+    }
+
+    rewritten.push({ ref: deltaRef, oldOid: ZERO_OID, newOid: command.newOid });
+    outStatuses.push({ ref: command.ref, ok: true, msg: `quarantined ${intentId}` });
+    intents.push({
+      id: intentId,
+      targetRef: command.ref,
+      baseOid: currentByName.get(command.ref) ?? ZERO_OID,
+      deltaRef,
+      deltaOid: command.newOid,
+      actor: args.actor,
+      status: "open",
+      conflicts: null,
+      resultOid: null,
+      createdAt: args.now,
+      expiresAt: args.now + MERGE_INTENT_TTL_MS,
+      resolvedAt: null,
+    });
+    held += 1;
+  }
+
+  if (held === 0) return { kind: "rejected", statuses: outStatuses };
+  return { kind: "quarantined", commands: rewritten, statuses: outStatuses, intents };
+}

@@ -336,6 +336,11 @@ export class RepoDurableObject extends DurableObject {
           objectCount: number;
         }
       | undefined;
+    /**
+     * Delivery-gate deny reason — set means "quarantine, don't reject":
+     * holdable heads commands land on delta refs as merge intents.
+     */
+    quarantine?: string;
   }) {
     await this.ensureAccessAndAlarm();
     return await finalizeReceiveState({
@@ -346,6 +351,7 @@ export class RepoDurableObject extends DurableObject {
       actor: args.actor,
       pushOptions: args.pushOptions,
       stagedPack: args.stagedPack,
+      quarantine: args.quarantine,
       logger: this.logger,
     });
   }

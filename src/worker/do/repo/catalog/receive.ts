@@ -17,7 +17,7 @@ import {
   listActivePackCatalog,
   upsertPackCatalogRow,
 } from "../db";
-import { planDivergence } from "./diverge";
+import { planDivergence, planQuarantine } from "./diverge";
 import { getActiveReceiveLeases, removeReceiveLease } from "./leases";
 import { appendOpLogEntry } from "./oplog";
 import { DEFAULT_HEAD, bumpPacksetVersion, ensureRepoMetadataDefaults } from "./shared";
@@ -70,6 +70,12 @@ export async function finalizeReceiveState(args: {
   actor?: string;
   /** `push-options` strings recorded on the `push.received` op-log entry. */
   pushOptions?: string[];
+  /**
+   * Delivery-gate deny reason. When set, every non-delete heads command is
+   * rewritten to a delta ref + merge intent ("quarantined") instead of being
+   * rejected — the gate holds the branch without losing the push.
+   */
+  quarantine?: string;
   stagedPack?:
     | {
         packKey: string;
@@ -114,8 +120,57 @@ export async function finalizeReceiveState(args: {
   let effectiveCommands = args.commands;
   let effectiveStatuses = statuses;
   let deltaIntents: MergeIntentRow[] | undefined;
+  let quarantined = false;
 
-  if (!statuses.every((status) => status.ok)) {
+  if (args.quarantine !== undefined) {
+    // Gate-held push: rewrite every holdable command to a delta ref + intent
+    // rather than refusing the receive.
+    const db = getDb(args.ctx.storage);
+    const openIntentCounts = new Map<string, number>();
+    for (const command of args.commands) {
+      if (openIntentCounts.has(command.ref)) continue;
+      openIntentCounts.set(command.ref, await countOpenIntentsForRef(db, command.ref));
+    }
+    const plan = planQuarantine({
+      currentRefs,
+      commands: args.commands,
+      actor: args.actor ?? "anonymous",
+      now: Date.now(),
+      openIntentCounts,
+      reason: args.quarantine,
+    });
+    if (plan.kind === "rejected") {
+      await removeReceiveLease(store, args.token);
+      args.logger?.warn("receive:quarantine-nothing-held", {
+        commandCount: args.commands.length,
+      });
+      return {
+        status: "ref_conflict",
+        statuses: plan.statuses,
+        message: "Push was gated and contained no holdable ref updates.",
+      };
+    }
+    const revalidated = validateReceiveCommands(currentRefs, plan.commands);
+    if (!revalidated.every((status) => status.ok)) {
+      await removeReceiveLease(store, args.token);
+      args.logger?.warn("receive:quarantine-invalid", {
+        conflictCount: revalidated.filter((status) => !status.ok).length,
+      });
+      return {
+        status: "ref_conflict",
+        statuses: plan.statuses,
+        message: "Quarantine rewrite produced invalid ref updates.",
+      };
+    }
+    effectiveCommands = plan.commands;
+    effectiveStatuses = plan.statuses;
+    deltaIntents = plan.intents;
+    quarantined = true;
+    args.logger?.info("receive:quarantined", {
+      intentCount: plan.intents.length,
+      reason: args.quarantine,
+    });
+  } else if (!statuses.every((status) => status.ok)) {
     const db = getDb(args.ctx.storage);
     const openIntentCounts = new Map<string, number>();
     for (const command of args.commands) {
@@ -235,6 +290,7 @@ export async function finalizeReceiveState(args: {
             deltaRef: intent.deltaRef,
             baseOid: intent.baseOid,
             deltaOid: intent.deltaOid,
+            quarantined,
           },
         },
         now

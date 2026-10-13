@@ -274,8 +274,11 @@ export async function executeReceivePipeline(
       }
     }
 
-    // Delivery gates: namespace freeze windows + enforce-mode policies reject
-    // pushes before the pack is staged. Warn-mode hits are logged only.
+    // Delivery gates: namespace freeze windows + enforce-mode policies hold
+    // pushes — "never reject" means a gated push lands on delta refs as
+    // quarantined merge intents, applied when the gate closes. Warn-mode hits
+    // are logged only.
+    let quarantineReason: string | undefined;
     if (hasNonDelete && args.namespaceId) {
       const db = createDb(args.env.DB);
       const gate = await evaluateDeliveryGates(db, args.namespaceId, {
@@ -289,27 +292,8 @@ export async function executeReceivePipeline(
         args.log.warn("receive:policy-warn", { repoId: args.repoId, warning });
       }
       if (!gate.ok) {
-        args.log.warn("receive:gate-deny", { repoId: args.repoId, deny: gate.deny });
-        await abortReceiveLease({
-          stub: args.stub,
-          leaseToken: args.leaseToken,
-          log: args.log,
-          reason: "gate-deny",
-          attempt: "inline",
-        });
-        const message = gate.deny ?? "push denied by delivery gate";
-        return buildReceiveResult({
-          unpackOk: false,
-          unpackMessage: message,
-          commands: args.commands,
-          statuses: args.commands.map((command) => ({
-            ref: command.ref,
-            ok: false,
-            message,
-          })),
-          changed: false,
-          empty: false,
-        });
+        args.log.warn("receive:gate-quarantine", { repoId: args.repoId, deny: gate.deny });
+        quarantineReason = gate.deny ?? "push held by delivery gate";
       }
     }
 
@@ -468,6 +452,7 @@ export async function executeReceivePipeline(
       actor: args.actor,
       pushOptions: args.pushOptions,
       stagedPack,
+      quarantine: quarantineReason,
     });
 
     if (finalize.status === "lease_mismatch") {
@@ -523,13 +508,18 @@ export async function executeReceivePipeline(
 
     // Deploy-on-commit: every successful heads-ref advance enqueues the
     // deploy lane (static → /pages serving, dynamic → Workers Scripts API).
+    // Delta-rewritten and gate-quarantined refs ("delta …" / "quarantined …"
+    // status msgs) did NOT move the canonical branch — skips downstream
+    // deploy/federate/pipeline/knowledge/webhook fan-out too.
     for (let i = 0; i < args.commands.length; i++) {
       const command = args.commands[i];
       const status = finalize.statuses[i];
       if (
         !status?.ok ||
         !command.ref.startsWith("refs/heads/") ||
-        /^0{40}$/i.test(command.newOid)
+        /^0{40}$/i.test(command.newOid) ||
+        status.msg?.startsWith("delta ") === true ||
+        status.msg?.startsWith("quarantined ") === true
       ) {
         continue;
       }
@@ -606,11 +596,26 @@ export async function executeReceivePipeline(
 
     // Notifications inbox: every successful heads-ref advance writes a `push`
     // notification to each namespace member except the pusher.
+    // Quarantined intents surface to the pusher via sideband progress — the
+    // report-status line can only say "ok", so the hold reason rides here.
+    for (const intent of finalize.deltaIntents ?? []) {
+      const held = finalize.statuses.find((s) => s.msg === `quarantined ${intent.id}`);
+      if (held) {
+        args.onProgress?.(
+          `Quarantined ${intent.targetRef} → ${intent.deltaRef} (merge intent ${intent.id}): ${quarantineReason}\n`
+        );
+      }
+    }
+
     const advancedRefs = args.commands
       .map((command, i) => ({ command, status: finalize.statuses[i] }))
       .filter(
         ({ command, status }) =>
-          status?.ok && command.ref.startsWith("refs/heads/") && !/^0{40}$/i.test(command.newOid)
+          status?.ok &&
+          command.ref.startsWith("refs/heads/") &&
+          !/^0{40}$/i.test(command.newOid) &&
+          status.msg?.startsWith("delta ") !== true &&
+          status.msg?.startsWith("quarantined ") !== true
       );
     if (advancedRefs.length > 0 && args.namespaceId) {
       const db = createDb(args.env.DB);

@@ -6,6 +6,9 @@ import { readPayload, resolvePathEntry } from "@/worker/agent/patch";
 import { isTreeMode } from "@/worker/git/core/tree";
 import { parseCommitText } from "@/worker/git/core";
 import { decryptRepoSecret } from "@/worker/agent/secrets";
+import { createDb } from "@/worker/db/d1/client";
+import { findRepositoryByDoName } from "@/worker/db/d1/dal/repositories";
+import { evaluateDeliveryGates } from "@/worker/api/gitness/delivery";
 
 // Deploy-on-commit.
 //
@@ -105,6 +108,40 @@ export async function handleDeployMessage(
   const log = createLogger(env.LOG_LEVEL, { service: "DeployOnCommit" });
   const stub = getRepoStubByDoId(env, body.doId);
   const actor = body.actor ?? "deploy-lane";
+
+  // Delivery gates apply to deploys the same way they gate pushes/merges —
+  // a freeze window or enforce policy stamps a failure status and the
+  // deploy is skipped (not retried: the gate is deterministic).
+  if (body.repoId) {
+    const db = createDb(env.DB);
+    const repoRow = await findRepositoryByDoName(db, body.repoId);
+    if (!repoRow) {
+      message.ack();
+      return;
+    }
+    const gate = await evaluateDeliveryGates(db, repoRow.namespaceId, {
+      op: "deploy",
+      branch: body.ref.replace(/^refs\/heads\//, ""),
+      actor,
+    });
+    if (!gate.ok) {
+      await stub.setCommitStatus({
+        row: {
+          sha: body.sha,
+          context: "delta-git/deploy",
+          state: "failure",
+          description: (gate.deny ?? "deploy gated").slice(0, 140),
+          targetUrl: null,
+          createdBy: actor,
+          createdAt: Date.now(),
+        },
+        actor,
+      });
+      log.warn("deploy:gate-deny", { doId: body.doId, deny: gate.deny });
+      message.ack();
+      return;
+    }
+  }
 
   const commit = await readPayload(env, body.doId, body.sha, undefined);
   if (!commit || commit.type !== "commit") {
