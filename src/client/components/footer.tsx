@@ -21,7 +21,10 @@ export function Footer() {
           className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs"
           aria-label="Footer"
         >
-          <a href="/rooted-finance/git-on-cloudflare" className="no-underline hover:underline">
+          <a
+            href="https://github.com/TerexitariusStomp/delta-git"
+            className="no-underline hover:underline"
+          >
             Source
           </a>
           <a href="https://wpcloud.delta-git.workers.dev" className="no-underline hover:underline">

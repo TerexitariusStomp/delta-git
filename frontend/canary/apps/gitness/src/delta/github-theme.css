@@ -2,8 +2,9 @@
  * delta-git GitHub reskin — applied last in styles.css so it overrides the
  * Harness design tokens under the theme classes the app toggles
  * (`.dark-std-std` / `.light-std-std`, plus bare `.dark`/`.light`).
- * Values follow GitHub Primer: dark canvas #0d1117, light canvas #ffffff,
- * accent #0969da/#4493f8, primary action green #1f883d/#238636.
+ * Values follow GitHub Primer surfaces with the Widespread accent pair:
+ * gold links/brand (#e3b341 dark / #9a6700 light) + green primary action
+ * (#238636 dark / #1f883d light).
  */
 
 /* ---------- shared ---------- */
@@ -27,7 +28,7 @@
   --cn-text-2: #d1d9e0;
   --cn-text-3: #9198a1;
   --cn-text-4: #6e7681;
-  --cn-text-brand: #4493f8;
+  --cn-text-brand: #e3b341;
 
   /* borders */
   --cn-border-1: #59636e;
@@ -47,10 +48,10 @@
   --cn-set-brand-primary-bg-hover: #2ea043;
   --cn-set-brand-primary-bg-selected: #2ea043;
   --cn-set-brand-primary-ring: rgba(46, 160, 67, 0.4);
-  --cn-set-brand-secondary-text: #4493f8;
-  --cn-set-brand-secondary-bg: #121d2f;
-  --cn-set-brand-secondary-bg-hover: #182742;
-  --cn-set-brand-secondary-bg-selected: #182742;
+  --cn-set-brand-secondary-text: #e3b341;
+  --cn-set-brand-secondary-bg: #272115;
+  --cn-set-brand-secondary-bg-hover: #342a10;
+  --cn-set-brand-secondary-bg-selected: #342a10;
   --cn-set-brand-outline-bg: #0d1117;
   --cn-set-brand-outline-border: #3d444d;
   --cn-set-brand-outline-bg-hover: #161b22;
@@ -146,7 +147,7 @@
   --cn-text-2: #3d434d;
   --cn-text-3: #59636e;
   --cn-text-4: #818b98;
-  --cn-text-brand: #0969da;
+  --cn-text-brand: #9a6700;
 
   --cn-border-1: #818b98;
   --cn-border-2: #d1d9e0;
@@ -163,10 +164,10 @@
   --cn-set-brand-primary-bg-hover: #1a7f37;
   --cn-set-brand-primary-bg-selected: #1a7f37;
   --cn-set-brand-primary-ring: rgba(31, 136, 61, 0.3);
-  --cn-set-brand-secondary-text: #0969da;
-  --cn-set-brand-secondary-bg: #ddf4ff;
-  --cn-set-brand-secondary-bg-hover: #b6e3ff;
-  --cn-set-brand-secondary-bg-selected: #b6e3ff;
+  --cn-set-brand-secondary-text: #9a6700;
+  --cn-set-brand-secondary-bg: #fff8c5;
+  --cn-set-brand-secondary-bg-hover: #fae17d;
+  --cn-set-brand-secondary-bg-selected: #fae17d;
   --cn-set-brand-outline-bg: #f6f8fa;
   --cn-set-brand-outline-border: #d1d9e0;
   --cn-set-brand-outline-bg-hover: #eef1f4;

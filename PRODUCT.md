@@ -4,19 +4,26 @@
 
 ### Users
 
-Solo developers (and occasionally small teams) who self-host Git repositories on Cloudflare Workers. These are infrastructure-minded people who chose to run their own git forge on edge compute rather than use a hosted service. They interact primarily via `git clone`/`git push` in the terminal; the web UI is for browsing trees, blobs, commits, and managing auth. They value that this thing actually works — 80,000+ objects on a Workers runtime is the flex, not the marketing page.
+**Mixed: agents and non-coders.** Two audiences share the same surfaces:
+
+- **Agents** drive the forge through MCP, the `/api/v3` GitHub-compatible REST surface, signed `x-dg-*` envelopes, and git push. For them the UI is a knowledge surface — every page must also be reachable through the API (agent parity), and every repo answers `Accept: text/markdown`.
+- **Non-coders** land on `/` to post ideas. The idea composer is the front door: pick a project and repo, describe what should be built, and agents claim → spec → patch → land it behind quorum review. They verify results; they never have to know what a merge conflict is.
+- **Developers** get the familiar GitHub-shaped repo browsing in between — tabs, file tree, diffs, PRs — plus the delta surfaces (merge intents, arena, reputation) GitHub has no vocabulary for.
+
+They value that concurrent pushes become merge intents rather than rejected work — the forge's identity is that divergence is a first-class citizen, not an error.
 
 ### Brand Personality
 
-**Precise, opinionated, utilitarian.**
+**Precise, opinionated, utilitarian — with a gold edge.**
 
-This is a tool that does one thing well and knows it. The interface should feel like well-machined infrastructure: reliable, solid, no wasted motion. But not cold — there's a quiet confidence and a subtle edge of personality underneath the utility. The feeling is closer to a well-built CLI tool that happens to have a web face than it is to a SaaS product trying to convert you.
+This is infrastructure that knows what it's for. The interface feels like well-machined tooling: reliable, solid, no wasted motion. The Widespread name and chain emblem carry the federation story — many nodes, one protocol — but the UI stays quiet about it. Gold is the accent, not the wallpaper.
 
 **Emotional targets:**
 
 - "This is solid code" — trustworthy, reliable, engineered
 - "This gets out of my way" — minimal, focused, no noise
 - "This has taste" — opinionated choices, not default everything
+- "My idea became a commit" — for the non-coder, the forge should feel like a vending machine for working software, not a cockpit
 
 ### Aesthetic Direction
 
@@ -24,8 +31,8 @@ This is a tool that does one thing well and knows it. The interface should feel 
 
 **References:**
 
-- **jam.dev** — The sharp knife. Clean whitespace, modular layouts, confident typography, developer-focused without being enterprise. What works: the generous spacing, the way product context is shown rather than described, the confidence in leaving things simple.
-- **charm.land** — The sugar high. Personality through naming, illustration, and tone rather than through visual noise. What works: the proof that developer tools can have warmth and identity without becoming whimsical or losing credibility.
+- **jam.dev** — confident whitespace, modular layouts, developer-focused without being enterprise.
+- **charm.land** — personality through naming and tone rather than visual noise.
 
 **Anti-references:**
 
@@ -33,21 +40,25 @@ This is a tool that does one thing well and knows it. The interface should feel 
 - Not Vercel's marketing gloss (style over substance)
 - Not generic admin templates (card grids with icons and shadows)
 
-**Update (GitHub-faithful pivot):** the UI now deliberately clones GitHub's chrome — its information architecture is the most familiar repo-browsing UX there is. We adopt GitHub's own open-source design system (Primer: `@primer/react`, `@primer/primitives`, `@primer/octicons-react`, all MIT) rather than eyeballing it. GitHub's _density_ remains the anti-reference, not its vocabulary: no Star/Watch/Fork counts that don't exist, no upsell surfaces, no dashboard chrome beyond what the data supports.
+**GitHub-faithful chrome:** the repo UI deliberately clones GitHub's information architecture — it's the most familiar repo-browsing UX there is, and familiarity is the point. GitHub's _density_ remains the anti-reference, not its vocabulary: no counts that don't exist, no upsell surfaces, no dashboard chrome beyond what the data supports.
 
 **Theme:** Dark-primary with light mode toggle. Dark mode is the default and the design target — developers browsing repos late in the terminal-adjacent context. Light mode is a courtesy, not the hero.
 
-**Color:** Primer semantic tokens (`--fgColor-*`, `--bgColor-*`, `--borderColor-*` from `@primer/primitives`) drive both themes via `data-color-mode`; our Tailwind tokens alias onto them. GitHub blue (`#0969da` light / `#4493f8` dark links, `#1f883d`/`#238636` primary buttons).
+**Color:** Primer-derived surfaces (`--cn-bg-*`, `--cn-text-*`, `--cn-border-*` in `delta/github-theme.css`) with the **Widespread gold/green accent pair**:
 
-**Typography:** GitHub's system stack for UI chrome (matching the clone), JetBrains Mono for code, IBM Plex Serif retained only where delta-git's own voice shows through (homepage hero).
+- Gold `#e3b341` (dark) / `#9a6700` (light) — brand links, `--cn-text-brand`, secondary-button text. Gold is for _brand moments_, not info states (info stays blue, success stays green).
+- Green `#238636` (dark) / `#1f883d` (light) — primary action buttons.
+
+**Typography:** GitHub's system stack for UI chrome, JetBrains Mono for code and agent-facing snippets, IBM Plex Serif only where delta-git's own voice shows through.
 
 **Constraints:**
 
-- Part of devbin.tools ecosystem — shared shell conventions per frontend-spec.md
-- Vendored Gitness SPA (React, `/` mount) reskinned toward GitHub via `--cn-*` token overrides; only auth/404/error remain SSR islands
+- The user-facing UI is the vendored Gitness SPA (`frontend/canary/apps/gitness`, React 17, `/` mount) reskinned via `--cn-*` token overrides in `src/delta/github-theme.css`; only auth/404/error remain SSR islands
+- Wire identifiers are invariant — package/worker names, `/dg/*` paths, `#delta_git` DID fragments, `to*` route constants. Branding is a visible-text + accent-token change only
 - Tailwind v4 CSS-native config, no CSS-in-JS
-- Performance-sensitive: no heavy background effects, respect `prefers-reduced-motion`
-- Accessibility: lifted canvas for astigmatism, font-weight 450, WCAG AA minimum
+- Performance-sensitive: lazy page chunks, immutable hashed assets, respect `prefers-reduced-motion`
+- Accessibility: lifted canvas for astigmatism, WCAG AA minimum, keyboard-navigable menus
+- Mobile-real: non-coders arrive on phones — every surface must work at 375px
 
 ### Design Principles
 
@@ -57,6 +68,8 @@ This is a tool that does one thing well and knows it. The interface should feel 
 
 3. **Show the infrastructure.** This product's identity is that it runs Git on edge compute. Let the technical context show through: monospace where it matters, terminal-flavored moments, the code as the hero rather than marketing copy about the code.
 
-4. **Confident restraint.** Make strong choices and leave space around them. One accent color used with intent beats five used for variety. Large type with nothing beside it beats a dense layout. Silence is a design decision.
+4. **Ideas are the front door.** For non-coders, the primary action on any page is posting an idea or verifying a result — not browsing git internals. Repo chrome stays for the developers; the home page leads with the composer.
 
-5. **Dark mode is home.** Design for the dark canvas first. The zinc surfaces, the indigo accent, the serif display weight — these are calibrated for dark backgrounds. Light mode follows, adapted thoughtfully, but dark is where the design lives.
+5. **Confident restraint.** One accent color used with intent. Gold marks Widespread identity moments; everything else is Primer-neutral until the user's data needs color (status, diffs, verdicts).
+
+6. **Dark mode is home.** Design for the dark canvas first. Light mode follows, adapted thoughtfully, but dark is where the design lives.

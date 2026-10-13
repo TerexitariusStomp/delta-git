@@ -163,7 +163,7 @@ export const SignIn: FC = () => {
             <img src="/logo-widespread.png" alt="" className="block h-5 w-auto" aria-hidden="true" />
             <span>Widespread</span>
           </a>
-          <a href="/rooted-finance/git-on-cloudflare" className="no-underline hover:underline">
+          <a href="https://github.com/TerexitariusStomp/delta-git" className="no-underline hover:underline">
             Source
           </a>
           <a href="https://wpcloud.delta-git.workers.dev" className="no-underline hover:underline">
