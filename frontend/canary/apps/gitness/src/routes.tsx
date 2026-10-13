@@ -59,6 +59,9 @@ const NotificationsPage = lazy(() =>
 const ConnectorsPage = lazy(() =>
   import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.ConnectorsPage })),
 );
+const OverridesPage = lazy(() =>
+  import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.OverridesPage })),
+);
 const DelegatesPage = lazy(() =>
   import("./pages-v2/delta/delivery-pages").then((m) => ({ default: m.DelegatesPage })),
 );
@@ -1451,7 +1454,7 @@ export const routes: CustomRouteObject[] = [
       },
       {
         path: "overrides",
-        element: <SloDowntimePage />,
+        element: <OverridesPage />,
         handle: { routeName: RouteConstants.toOverrides, pageTitle: "Overrides" },
       },
       {

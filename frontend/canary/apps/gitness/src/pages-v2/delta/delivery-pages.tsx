@@ -600,6 +600,115 @@ export function FreezeWindowsPage() {
   );
 }
 
+// --- overrides -------------------------------------------------------------------------
+
+interface OverrideItem {
+  id: string;
+  subject: string;
+  reason: string;
+  created_by: string;
+  expires_at: number | null;
+  active: boolean;
+  created: number;
+}
+
+export function OverridesPage() {
+  const { spaces, space, setSpace } = useSpacePicker();
+  const queryClient = useQueryClient();
+  const [subject, setSubject] = useState("");
+  const [reason, setReason] = useState("");
+
+  const { data } = useQuery(
+    ["overrides", space],
+    () => deltaApi<OverrideItem[]>(`/api/v1/spaces/${space}/overrides`),
+    { enabled: !!space }
+  );
+  const create = useMutation(
+    () =>
+      deltaApi(`/api/v1/spaces/${space}/overrides`, {
+        method: "POST",
+        body: JSON.stringify({ subject: subject.trim(), reason: reason.trim() }),
+      }),
+    {
+      onSuccess: () => {
+        setSubject("");
+        setReason("");
+        queryClient.invalidateQueries(["overrides", space]);
+      },
+    }
+  );
+  const revoke = useMutation(
+    (id: string) => deltaApi(`/api/v1/spaces/${space}/overrides/${id}`, { method: "DELETE" }),
+    { onSuccess: () => queryClient.invalidateQueries(["overrides", space]) }
+  );
+
+  return (
+    <PageShell title="Overrides">
+      <SpacePicker spaces={spaces} space={space} setSpace={setSpace} />
+      <Text className="mb-cn-md text-cn-3">
+        An active override exempts its subject from a policy or freeze-window gate — use{" "}
+        <code>freeze:&lt;identifier&gt;</code> to skip a window, <code>policy:&lt;name&gt;</code> to skip a
+        policy. Overrides expire when their <code>expires_at</code> passes.
+      </Text>
+      <div className="mb-cn-lg flex items-end gap-cn-md">
+        <TextInput
+          label="Subject"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="freeze:weekend-freeze"
+        />
+        <TextInput
+          label="Reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="incident mitigation — on-call approved"
+        />
+        <Button
+          disabled={!subject.trim() || !reason.trim() || create.isLoading}
+          onClick={() => create.mutate()}
+        >
+          Grant
+        </Button>
+      </div>
+      <Table.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>Subject</Table.Head>
+            <Table.Head>Reason</Table.Head>
+            <Table.Head>By</Table.Head>
+            <Table.Head>Expires</Table.Head>
+            <Table.Head>State</Table.Head>
+            <Table.Head />
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {(data ?? []).map((o) => (
+            <Table.Row key={o.id}>
+              <Table.Cell>
+                <code>{o.subject}</code>
+              </Table.Cell>
+              <Table.Cell>{o.reason}</Table.Cell>
+              <Table.Cell>{o.created_by}</Table.Cell>
+              <Table.Cell>{o.expires_at ? new Date(o.expires_at).toLocaleString() : "never"}</Table.Cell>
+              <Table.Cell>
+                <StatusBadge variant="status" theme={o.active ? "success" : "muted"}>
+                  {o.active ? "active" : "expired"}
+                </StatusBadge>
+              </Table.Cell>
+              <Table.Cell>
+                <Button variant="ghost" size="sm" onClick={() => revoke.mutate(o.id)}>
+                  Revoke
+                </Button>
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table.Root>
+      {(data ?? []).length === 0 && <EmptyNote text="No overrides." />}
+    </PageShell>
+  );
+}
+
 // --- external tickets ------------------------------------------------------------------
 
 interface TicketItem {

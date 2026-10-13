@@ -19,13 +19,27 @@ const connectSnippets = (origin: string) => [
 
 export const LandingPage = () => {
   const routes = useRoutes()
-  const { spaces } = useAppContext()
+  const { spaces, currentUser } = useAppContext()
   const navigate = useNavigate()
+
+  // Anonymous visitors still see the page (idea timeline is public); the
+  // composer stashes the draft and bounces to /signin instead of posting.
+  const anonymous = !currentUser?.uid
+  const draft = (() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('dg-idea-draft') ?? 'null') as {
+        title?: string
+        body?: string
+      } | null
+    } catch {
+      return null
+    }
+  })()
 
   const [spaceId, setSpaceId] = useState('')
   const [repoId, setRepoId] = useState('')
-  const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
+  const [title, setTitle] = useState(draft?.title ?? '')
+  const [body, setBody] = useState(draft?.body ?? '')
 
   const space = spaceId || spaces?.[0]?.path || ''
   const { data: repoData } = useListReposQuery({ queryParams: {}, space_ref: `${space}/+` }, { enabled: !!space })
@@ -35,7 +49,28 @@ export const LandingPage = () => {
   const createIdea = useCreateIdea(space, repo)
   const { data: ideas, isLoading, refetch } = useGlobalIdeas()
 
-  const canPost = !!title.trim() && !!space && !!repo && !createIdea.isLoading
+  const canPost = !!title.trim() && (anonymous || (!!space && !!repo)) && !createIdea.isLoading
+
+  const submit = () => {
+    if (!canPost) return
+    if (anonymous) {
+      // Park the draft — the post-signin landing restores it.
+      sessionStorage.setItem('dg-idea-draft', JSON.stringify({ title: title.trim(), body }))
+      navigate('/signin')
+      return
+    }
+    createIdea.mutate(
+      { title: title.trim(), body },
+      {
+        onSuccess: () => {
+          sessionStorage.removeItem('dg-idea-draft')
+          setTitle('')
+          setBody('')
+          refetch()
+        }
+      }
+    )
+  }
 
   return (
     <SandboxLayout.Main className="min-h-[inherit]">
@@ -54,19 +89,10 @@ export const LandingPage = () => {
           className="flex flex-col gap-cn-sm rounded-cn-2 border border-cn-2 bg-cn-2 p-cn-md"
           onSubmit={e => {
             e.preventDefault()
-            if (!canPost) return
-            createIdea.mutate(
-              { title: title.trim(), body },
-              {
-                onSuccess: () => {
-                  setTitle('')
-                  setBody('')
-                  refetch()
-                }
-              }
-            )
+            submit()
           }}>
-          <div className="flex flex-wrap items-center gap-cn-sm">
+          {!anonymous && (
+            <div className="flex flex-wrap items-center gap-cn-sm">
             <Text color="foreground-3">
               Target repo
             </Text>
@@ -101,7 +127,8 @@ export const LandingPage = () => {
                 ))}
               </DropdownMenu.Content>
             </DropdownMenu.Root>
-          </div>
+            </div>
+          )}
           <input
             className="border-cn-2 rounded-cn-2 px-cn-sm py-cn-xs bg-cn-1 text-cn-1"
             placeholder="Idea — e.g. add a dark-mode toggle to the settings page"
@@ -117,9 +144,12 @@ export const LandingPage = () => {
           />
           <div className="flex items-center gap-cn-sm">
             <Button type="submit" disabled={!canPost}>
-              {createIdea.isLoading ? 'Posting…' : 'Post idea'}
+              {anonymous ? 'Sign in to post' : createIdea.isLoading ? 'Posting…' : 'Post idea'}
             </Button>
-            {!repos.length && (
+            {anonymous && (
+              <Text color="foreground-3">Your draft is saved — sign in and it posts here.</Text>
+            )}
+            {!anonymous && !repos.length && (
               <Text color="foreground-3">
                 No repos in this project yet —{' '}
                 <Link to={routes.toRepositories({ spaceId: space })} className="text-cn-brand">
@@ -145,7 +175,7 @@ export const LandingPage = () => {
                 <Text color="foreground-3" className="w-44 shrink-0">
                   {s.label}
                 </Text>
-                <code className="border-cn-2 rounded-cn-2 bg-cn-1 px-cn-sm py-cn-xxs text-cn-1 text-ellipsis overflow-hidden whitespace-nowrap">
+                <code className="border-cn-2 rounded-cn-2 bg-cn-1 px-cn-sm py-cn-xxs text-cn-1 text-ellipsis overflow-hidden whitespace-nowrap min-w-0 flex-1">
                   {s.cmd}
                 </code>
               </div>

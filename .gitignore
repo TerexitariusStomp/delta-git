@@ -4,3 +4,5 @@ node_modules/
 dist/
 worker-configuration.d.ts
 .vitest.wrangler.json
+test-results/
+playwright-report/

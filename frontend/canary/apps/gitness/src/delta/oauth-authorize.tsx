@@ -197,7 +197,7 @@ export const OAuthAuthorize: FC = () => {
                 type="button"
                 disabled={busy || granted.size === 0}
                 onClick={() => void decide(true)}
-                className="flex-1 rounded-cn-2 bg-cn-success-primary px-3 py-2 text-sm font-medium text-cn-1 disabled:opacity-50"
+                className="flex-1 rounded-cn-2 bg-cn-success-primary px-3 py-2 text-sm font-medium text-cn-success-primary disabled:opacity-50"
               >
                 Authorize
               </button>

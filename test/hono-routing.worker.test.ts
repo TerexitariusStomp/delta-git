@@ -28,6 +28,25 @@ describe("SPA cutover routing", () => {
     expect(await repos.text()).toContain('id="root"');
   });
 
+  it("keeps top-level SPA route namespaces out of the legacy repo redirect", async () => {
+    // `/admin/roles` parsed as `/:owner/:repo` used to 301 to
+    // `/admin/repos/roles` — a repo that doesn't exist. SPA-owned first
+    // segments must reach index.html instead.
+    for (const path of [
+      "/admin/roles",
+      "/admin/default-settings",
+      "/admin/user-groups",
+      "/profile-settings/general",
+      "/profile-settings/keys",
+    ]) {
+      const res = await workerExports.default.fetch(`https://example.com${path}`, {
+        redirect: "manual",
+      });
+      expect(res.status, path).toBe(200);
+      expect(await res.text(), path).toContain('id="root"');
+    }
+  });
+
   it("redirects the retired SSR repo URL scheme to SPA paths", async () => {
     const repo = await workerExports.default.fetch("https://example.com/acme/widgets", {
       redirect: "manual",
@@ -57,7 +76,8 @@ describe("SPA cutover routing", () => {
     // The SPA shell carries the security header set + a hash-locked CSP.
     const csp = res.headers.get("Content-Security-Policy");
     expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("script-src 'self' 'sha256-");
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("'sha256-");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("'unsafe-inline'\"");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");

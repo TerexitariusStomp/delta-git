@@ -19,13 +19,18 @@ import { routes } from './routes'
 
 const BASE_URL_PREFIX = `${window.apiUrl || ''}/api/v1`
 
+// Routes an anonymous visitor may stay on despite 401s from authed APIs.
+const ANON_OK_PATHS = new Set(['/', '/signin'])
+
 export default function App() {
   new CodeServiceAPIClient({
     urlInterceptor: (url: string) => `${BASE_URL_PREFIX}${url}`,
     responseInterceptor: (response: Response) => {
       switch (response.status) {
         case 401:
-          window.location.href = '/signin'
+          // Public routes render anonymous-first (idea timeline, sign-in
+          // itself) — a 401 there is a data gate, not a session bounce.
+          if (!ANON_OK_PATHS.has(window.location.pathname)) window.location.href = '/signin'
           break
       }
       return response

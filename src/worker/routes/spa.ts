@@ -27,7 +27,11 @@ async function spaCsp(html: string): Promise<string> {
   }
   return [
     `default-src 'self'`,
-    `script-src 'self' ${hashes.join(" ")}`,
+    // 'wasm-unsafe-eval': Monaco/sql.js compile WASM. 'unsafe-eval': a
+    // vendored dep in the entry bundle calls `new Function` (template
+    // compile). cloudflareinsights: the zone's Web Analytics beacon is
+    // edge-injected — outside our markup — so it needs an explicit host.
+    `script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' https://static.cloudflareinsights.com ${hashes.join(" ")}`,
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: blob:`,
     `font-src 'self' data:`,
@@ -85,6 +89,54 @@ const SPACE_SEGMENTS = new Set([
   "search",
   "manage-repositories",
   "pulls",
+]);
+
+// Top-level SPA routes — a first-segment match means `/:owner/:repo` is a
+// client route, not a legacy owner/repo URL. Without this guard,
+// `/admin/roles` 301s to `/admin/repos/roles` (repo "roles" that doesn't
+// exist). Keep in sync with the depth-1 children in routes.tsx.
+const SPA_OWNED_FIRST_SEGMENTS = new Set([
+  "explore",
+  "secrets",
+  "notifications",
+  "environments",
+  "artifacts",
+  "feature-flags",
+  "connectors",
+  "delegates",
+  "file-store",
+  "templates",
+  "variables",
+  "freeze-windows",
+  "external-tickets",
+  "policies",
+  "gitops",
+  "iac",
+  "monitored-services",
+  "slo-downtime",
+  "incidents",
+  "certificates",
+  "cloud-costs",
+  "chaos",
+  "service-reliability",
+  "dev-portal",
+  "discovery",
+  "dev-environments",
+  "dev-insights",
+  "databases",
+  "security-tests",
+  "supply-chain",
+  "dashboards",
+  "overrides",
+  "arena",
+  "agents",
+  "admin",
+  "profile-settings",
+  "import",
+  "create",
+  "signin",
+  "signup",
+  "logout",
 ]);
 
 function legacyRepoRedirect(c: AppContext, feature?: string) {
@@ -162,11 +214,13 @@ export function registerSpaRoutes(router: AppRouter) {
   // Skipped when `repo` is a space-level segment so SPA paths pass through.
   router.get("/:owner/:repo", (c) => {
     if (isNonSpaPath(new URL(c.req.url).pathname)) return c.notFound();
+    if (SPA_OWNED_FIRST_SEGMENTS.has(c.req.param("owner")!)) return spaIndex(c);
     if (SPACE_SEGMENTS.has(c.req.param("repo")!)) return spaIndex(c);
     return legacyRepoRedirect(c);
   });
   router.get("/:owner/:repo/:feature{.+}", (c) => {
     if (isNonSpaPath(new URL(c.req.url).pathname)) return c.notFound();
+    if (SPA_OWNED_FIRST_SEGMENTS.has(c.req.param("owner")!)) return spaIndex(c);
     if (SPACE_SEGMENTS.has(c.req.param("repo")!)) return spaIndex(c);
     return legacyRepoRedirect(c, c.req.param("feature"));
   });

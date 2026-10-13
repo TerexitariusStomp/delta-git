@@ -127,7 +127,7 @@ export const SignIn: FC = () => {
             type="button"
             disabled={busy}
             onClick={() => void onContinue()}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-cn-2 bg-cn-success-primary px-3 py-2 text-sm font-medium text-cn-1 disabled:opacity-50"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-cn-2 bg-cn-success-primary px-3 py-2 text-sm font-medium text-cn-success-primary disabled:opacity-50"
           >
             {busy ? 'Waiting for Bluesky…' : 'Continue with Bluesky'}
           </button>
