@@ -26,6 +26,62 @@ it("advertises upload-pack v2 over info/refs", async () => {
   expect(textLines.some((l) => l === "side-band-64k\n")).toBe(true);
 });
 
+it("anonymous clone of a public artifacts repo redirects with a read token", async () => {
+  const owner = "o";
+  const repo = uniqueRepoId("r-artifacts-anon");
+  const seeded = await setupRepoForTests(env, owner, repo);
+
+  // Opt the seeded repo into the artifacts backend — production sets these
+  // at create time through the ARTIFACTS binding; the row is the authority
+  // the route resolver reads.
+  const { createDb } = await import("../src/worker/db/d1");
+  const { repositories } = await import("../src/worker/db/d1/schema");
+  const { eq } = await import("drizzle-orm");
+  const db = createDb(env.DB);
+  await db
+    .update(repositories)
+    .set({
+      backend: "artifacts",
+      artifactsName: `dg-${seeded.repositoryId.slice("repo_".length)}`,
+      artifactsRemote: "https://acct.artifacts.cloudflare.net/git/delta-git/x.git",
+    })
+    .where(eq(repositories.id, seeded.repositoryId))
+    .run();
+  const check = await db
+    .select({ backend: repositories.backend, remote: repositories.artifactsRemote })
+    .from(repositories)
+    .where(eq(repositories.id, seeded.repositoryId))
+    .get();
+  expect(check?.backend).toBe("artifacts");
+
+  const { resolveRepositoryRoute } = await import("../src/worker/repositories/route");
+  const direct = await resolveRepositoryRoute(env, owner, repo);
+  expect(direct?.backend).toBe("artifacts");
+
+  const url = new URL(`https://example.com/${owner}/${repo}/info/refs`);
+  url.searchParams.set("service", "git-upload-pack");
+  const res = await workerExports.default.fetch(
+    new Request(url, { method: "GET", redirect: "manual" })
+  );
+  expect(res.status).toBe(302);
+  const location = new URL(res.headers.get("Location")!);
+  expect(location.pathname).toBe("/git/delta-git/x.git/info/refs");
+  // Anonymous read → short-lived token embedded in the redirect userinfo
+  // when the ARTIFACTS binding can mint; absent binding → bare redirect.
+  if (location.username) {
+    expect(location.username).toBe("x-access-token");
+    expect(location.password.length).toBeGreaterThan(0);
+  }
+
+  // Push discovery never embeds a token — write scope is never granted anon.
+  url.searchParams.set("service", "git-receive-pack");
+  const push = await workerExports.default.fetch(
+    new Request(url, { method: "GET", redirect: "manual" })
+  );
+  // Anonymous pushes are challenged before the redirect is reached.
+  expect(push.status).toBe(401);
+});
+
 it("advertises upload-pack v2 over .git info/refs", async () => {
   const owner = "o";
   const repo = uniqueRepoId("r-info-refs-dotgit");

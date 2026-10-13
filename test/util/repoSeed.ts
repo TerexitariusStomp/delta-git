@@ -36,6 +36,10 @@ export type SeedRepoArgs = {
   repoSlug: string;
   visibility?: RepositoryVisibility;
   doName?: string;
+  // Storage backend + artifacts coordinates (artifacts-backed repos only).
+  backend?: "do" | "artifacts";
+  artifactsName?: string | null;
+  artifactsRemote?: string | null;
   // Skip the ROUTES KV write (some tests want to assert the resolver's D1
   // fallback without a KV candidate).
   skipRouteCache?: boolean;
@@ -100,6 +104,9 @@ export async function seedRepo(env: Env, args: SeedRepoArgs): Promise<SeededRepo
     slug: args.repoSlug,
     doName,
     visibility,
+    backend: args.backend ?? "do",
+    artifactsName: args.artifactsName ?? null,
+    artifactsRemote: args.artifactsRemote ?? null,
     createdAt: now,
     updatedAt: now,
   });

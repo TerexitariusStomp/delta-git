@@ -545,17 +545,49 @@ async function authorizeGitRouteForRequest(
 // follows 302s for both discovery and POST service requests; the client
 // then authenticates to the remote with an `art_v1_*` token from
 // `POST /api/:owner/:repo/dg/token` (delta-git PATs do not work there).
-function artifactsRemoteRedirect(request: Request, route: RepositoryRoute): Response | null {
+//
+// Anonymous clones of PUBLIC repos get a short-lived read token embedded
+// in the redirect userinfo — otherwise the remote's auth wall makes
+// `git clone` fail for exactly the audience public repos exist for.
+// 15-minute read scope only; pushes still mint their own token via
+// /dg/token (write scope is never embedded).
+async function artifactsRemoteRedirect(
+  request: Request,
+  route: RepositoryRoute,
+  env: Env,
+  service: GitService,
+  log: ReturnType<AppContext["var"]["logFor"]>
+): Promise<Response | null> {
   if (route.backend !== "artifacts" || !route.artifactsRemote) return null;
   const url = new URL(request.url);
   // Path is `/<owner>/<repo>[.git]/<service path>` — strip the first two
   // segments rather than matching the slug, since the .git suffix may or
   // may not be present in the request.
   const suffix = url.pathname.replace(/^\/[^/]+\/[^/]+/, "");
-  const target = `${route.artifactsRemote}${suffix}${url.search}`;
+  const target = new URL(`${route.artifactsRemote}${suffix}${url.search}`);
+
+  if (service === "git-upload-pack" && route.visibility === "public" && route.artifactsName) {
+    // The ARTIFACTS binding can throw synchronously (remote-only bindings
+    // in miniflare, missing service) — try/catch, not .catch().
+    let token: { plaintext: string } | null = null;
+    try {
+      const repo = env.ARTIFACTS ? await env.ARTIFACTS.get(route.artifactsName) : null;
+      token = repo ? await repo.createToken("read", 900) : null;
+    } catch {
+      token = null;
+    }
+    if (token) {
+      target.username = "x-access-token";
+      target.password = token.plaintext;
+    } else {
+      // Mint failure degrades to a bare redirect — authenticated clients
+      // can still /dg/token; anonymous clone honestly fails downstream.
+      log.warn("git-artifacts:anon-token-mint-failed", { repoId: route.doName });
+    }
+  }
   return new Response(null, {
     status: 302,
-    headers: { Location: target },
+    headers: { Location: target.toString() },
   });
 }
 
@@ -579,7 +611,13 @@ export function registerGitRoutes(router: AppRouter) {
     if (encRefusal) return withGitCors(c.req.raw, encRefusal);
     const authorized = await authorizeGitRouteForRequest(c, route, service, true, "read");
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
-    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    const artifactsRedirect = await artifactsRemoteRedirect(
+      c.req.raw,
+      route,
+      c.env,
+      service,
+      c.var.logFor({ service: "GitArtifacts", repoId: route.doName })
+    );
     if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
     const { cacheCtx } = authorized;
     return withGitCors(
@@ -611,7 +649,13 @@ export function registerGitRoutes(router: AppRouter) {
       "read"
     );
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
-    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    const artifactsRedirect = await artifactsRemoteRedirect(
+      c.req.raw,
+      route,
+      c.env,
+      "git-upload-pack",
+      c.var.logFor({ service: "GitArtifacts", repoId: route.doName })
+    );
     if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
     // Traffic accounting — every authorized upload-pack counts as a clone
     // (same rollup GitHub uses: fetches count toward clone traffic).
@@ -641,7 +685,13 @@ export function registerGitRoutes(router: AppRouter) {
       "read"
     );
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
-    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    const artifactsRedirect = await artifactsRemoteRedirect(
+      c.req.raw,
+      route,
+      c.env,
+      "git-upload-pack",
+      c.var.logFor({ service: "GitArtifacts", repoId: route.doName })
+    );
     if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
     c.executionCtx.waitUntil(recordClone(c.env, route.doName));
     return withGitCors(
@@ -693,7 +743,13 @@ export function registerGitRoutes(router: AppRouter) {
         );
       }
       log.info("git-acl:http-sig-ok", { did: verified.did });
-      const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+      const artifactsRedirect = await artifactsRemoteRedirect(
+        c.req.raw,
+        route,
+        c.env,
+        "git-receive-pack",
+        c.var.logFor({ service: "GitArtifacts", repoId: route.doName })
+      );
       if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
       const rebuilt = new Request(c.req.raw.url, {
         method: c.req.raw.method,
@@ -720,7 +776,13 @@ export function registerGitRoutes(router: AppRouter) {
       "write"
     );
     if (authorized.kind === "response") return withGitCors(c.req.raw, authorized.response);
-    const artifactsRedirect = artifactsRemoteRedirect(c.req.raw, route);
+    const artifactsRedirect = await artifactsRemoteRedirect(
+      c.req.raw,
+      route,
+      c.env,
+      "git-receive-pack",
+      c.var.logFor({ service: "GitArtifacts", repoId: route.doName })
+    );
     if (artifactsRedirect) return withGitCors(c.req.raw, artifactsRedirect);
     const res = await handleReceivePackPOST(
       c.env,
