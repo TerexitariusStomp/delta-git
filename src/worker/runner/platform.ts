@@ -57,7 +57,11 @@ export interface StepExecutor {
   /** Materialize the commit's worktree. */
   stage(commitOid: string): Promise<{ ok: boolean; detail?: string }>;
   /** Run one shell command inside the staged worktree. */
-  run(command: string, timeoutMs: number): Promise<StepExecOutcome>;
+  run(
+    command: string,
+    timeoutMs: number,
+    env?: Record<string, string>
+  ): Promise<StepExecOutcome>;
 }
 
 /** ForgeSandbox-backed executor: stage a tar of the commit, extract, exec. */
@@ -92,9 +96,10 @@ export function sandboxStepExecutor(env: Env, doName: string, jobId: string): St
       await tar.done.catch(() => undefined);
       return { ok: true };
     },
-    async run(command, timeoutMs) {
+    async run(command, timeoutMs, env) {
       const result = await sandbox.exec(`cd /workspace/repo && ${command}`, {
         timeout: timeoutMs,
+        env,
       });
       return {
         exitCode: result.exitCode,
@@ -304,10 +309,12 @@ export async function runPlatformRunnerOnce(
         let stepStatus: "success" | "failure" | "error" = "success";
         let stepExit = 0;
         for (const command of step.commands) {
-          const outcome = await executor.run(command, STEP_TIMEOUT_MS).catch((err: unknown) => ({
-            exitCode: -1,
-            output: `executor error: ${err instanceof Error ? err.message : String(err)}`,
-          }));
+          const outcome = await executor.run(command, STEP_TIMEOUT_MS, step.env).catch(
+            (err: unknown) => ({
+              exitCode: -1,
+              output: `executor error: ${err instanceof Error ? err.message : String(err)}`,
+            })
+          );
           const lines = [`$ ${command}`, ...outcome.output.split("\n").filter((l) => l.length > 0)];
           await appendStepLogs(env, doName, claimed, stageNo, stepNo, lines).catch(() => undefined);
           stepExit = outcome.exitCode;

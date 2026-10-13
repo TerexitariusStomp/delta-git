@@ -51,6 +51,106 @@ describe("connectors", () => {
     });
     expect(del.status).toBe(204);
   });
+
+  it("test-connection probes the endpoint for real", async () => {
+    const create = await req(`/api/v1/spaces/${owner}/connectors`, {
+      method: "POST",
+      body: { identifier: "probe-me", type: "generic-http", endpoint: "https://example.com" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(create.status).toBe(201);
+
+    const probe = await req(`/api/v1/spaces/${owner}/connectors/probe-me/test`, {
+      method: "POST",
+      cookie: seeded.cookieHeader,
+    });
+    expect(probe.status).toBe(200);
+    const body = probe.body as {
+      ok: boolean;
+      status?: number;
+      latency_ms?: number;
+      error?: string;
+    };
+    expect(typeof body.latency_ms).toBe("number");
+    // Reachable sandbox → real status; unreachable → honest error, never faked.
+    if (body.ok) expect(body.status).toBe(200);
+    else expect(body.error).toBe("endpoint-unreachable");
+
+    // Connector without an endpoint reports the honest "nothing to probe".
+    await req(`/api/v1/spaces/${owner}/connectors`, {
+      method: "POST",
+      body: { identifier: "no-ep", type: "generic-http" },
+      cookie: seeded.cookieHeader,
+    });
+    const noEp = await req(`/api/v1/spaces/${owner}/connectors/no-ep/test`, {
+      method: "POST",
+      cookie: seeded.cookieHeader,
+    });
+    expect(noEp.status).toBe(400);
+  });
+});
+
+describe("templates seed + variables export + ticket sync", () => {
+  it("seeds built-in templates idempotently", async () => {
+    const seed = await req(`/api/v1/spaces/${owner}/templates/seed`, {
+      method: "POST",
+      cookie: seeded.cookieHeader,
+    });
+    expect(seed.status).toBe(200);
+    const body = seed.body as { seeded: string[]; total: number };
+    expect(body.seeded).toContain("ci");
+    expect(body.seeded).toContain("deploy");
+
+    const list = await req(`/api/v1/spaces/${owner}/templates`, {
+      cookie: seeded.cookieHeader,
+    });
+    const rows = list.body as { identifier: string; data: string }[];
+    expect(rows.find((t) => t.identifier === "ci")!.data).toContain("stages:");
+
+    const again = await req(`/api/v1/spaces/${owner}/templates/seed`, {
+      method: "POST",
+      cookie: seeded.cookieHeader,
+    });
+    expect((again.body as { seeded: string[] }).seeded).toHaveLength(0);
+  });
+
+  it("exports sealed variable records for client-side consumption", async () => {
+    await req(`/api/v1/spaces/${owner}/variables`, {
+      method: "POST",
+      body: { identifier: "api_key", ciphertext: "sealed:abc", description: "mirror key" },
+      cookie: seeded.cookieHeader,
+    });
+    const get = await req(`/api/v1/spaces/${owner}/variables/API_KEY`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(get.status).toBe(200);
+    const rec = get.body as { identifier: string; ciphertext: string };
+    expect(rec.identifier).toBe("API_KEY");
+    expect(rec.ciphertext).toBe("sealed:abc");
+
+    const missing = await req(`/api/v1/spaces/${owner}/variables/NOPE`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("ticket sync validates the at:// source and resolves the PDS", async () => {
+    const bad = await req(`/api/v1/spaces/${owner}/tickets/sync`, {
+      method: "POST",
+      body: { source: "not-an-at-uri" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(bad.status).toBe(400);
+
+    // A syntactically valid but unregistered did:plc resolves to no PDS —
+    // honest 502, never a fake success.
+    const gone = await req(`/api/v1/spaces/${owner}/tickets/sync`, {
+      method: "POST",
+      body: { source: "at://did:plc:zzzzzzzzzzzzzzzzzzzzzzzz/fyi.widespread.ticket" },
+      cookie: seeded.cookieHeader,
+    });
+    expect(gone.status).toBe(502);
+  });
 });
 
 describe("delegates", () => {
@@ -231,6 +331,19 @@ describe("feature flags + overrides + gitops sync", () => {
       cookie: seeded.cookieHeader,
     });
     expect((evalOn.body as { value: boolean }).value).toBe(true);
+
+    // SDK bulk eval resolves every flag for the subject in one request.
+    const sdk = await req(`/api/v1/spaces/${owner}/flags/sdk?subject=agent-7`, {
+      cookie: seeded.cookieHeader,
+    });
+    expect(sdk.status).toBe(200);
+    const sdkBody = sdk.body as {
+      subject: string;
+      flags: Record<string, { value: boolean; reason: string }>;
+    };
+    expect(sdkBody.subject).toBe("agent-7");
+    expect(sdkBody.flags["beta-ui"].value).toBe(true);
+    expect(sdkBody.flags["beta-ui"].reason).toBe("DEFAULT");
 
     const del = await req(`/api/v1/spaces/${owner}/flags/beta-ui`, {
       method: "DELETE",

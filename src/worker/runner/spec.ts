@@ -15,6 +15,13 @@ export interface WorkflowStepSpec {
   name: string;
   /** Shell commands run in order inside the staged worktree. */
   commands: string[];
+  /**
+   * Resolved env for the step — workflow `env:` merged under job/stage
+   * `env:` merged under step `env:`. Values are plain strings; sealed
+   * variables are injected client-side at dispatch (the platform cannot
+   * decrypt client-sealed records by design).
+   */
+  env?: Record<string, string>;
   /** Step has no runnable commands (e.g. `uses:`) — recorded, not run. */
   skipped?: boolean;
 }
@@ -37,6 +44,16 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asList(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+/** `env:` yaml maps → flat string records. Non-scalar values are dropped. */
+function toEnvMap(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(asRecord(raw) ?? {})) {
+    if (typeof v === "string") out[k] = v;
+    else if (typeof v === "number" || typeof v === "boolean") out[k] = String(v);
+  }
+  return out;
 }
 
 /** One raw step entry → spec. `run`/`script`/`commands` bodies all map to commands. */
@@ -62,11 +79,15 @@ function toStepSpec(raw: unknown, index: number): WorkflowStepSpec | null {
     }
   }
 
+  const env = toEnvMap(step.env ?? step.envs ?? step.envVariables);
+  const stepSpec: WorkflowStepSpec = { name, commands };
+  if (Object.keys(env).length > 0) stepSpec.env = env;
+
   if (commands.length === 0) {
     // `uses:` (actions marketplace) or empty step — kept for ledger honesty.
-    return { name, commands, skipped: true };
+    stepSpec.skipped = true;
   }
-  return { name, commands };
+  return stepSpec;
 }
 
 function stepsFromList(raw: unknown): WorkflowStepSpec[] {
@@ -81,6 +102,14 @@ function stepsFromList(raw: unknown): WorkflowStepSpec[] {
 export function parseWorkflowSpec(fileName: string, text: string): WorkflowSpec {
   const doc = asRecord(parseYaml(text)) ?? {};
   const name = typeof doc.name === "string" && doc.name.trim() ? doc.name : fileName;
+  const topEnv = toEnvMap(doc.env ?? doc.environment);
+
+  // `env` merges top → job/stage → step (step wins).
+  const mergeEnv = (parent: Record<string, string>, steps: WorkflowStepSpec[]) =>
+    steps.map((s) => {
+      const merged = { ...topEnv, ...parent, ...(s.env ?? {}) };
+      return Object.keys(merged).length > 0 ? { ...s, env: merged } : s;
+    });
 
   // GitHub Actions shape — jobs run sequentially in file order. `needs:` is
   // accepted but only orders stages (document order already matches intent
@@ -92,7 +121,7 @@ export function parseWorkflowSpec(fileName: string, text: string): WorkflowSpec 
       const job = asRecord(rawJob);
       if (!job) continue;
       const stageName = typeof job.name === "string" && job.name.trim() ? job.name : jobId;
-      stages.push({ name: stageName, steps: stepsFromList(job.steps) });
+      stages.push({ name: stageName, steps: mergeEnv(toEnvMap(job.env), stepsFromList(job.steps)) });
     }
     if (stages.length > 0) return { name, stages };
   }
@@ -107,13 +136,14 @@ export function parseWorkflowSpec(fileName: string, text: string): WorkflowSpec 
       if (!stage) continue;
       const stageName =
         typeof stage.name === "string" && stage.name.trim() ? stage.name : `stage ${i + 1}`;
-      stages.push({ name: stageName, steps: stepsFromList(stage.steps) });
+      const stageEnv = toEnvMap(stage.env ?? stage.envVariables);
+      stages.push({ name: stageName, steps: mergeEnv(stageEnv, stepsFromList(stage.steps)) });
     }
     if (stages.length > 0) return { name, stages };
   }
 
   // Bare `steps:` fallback.
-  const steps = stepsFromList(harnessRoot.steps);
+  const steps = mergeEnv({}, stepsFromList(harnessRoot.steps));
   if (steps.length > 0) return { name, stages: [{ name: "build", steps }] };
 
   return { name, stages: [] };

@@ -50,6 +50,7 @@ import {
   type SecretRecord,
 } from "./stores";
 import type { GitnessContext } from "./shared";
+import { syncTicketsFromAtproto } from "./ticketSync";
 import type { Db } from "@/worker/db/d1/client";
 
 async function resolveMemberSpace(
@@ -146,6 +147,35 @@ export function registerGitnessDelivery(router: AppRouter) {
       updatedAt: now,
     });
     return c.json({ identifier, type: body?.type ?? "generic-http" }, 201);
+  });
+
+  // Real connectivity probe — HEAD the endpoint with a bounded timeout.
+  // The sealed credential stays client-side (custody model), so the test
+  // reports reachability + TLS handshake, not auth validity; a 401/403
+  // still proves the endpoint answers.
+  router.post("/api/v1/spaces/:space_ref{.+}/connectors/:id/test", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const key = decodeURIComponent(c.req.param("id"));
+    const rows = await listConnectors(c.var.db, ns.id);
+    const row = rows.find((r) => r.id === key) ?? rows.find((r) => r.identifier === key);
+    if (!row) return gNotFound(c, "connector");
+    if (!row.endpoint || !/^https?:\/\//.test(row.endpoint)) {
+      return gErr(c, 400, "connector has no http(s) endpoint to probe");
+    }
+    const started = Date.now();
+    const res = await fetch(row.endpoint, {
+      method: "HEAD",
+      redirect: "manual",
+      signal: AbortSignal.timeout(8_000),
+    }).catch(() => null);
+    const latencyMs = Date.now() - started;
+    if (!res) {
+      return c.json({ ok: false, error: "endpoint-unreachable", latency_ms: latencyMs });
+    }
+    // Drain the body so the fetch isn't held open on a chunked response.
+    await res.arrayBuffer().catch(() => undefined);
+    return c.json({ ok: res.status < 500, status: res.status, latency_ms: latencyMs });
   });
 
   router.delete("/api/v1/spaces/:space_ref{.+}/connectors/:id", async (c) => {
@@ -400,6 +430,32 @@ export function registerGitnessDelivery(router: AppRouter) {
     return c.json({});
   });
 
+  // atproto pull-sync: `{source: "at://did/collection"}` (or `{did,
+  // collection}`) resolves the actor's PDS and mirrors the collection's
+  // records into the ticket ledger, upserting on record uri.
+  router.post("/api/v1/spaces/:space_ref{.+}/tickets/sync", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const body = (await c.req.json().catch(() => null)) as {
+      source?: string;
+      did?: string;
+      collection?: string;
+    } | null;
+    let did = body?.did ?? "";
+    let collection = body?.collection ?? "fyi.widespread.ticket";
+    const at = body?.source?.match(/^at:\/\/(did:[a-z0-9:.%_-]+)\/([a-zA-Z0-9.]+)/);
+    if (at) {
+      did = at[1];
+      collection = at[2];
+    }
+    if (!did.startsWith("did:")) {
+      return gErr(c, 400, "source must be an at://did/collection uri or {did}");
+    }
+    const result = await syncTicketsFromAtproto(c.env, c.var.db, ns.id, did, collection);
+    if (!result.ok) return gErr(c, 502, result.error ?? "sync-failed");
+    return c.json(result);
+  });
+
   // --- gitops targets -----------------------------------------------------------------
   router.get("/api/v1/spaces/:space_ref{.+}/gitops", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
@@ -518,6 +574,25 @@ export function registerGitnessDelivery(router: AppRouter) {
     return c.json(await readRepoTemplates(c.env, `space:${ns.id}`));
   });
 
+  // Seed the space with the built-in pipeline templates — idempotent:
+  // existing identifiers are left alone, missing ones are appended.
+  router.post("/api/v1/spaces/:space_ref{.+}/templates/seed", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const key = `space:${ns.id}`;
+    const templates = await readRepoTemplates(c.env, key);
+    const have = new Set(templates.map((t) => t.identifier));
+    let nextId = (templates.at(-1)?.id ?? 0) + 1;
+    const added: string[] = [];
+    for (const seed of BUILTIN_TEMPLATES) {
+      if (have.has(seed.identifier)) continue;
+      templates.push({ id: nextId++, ...seed, created: Date.now() });
+      added.push(seed.identifier);
+    }
+    if (added.length > 0) await writeRepoTemplates(c.env, key, templates);
+    return c.json({ seeded: added, total: templates.length });
+  });
+
   router.post("/api/v1/spaces/:space_ref{.+}/templates", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
@@ -607,6 +682,26 @@ export function registerGitnessDelivery(router: AppRouter) {
     };
     await writeSecrets(c.env, key, [...vars, rec]);
     return c.json({ identifier: name }, 201);
+  });
+
+  // Sealed-record export — the consumption surface. Clients holding the
+  // space key decrypt the ciphertext and inject the value (workflow `env:`,
+  // connector auth headers); the platform never sees plaintext.
+  router.get("/api/v1/spaces/:space_ref{.+}/variables/:name", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const name = decodeURIComponent(c.req.param("name")).toUpperCase();
+    const vars = await readSecrets(c.env, `gvars:${ns.id}`);
+    const rec = vars.find((v) => v.name === name);
+    if (!rec) return gNotFound(c, "variable");
+    return c.json({
+      identifier: rec.name,
+      description: rec.description ?? "",
+      ciphertext: rec.ciphertext ?? null,
+      allowed_hosts: rec.allowed_hosts,
+      created: rec.created,
+      updated: rec.updated,
+    });
   });
 
   router.delete("/api/v1/spaces/:space_ref{.+}/variables/:name", async (c) => {
@@ -838,6 +933,51 @@ import {
 } from "@/worker/db/d1/dal/modules";
 const repoStub = getRepoStub;
 
+// Built-in templates seedable into a space — real `.delta/workflows` yaml
+// bodies the platform runner can execute as-is.
+const BUILTIN_TEMPLATES: { identifier: string; data: string }[] = [
+  {
+    identifier: "ci",
+    data: [
+      "name: ci",
+      "on:",
+      "  push:",
+      "    branches: [main]",
+      "stages:",
+      "  - name: verify",
+      "    steps:",
+      "      - name: checkout",
+      "        run: ls -la",
+      "      - name: test",
+      "        run: npm test",
+      "",
+    ].join("\n"),
+  },
+  {
+    identifier: "deploy",
+    data: [
+      "name: deploy",
+      "on:",
+      "  push:",
+      "    branches: [main]",
+      "env:",
+      "  DEPLOY_ENV: production",
+      "stages:",
+      "  - name: build",
+      "    steps:",
+      "      - name: build",
+      "        run: npm run build",
+      "  - name: ship",
+      "    env:",
+      "      DEPLOY_CONFIRM: '1'",
+      "    steps:",
+      "      - name: deploy",
+      "        run: echo deploying $DEPLOY_ENV",
+      "",
+    ].join("\n"),
+  },
+];
+
 interface FlagTarget {
   kind: "user" | "group" | "percentage";
   value: string;
@@ -936,6 +1076,24 @@ export function registerGitnessFlags(router: AppRouter) {
     if (!row) return gNotFound(c, "flag");
     await deleteFeatureFlag(c.var.db, row.id);
     return c.body(null, 204);
+  });
+
+  // OpenFeature SDK bulk eval — one request resolves every flag for a
+  // subject, the shape flag-SDK clients hydrate their local caches from.
+  router.get("/api/v1/spaces/:space_ref{.+}/flags/sdk", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const subject = c.req.query("subject") ?? ns.userId;
+    const rows = await listFeatureFlags(c.var.db, ns.id);
+    const flags: Record<string, { value: boolean; reason: string }> = {};
+    for (const row of rows) {
+      const value = evaluateFlag(row, subject);
+      flags[row.identifier] = {
+        value,
+        reason: row.state !== 1 ? "DISABLED" : JSON.parse(row.targets).length > 0 ? "TARGETING_MATCH" : "DEFAULT",
+      };
+    }
+    return c.json({ subject, flags });
   });
 
   // OpenFeature-shaped eval: GET …/flags/{name}/eval?subject=<uid-or-did>
