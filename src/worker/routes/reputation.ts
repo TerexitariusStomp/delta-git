@@ -18,9 +18,11 @@ import {
   listEpochAllocations,
   listOpenEpochs,
   listRepLeaderboard,
+  listRepositoriesForUser,
   listVouches,
   upsertEpochAllocation,
 } from "@/worker/db/d1/dal";
+import { getRepoStub } from "@/worker/common/stub";
 
 // Global reputation layer — vouches (praise/vouch/flag peer attestations)
 // and Coordinape-style allocation epochs. Not repo-scoped: these are the
@@ -168,6 +170,43 @@ export function registerReputationRoutes(router: AppRouter): void {
         message: v.message,
         rep_delta: v.repDelta,
         created_at: v.createdAt,
+      })),
+    });
+  });
+
+  // GET /api/dg/ideas — the idea timeline: newest `kind="idea"` work
+  // intents across every repo the caller can see. Ideas are
+  // DO-authoritative, so this fans out one RPC per repo in parallel
+  // rather than shadowing state into D1; the repo set is bounded.
+  router.get("/api/dg/ideas", async (c) => {
+    const viewer = await loadViewer(c);
+    if (!viewer) return bad(c, "unauthorized", 401);
+    const limit = Math.min(Math.max(Number(c.req.query("limit")) || 50, 1), 200);
+    const repos = await listRepositoriesForUser(c.var.db, viewer.userId);
+    const perRepo = await Promise.all(
+      repos.slice(0, 25).map(async ({ repository, namespace }) => {
+        const stub = getRepoStub(c.env, repository.doName);
+        const ideas = await stub.listWorkIntentsByKind("idea");
+        return ideas.map((row) => ({ row, namespace: namespace.slug, repo: repository.slug }));
+      })
+    );
+    const ideas = perRepo
+      .flat()
+      .sort((a, b) => b.row.createdAt - a.row.createdAt)
+      .slice(0, limit);
+    return json(c, {
+      ideas: ideas.map(({ row, namespace, repo }) => ({
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        source_uri: row.sourceUri,
+        created_by: row.createdBy,
+        status: row.status,
+        claimed_by: row.claimedBy,
+        result: row.result,
+        created_at: row.createdAt,
+        namespace,
+        repo,
       })),
     });
   });

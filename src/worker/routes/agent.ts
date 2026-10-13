@@ -16,6 +16,8 @@ import { getRepoStub, newPrefixedId, requestOrigin } from "@/worker/common";
 import { resolveRepositoryRoute } from "@/worker/repositories/route";
 import { isValidOwnerRepo } from "@/shared/web";
 import { authenticateGitRequest } from "@/worker/auth/gitAuth";
+import { loadViewer } from "@/worker/auth/session";
+import { sameOriginViolation } from "@/worker/auth/origin";
 import { hasOAuthScope, OAUTH_SCOPES } from "@/worker/auth/oauth";
 import {
   adjustAgentRep,
@@ -329,6 +331,21 @@ async function authenticate(
       return { actor: auth.verified.userId };
     }
     return bad(c, "insufficient-scope-or-membership", 403);
+  }
+
+  // Browser session — the SPA's dgFetch sends cookies, not dg-agent
+  // headers. Only when no agent envelope is present, so a signed agent
+  // request keeps its agent identity even inside a session context.
+  // Session mutations are same-origin only (CSRF), same contract as the
+  // reputation routes. authenticateWrite intentionally has no session
+  // path: dispatch/attest/upload stay agent-or-PAT.
+  if (!c.req.header("x-dg-did")) {
+    const viewer = await loadViewer(c);
+    if (viewer) {
+      const violation = sameOriginViolation(c);
+      if (violation) return violation;
+      return { actor: viewer.userId };
+    }
   }
 
   const verified = await verifyAgentRequest({

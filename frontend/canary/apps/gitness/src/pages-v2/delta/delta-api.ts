@@ -209,6 +209,26 @@ export const useDeltaIdeas = (spaceId: string, repoId: string) =>
     { select: data => data.ideas }
   )
 
+/** Idea row in the cross-repo timeline — per-repo fields + attribution. */
+export interface DeltaGlobalIdea {
+  id: string
+  title: string
+  body: string | null
+  source_uri: string | null
+  created_by: string
+  status: string
+  claimed_by: string | null
+  result: string | null
+  created_at: number
+  namespace: string
+  repo: string
+}
+
+export const useGlobalIdeas = () =>
+  useQuery(['delta', 'ideas', 'global'], () => dgFetch<{ ideas: DeltaGlobalIdea[] }>('/api/dg/ideas'), {
+    select: data => data.ideas
+  })
+
 export const useDeltaWork = (spaceId: string, repoId: string) =>
   useQuery(
     ['delta', 'work', spaceId, repoId],

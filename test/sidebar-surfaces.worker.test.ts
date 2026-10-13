@@ -16,6 +16,8 @@ let owner: string;
 async function req(path: string, opts: { method?: string; body?: unknown; cookie?: string } = {}) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (opts.cookie) headers.Cookie = opts.cookie;
+  // Session-authed mutations require a same-origin Origin header (CSRF).
+  if (opts.method && opts.method !== "GET") headers.Origin = "https://example.com";
   const res = await workerExports.default.fetch(`https://example.com${path}`, {
     method: opts.method ?? "GET",
     headers,
@@ -28,6 +30,41 @@ beforeAll(async () => {
   await ensureD1Migrations(env);
   owner = `sb-${Math.random().toString(36).slice(2, 8)}`;
   seeded = await setupRepoForTests(env, owner, uniqueRepoId("sbrepo"));
+});
+
+// The idea-first home page's timeline is a cross-repo feed.
+describe("global idea timeline (landing page)", () => {
+  it("returns posted ideas with repo attribution, newest first", async () => {
+    const post = await req(`/api/${owner}/${seeded.repoSlug}/dg/ideas`, {
+      method: "POST",
+      cookie: seeded.cookieHeader,
+      body: { title: "timeline idea", body: "from the landing test" },
+    });
+    expect(post.status).toBe(200);
+
+    const res = await req("/api/dg/ideas", { cookie: seeded.cookieHeader });
+    expect(res.status).toBe(200);
+    const ideas = (res.body as { ideas: unknown[] }).ideas as {
+      id: string;
+      title: string;
+      namespace: string;
+      repo: string;
+      status: string;
+      created_at: number;
+    }[];
+    const mine = ideas.find((i) => i.title === "timeline idea");
+    expect(mine).toBeDefined();
+    expect(mine?.namespace).toBe(owner);
+    expect(mine?.repo).toBe(seeded.repoSlug);
+    for (let i = 1; i < ideas.length; i++) {
+      expect(ideas[i - 1].created_at).toBeGreaterThanOrEqual(ideas[i].created_at);
+    }
+  });
+
+  it("requires a session", async () => {
+    const anon = await req("/api/dg/ideas");
+    expect(anon.status).toBe(401);
+  });
 });
 
 // The SpacePicker on ~30 module pages drives off this endpoint.
