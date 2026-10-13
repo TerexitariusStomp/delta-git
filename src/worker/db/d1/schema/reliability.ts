@@ -147,6 +147,12 @@ export const certificates = sqliteTable(
     issuer: text("issuer"),
     expiresAt: integer("expires_at").notNull(),
     autoRenew: integer("auto_renew").notNull().default(0),
+    // Last successful live probe (crt.sh / zone certificate_packs) — null
+    // means expiresAt is still operator-asserted.
+    lastProbedAt: integer("last_probed_at"),
+    // Dedupe guard for the expiry notifier — at most one notification
+    // round per day per certificate.
+    lastNotifiedAt: integer("last_notified_at"),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [

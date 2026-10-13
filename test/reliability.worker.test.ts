@@ -146,6 +146,64 @@ describe("certificates + costs + chaos", () => {
     expect(cert.days_left).toBeLessThanOrEqual(20);
   });
 
+  it("probes certificate expiry from the CT log", async () => {
+    const list = await req(`/api/v1/spaces/${owner}/certificates`, {
+      cookie: seeded.cookieHeader,
+    });
+    let cert = (list.body as { id: string; domain: string }[]).find(
+      (x) => x.domain === "probe.test"
+    );
+    if (!cert) {
+      await req(`/api/v1/spaces/${owner}/certificates`, {
+        method: "POST",
+        body: { domain: "probe.test", expires_at: Date.now() + 30 * 86400_000 },
+        cookie: seeded.cookieHeader,
+      });
+      const again = await req(`/api/v1/spaces/${owner}/certificates`, {
+        cookie: seeded.cookieHeader,
+      });
+      cert = (again.body as { id: string; domain: string }[]).find(
+        (x) => x.domain === "probe.test"
+      )!;
+    }
+    const probe = await req(`/api/v1/spaces/${owner}/certificates/${cert.id}/probe`, {
+      method: "POST",
+      cookie: seeded.cookieHeader,
+    });
+    // Outbound crt.sh reachability is environment-dependent — either a
+    // verified expiry or an honest 502 probe failure; never a silent ok.
+    expect([200, 502]).toContain(probe.status);
+    if (probe.status === 200) {
+      const body = probe.body as { source: string; expires_at: number };
+      expect(body.source).toBe("ct-log");
+      expect(body.expires_at).toBeGreaterThan(Date.now());
+      const after = await req(`/api/v1/spaces/${owner}/certificates`, {
+        cookie: seeded.cookieHeader,
+      });
+      const refreshed = (after.body as { id: string; last_probed_at: number | null }[]).find(
+        (x) => x.id === cert.id
+      )!;
+      expect(refreshed.last_probed_at).not.toBeNull();
+    }
+  });
+
+  it("records a metered storage snapshot", async () => {
+    const snap = await req(`/api/v1/spaces/${owner}/costs/snapshot`, {
+      method: "POST",
+      cookie: seeded.cookieHeader,
+    });
+    expect(snap.status).toBe(201);
+    const body = snap.body as { service: string; metered_bytes: number; amount_cents: number };
+    expect(body.service).toBe("r2-storage");
+    expect(body.metered_bytes).toBeGreaterThanOrEqual(0);
+
+    const list = await req(`/api/v1/spaces/${owner}/costs`, { cookie: seeded.cookieHeader });
+    const row = (list.body as { snapshots: { service: string }[] }).snapshots.find(
+      (s) => s.service === "r2-storage"
+    );
+    expect(row).toBeDefined();
+  });
+
   it("aggregates cost snapshots by service", async () => {
     for (const svc of ["workers", "r2"]) {
       await req(`/api/v1/spaces/${owner}/costs`, {

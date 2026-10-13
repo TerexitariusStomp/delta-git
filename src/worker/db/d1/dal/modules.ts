@@ -510,6 +510,13 @@ export async function insertCertificate(db: Db, row: NewCertificateRow): Promise
 export async function deleteCertificate(db: Db, id: string): Promise<void> {
   await db.delete(certificates).where(eq(certificates.id, id)).run();
 }
+export async function updateCertificate(
+  db: Db,
+  id: string,
+  patch: Partial<Pick<CertificateRow, "issuer" | "expiresAt" | "lastProbedAt" | "lastNotifiedAt">>
+): Promise<void> {
+  await db.update(certificates).set(patch).where(eq(certificates.id, id)).run();
+}
 
 export async function listCostSnapshots(db: Db, namespaceId: string): Promise<CostSnapshotRow[]> {
   return db

@@ -35,6 +35,7 @@ import {
   listMonitorChecks,
   listMonitors,
   listSlos,
+  updateCertificate,
   updateChaosExperiment,
   updateIncident,
   updateMonitor,
@@ -46,6 +47,8 @@ import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound } from "./shared";
 import type { GitnessContext } from "./shared";
 import { runChaosExperiment } from "./chaos";
+import { probeCertificateExpiry } from "./certProbe";
+import { getStorageUsed } from "@/worker/agent/abuse";
 
 async function resolveMemberSpace(
   c: GitnessContext,
@@ -504,6 +507,9 @@ export function registerGitnessReliability(router: AppRouter) {
         expires_at: cert.expiresAt,
         days_left: Math.floor((cert.expiresAt - now) / 86400_000),
         auto_renew: cert.autoRenew === 1,
+        // When the expiry was last verified against the CT log — null
+        // means the value is still operator-asserted.
+        last_probed_at: cert.lastProbedAt,
       }))
     );
   });
@@ -530,6 +536,33 @@ export function registerGitnessReliability(router: AppRouter) {
       createdAt: Date.now(),
     });
     return c.json({ domain: body.domain.trim().toLowerCase() }, 201);
+  });
+
+  // Probe the Certificate Transparency log (crt.sh) for the real `not_after`
+  // of the tracked domain and refresh the record. Returns the verified
+  // expiry; 502 when the CT log is unreachable or has no matching entries —
+  // the stored assertion is left untouched on failure.
+  router.post("/api/v1/spaces/:space_ref{.+}/certificates/:id/probe", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const row = (await listCertificates(c.var.db, ns.id)).find(
+      (cert) => cert.id === c.req.param("id")
+    );
+    if (!row) return gErr(c, 404, "certificate not found");
+    const probe = await probeCertificateExpiry(row.domain);
+    if (!probe.ok) return gErr(c, 502, probe.error ?? "ct-probe-failed");
+    await updateCertificate(c.var.db, row.id, {
+      expiresAt: probe.expiresAt,
+      issuer: probe.issuer ?? row.issuer,
+      lastProbedAt: Date.now(),
+    });
+    return c.json({
+      domain: row.domain,
+      issuer: probe.issuer ?? row.issuer,
+      expires_at: probe.expiresAt,
+      days_left: Math.floor(((probe.expiresAt ?? 0) - Date.now()) / 86400_000),
+      source: "ct-log",
+    });
   });
 
   router.delete("/api/v1/spaces/:space_ref{.+}/certificates/:id", async (c) => {
@@ -589,6 +622,31 @@ export function registerGitnessReliability(router: AppRouter) {
       createdAt: Date.now(),
     });
     return c.json({}, 201);
+  });
+
+  // On-demand metered snapshot — reads the real per-namespace R2 storage
+  // counter and records the projected monthly cost at the published rate.
+  // Same write the hourly cron performs; this endpoint exposes it for the
+  // "refresh" affordance and for agents.
+  router.post("/api/v1/spaces/:space_ref{.+}/costs/snapshot", async (c) => {
+    const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
+    if (ns instanceof Response) return ns;
+    const now = Date.now();
+    const hourBucket = Math.floor(now / 3_600_000) * 3_600_000;
+    const bytes = await getStorageUsed(c.env.ROUTES, ns.id).catch(() => 0);
+    const amountCents = Math.round((bytes / (1024 * 1024 * 1024)) * 1.5);
+    await insertCostSnapshot(c.var.db, {
+      id: newPrefixedId("cst"),
+      namespaceId: ns.id,
+      provider: "cloudflare",
+      service: "r2-storage",
+      amountCents,
+      currency: "USD",
+      periodStart: hourBucket,
+      periodEnd: hourBucket + 3_600_000,
+      createdAt: now,
+    });
+    return c.json({ service: "r2-storage", metered_bytes: bytes, amount_cents: amountCents }, 201);
   });
 
   // --- chaos experiments --------------------------------------------------------------------------

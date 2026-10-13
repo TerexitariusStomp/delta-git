@@ -157,6 +157,11 @@ export async function deleteNamespaceRow(db: Db, namespaceId: string): Promise<b
  * Slug-prefix search for principal lookup — gitness principals are users,
  * and a user's uid is the namespace they personally own.
  */
+/** All namespace ids — scheduled sweeps (metered cost snapshots) fan out per namespace. */
+export async function listAllNamespaces(db: Db): Promise<{ id: string }[]> {
+  return db.select({ id: namespaces.id }).from(namespaces).all();
+}
+
 export async function searchNamespacesBySlug(
   db: Db,
   pattern: string,

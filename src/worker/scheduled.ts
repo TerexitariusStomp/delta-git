@@ -6,13 +6,18 @@ import { createDb } from "@/worker/db/d1";
 import type { Db } from "@/worker/db/d1";
 import { createLogger } from "@/worker/common/logger";
 import {
+  insertCostSnapshot,
   listAllCertificates,
   listAllEnabledMonitors,
+  listCostSnapshots,
   listOnlineDelegates,
+  updateCertificate,
   updateDelegate,
 } from "@/worker/db/d1/dal/modules";
 import { deliverNotification } from "@/worker/notify/notify";
-import { listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
+import { listAllNamespaces, listMembershipsForNamespace } from "@/worker/db/d1/dal/namespaces";
+import { probeCertificateExpiry } from "@/worker/api/gitness/certProbe";
+import { getStorageUsed } from "@/worker/agent/abuse";
 import { newPrefixedId } from "@/worker/common";
 import { runMonitorProbe } from "@/worker/api/gitness/reliability";
 import {
@@ -30,6 +35,12 @@ const log = createLogger(undefined, { service: "scheduled" });
 const DELEGATE_STALE_MS = 15 * 60 * 1000;
 // Certificates inside this horizon are surfaced to every space member.
 const CERT_NOTIFY_MS = 30 * 24 * 3600 * 1000;
+// Expiry notifications dedupe to at most one round per day per certificate.
+const CERT_NOTIFY_COOLDOWN_MS = 24 * 3600 * 1000;
+// R2 storage is billed $0.015 per GiB-month — the projected monthly cost
+// of the metered usage, in cents.
+const R2_CENTS_PER_GIB_MONTH = 1.5;
+const GIB = 1024 * 1024 * 1024;
 
 export async function handleScheduled(cron: string, env: Env): Promise<void> {
   const db = createDb(env.DB);
@@ -39,6 +50,7 @@ export async function handleScheduled(cron: string, env: Env): Promise<void> {
   // silently move work between tiers.
   if (cron === "0 * * * *") {
     await scanCertificates(env, db, now);
+    await snapshotMeteredCosts(env, db, now);
     return;
   }
   await probeDueMonitors(db, now);
@@ -114,8 +126,24 @@ async function reapStaleDelegates(db: Db<D1Database>, now: number): Promise<void
 async function scanCertificates(env: Env, db: Db<D1Database>, now: number): Promise<void> {
   const certs = await listAllCertificates(db);
   for (const cert of certs) {
-    const daysLeft = Math.floor((cert.expiresAt - now) / 86_400_000);
-    if (cert.expiresAt - now > CERT_NOTIFY_MS) continue;
+    // Refresh the asserted expiry from the CT log — notifications track
+    // reality even when the tracked record was entered by hand.
+    const probe = await probeCertificateExpiry(cert.domain);
+    let expiresAt = cert.expiresAt;
+    if (probe.ok && probe.expiresAt !== undefined) {
+      expiresAt = probe.expiresAt;
+      await updateCertificate(db, cert.id, {
+        expiresAt,
+        issuer: probe.issuer ?? cert.issuer,
+        lastProbedAt: now,
+      });
+    }
+    const daysLeft = Math.floor((expiresAt - now) / 86_400_000);
+    if (expiresAt - now > CERT_NOTIFY_MS) continue;
+    // Dedupe: one notification round per certificate per day.
+    if (cert.lastNotifiedAt !== null && now - cert.lastNotifiedAt < CERT_NOTIFY_COOLDOWN_MS) {
+      continue;
+    }
     const members = await listMembershipsForNamespace(db, cert.namespaceId);
     for (const member of members) {
       await deliverNotification(env, db, {
@@ -123,11 +151,43 @@ async function scanCertificates(env: Env, db: Db<D1Database>, now: number): Prom
         userId: member.userId,
         kind: "incident",
         title: `Certificate ${cert.domain} ${daysLeft < 0 ? "expired" : `expires in ${daysLeft}d`}`,
-        body: `issuer ${cert.issuer ?? "unknown"} · expires ${new Date(cert.expiresAt).toISOString().slice(0, 10)}`,
+        body: `issuer ${probe.issuer ?? cert.issuer ?? "unknown"} · expires ${new Date(expiresAt).toISOString().slice(0, 10)}${probe.ok ? "" : " · probe failed"}`,
         link: null,
         createdAt: now,
         readAt: null,
       }).catch(() => {});
     }
+    await updateCertificate(db, cert.id, { lastNotifiedAt: now });
+  }
+}
+
+/**
+ * Hourly metered cost snapshot: reads the real per-namespace R2 storage
+ * counter from the quota meter and records a projected monthly cost. One
+ * row per namespace per hour — the aggregator de-dupes by hour bucket so
+ * a delayed cron doesn't double-count.
+ */
+async function snapshotMeteredCosts(env: Env, db: Db<D1Database>, now: number): Promise<void> {
+  const hourBucket = Math.floor(now / 3_600_000) * 3_600_000;
+  const namespaces = await listAllNamespaces(db);
+  for (const ns of namespaces) {
+    const latest = await listCostSnapshots(db, ns.id);
+    const alreadyMetered = latest.some(
+      (s) => s.provider === "cloudflare" && s.service === "r2-storage" && s.periodStart === hourBucket
+    );
+    if (alreadyMetered) continue;
+    const bytes = await getStorageUsed(env.ROUTES, ns.id).catch(() => 0);
+    const amountCents = Math.round((bytes / GIB) * R2_CENTS_PER_GIB_MONTH);
+    await insertCostSnapshot(db, {
+      id: newPrefixedId("cst"),
+      namespaceId: ns.id,
+      provider: "cloudflare",
+      service: "r2-storage",
+      amountCents,
+      currency: "USD",
+      periodStart: hourBucket,
+      periodEnd: hourBucket + 3_600_000,
+      createdAt: now,
+    });
   }
 }
