@@ -10,17 +10,59 @@ import type { AppContext, AppRouter } from "./hono";
 
 const SPA_INDEX = "/index.html";
 
+const td = new TextDecoder();
+
+/**
+ * CSP for the SPA shell. `script-src` is hash-locked to the inline blocks
+ * actually present in the built index.html (the Monaco worker bootstrap) —
+ * computed per response so a rebuild can't drift the allowlist.
+ * `worker-src blob:` covers Monaco's blob worker URLs.
+ */
+async function spaCsp(html: string): Promise<string> {
+  const hashes: string[] = [];
+  for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(m[1]));
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
+    hashes.push(`'sha256-${b64}'`);
+  }
+  return [
+    `default-src 'self'`,
+    `script-src 'self' ${hashes.join(" ")}`,
+    `style-src 'self' 'unsafe-inline'`,
+    `img-src 'self' data: blob:`,
+    `font-src 'self' data:`,
+    // atproto PDS resolution + OAuth providers are first-party flows.
+    `connect-src 'self' https: wss:`,
+    `worker-src 'self' blob:`,
+    `frame-ancestors 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+  ].join("; ");
+}
+
+const SPA_SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+  // The API is same-origin; HSTS applies to the whole host.
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+};
+
 async function spaIndex(c: AppContext) {
   const indexUrl = new URL(SPA_INDEX, c.req.url);
   const res = await c.env.ASSETS.fetch(new Request(indexUrl.toString(), c.req.raw));
   if (!res.ok) return c.notFound();
-  return new Response(res.body, {
+  const html = td.decode(await res.arrayBuffer());
+  return new Response(html, {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       // Entry html is unhashed — revalidate; hashed assets use the binding's
       // own immutable caching.
       "Cache-Control": "no-cache",
+      "Content-Security-Policy": await spaCsp(html),
+      ...SPA_SECURITY_HEADERS,
     },
   });
 }

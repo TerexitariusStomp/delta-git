@@ -46,6 +46,7 @@ import { openRepoTar } from "@/worker/routes/archive";
 import { findRepositoryById } from "@/worker/db/d1/dal/repositories";
 import { createLogger } from "@/worker/common/logger";
 import { cfApi } from "@/worker/common/cloudflareApi";
+import { LIMITS, rateLimit } from "@/worker/agent/abuse";
 import type { DevEnvironmentRow } from "@/worker/db/d1/schema/devx";
 
 const log = createLogger(undefined, { service: "DevxWorkspaces" });
@@ -292,6 +293,11 @@ export function registerGitnessDevx(router: AppRouter) {
 
     // start — provision the workspace container and stage the linked
     // repo's worktree so the environment opens at a usable checkout.
+    const limited = await rateLimit(c.env, LIMITS.workspaceStart, ns.id);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      return gErr(c, 429, "workspace start rate limit exceeded");
+    }
     await updateDevEnvironment(c.var.db, row.id, { status: "provisioning" });
     try {
       const sandbox = workspaceSandbox(c.env, ns.slug, row.id);
@@ -390,6 +396,11 @@ export function registerGitnessDevx(router: AppRouter) {
     let host: string | null = body?.host ?? null;
     let status = "external";
     if (engine === "d1") {
+      const limited = await rateLimit(c.env, LIMITS.databaseCreate, ns.id);
+      if (!limited.ok) {
+        c.header("Retry-After", String(limited.retryAfterSec));
+        return gErr(c, 429, "database create rate limit exceeded");
+      }
       const name = `dg-${ns.slug}-${identifier}`.slice(0, 63);
       const created = await cfApi(c.env, "/d1/database", {
         method: "POST",
@@ -568,6 +579,14 @@ export function registerGitnessDevx(router: AppRouter) {
       const route = await findRepositoryByDoName(c.var.db, `${ns.slug}/${body.repo}`);
       repositoryId = route?.id ?? null;
     }
+    if (repositoryId) {
+      // Repo-backed scans spawn a container — the expensive lane.
+      const limited = await rateLimit(c.env, LIMITS.securityScan, ns.id);
+      if (!limited.ok) {
+        c.header("Retry-After", String(limited.retryAfterSec));
+        return gErr(c, 429, "security scan rate limit exceeded");
+      }
+    }
     const id = newPrefixedId("sec");
     await insertSecurityTest(c.var.db, {
       id,
@@ -649,6 +668,13 @@ export function registerGitnessDevx(router: AppRouter) {
     // DSSE-signed in-toto statement for `provenance`/`attestation`. A
     // supplied document is stored as-is (client-generated artifact).
     const generating = body.document === undefined;
+    if (generating) {
+      const limited = await rateLimit(c.env, LIMITS.supplyChainBuild, ns.id);
+      if (!limited.ok) {
+        c.header("Retry-After", String(limited.retryAfterSec));
+        return gErr(c, 429, "supply-chain build rate limit exceeded");
+      }
+    }
     await insertSupplyChainDoc(c.var.db, {
       id,
       namespaceId: ns.id,

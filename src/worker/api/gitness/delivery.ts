@@ -39,6 +39,7 @@ import {
   updateTicket,
 } from "@/worker/db/d1/dal/modules";
 import { newPrefixedId, getRepoStub } from "@/worker/common";
+import { LIMITS, rateLimit } from "@/worker/agent/abuse";
 import { isValidOwnerRepo } from "@/shared/web";
 import { gErr, gNotFound, numericId } from "./shared";
 import {
@@ -162,6 +163,11 @@ export function registerGitnessDelivery(router: AppRouter) {
     if (!row) return gNotFound(c, "connector");
     if (!row.endpoint || !/^https?:\/\//.test(row.endpoint)) {
       return gErr(c, 400, "connector has no http(s) endpoint to probe");
+    }
+    const limited = await rateLimit(c.env, LIMITS.externalProbe, ns.id);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      return gErr(c, 429, "probe rate limit exceeded");
     }
     const started = Date.now();
     const res = await fetch(row.endpoint, {
@@ -450,6 +456,11 @@ export function registerGitnessDelivery(router: AppRouter) {
     }
     if (!did.startsWith("did:")) {
       return gErr(c, 400, "source must be an at://did/collection uri or {did}");
+    }
+    const limited = await rateLimit(c.env, LIMITS.externalProbe, ns.id);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      return gErr(c, 429, "sync rate limit exceeded");
     }
     const result = await syncTicketsFromAtproto(c.env, c.var.db, ns.id, did, collection);
     if (!result.ok) return gErr(c, 502, result.error ?? "sync-failed");
@@ -1177,6 +1188,11 @@ export function registerGitnessFlags(router: AppRouter) {
     const drifted = row.lastSyncOid !== head;
     if (!drifted) {
       return c.json({ drifted: false, oid: head, applying: false });
+    }
+    const limited = await rateLimit(c.env, LIMITS.jobRun, ns.id);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      return gErr(c, 429, "deploy rate limit exceeded");
     }
     await c.env.REPO_TASKS_QUEUE.send({
       kind: "deploy",

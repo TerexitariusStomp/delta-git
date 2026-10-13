@@ -53,6 +53,16 @@ describe("SPA cutover routing", () => {
     );
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('id="root"');
+
+    // The SPA shell carries the security header set + a hash-locked CSP.
+    const csp = res.headers.get("Content-Security-Policy");
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("script-src 'self' 'sha256-");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).not.toContain("'unsafe-inline'\"");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=");
   });
 
   it("keeps auth precedence and the SSR 404 for non-SPA namespaces", async () => {

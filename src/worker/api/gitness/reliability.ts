@@ -48,7 +48,7 @@ import { gErr, gNotFound } from "./shared";
 import type { GitnessContext } from "./shared";
 import { runChaosExperiment } from "./chaos";
 import { probeCertificateExpiry } from "./certProbe";
-import { getStorageUsed } from "@/worker/agent/abuse";
+import { getStorageUsed, LIMITS, rateLimit } from "@/worker/agent/abuse";
 
 async function resolveMemberSpace(
   c: GitnessContext,
@@ -549,6 +549,11 @@ export function registerGitnessReliability(router: AppRouter) {
       (cert) => cert.id === c.req.param("id")
     );
     if (!row) return gErr(c, 404, "certificate not found");
+    const limited = await rateLimit(c.env, LIMITS.externalProbe, ns.id);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      return gErr(c, 429, "probe rate limit exceeded");
+    }
     const probe = await probeCertificateExpiry(row.domain);
     if (!probe.ok) return gErr(c, 502, probe.error ?? "ct-probe-failed");
     await updateCertificate(c.var.db, row.id, {
@@ -631,6 +636,11 @@ export function registerGitnessReliability(router: AppRouter) {
   router.post("/api/v1/spaces/:space_ref{.+}/costs/snapshot", async (c) => {
     const ns = await resolveMemberSpace(c, c.req.param("space_ref"));
     if (ns instanceof Response) return ns;
+    const limited = await rateLimit(c.env, LIMITS.externalProbe, ns.id);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      return gErr(c, 429, "snapshot rate limit exceeded");
+    }
     const now = Date.now();
     const hourBucket = Math.floor(now / 3_600_000) * 3_600_000;
     const bytes = await getStorageUsed(c.env.ROUTES, ns.id).catch(() => 0);
@@ -703,6 +713,11 @@ export function registerGitnessReliability(router: AppRouter) {
     const rows = await listChaosExperiments(c.var.db, ns.id);
     const row = rows.find((x) => x.id === c.req.param("id") || x.identifier === c.req.param("id"));
     if (!row) return gNotFound(c, "experiment");
+    const limited = await rateLimit(c.env, LIMITS.chaosRun, ns.id);
+    if (!limited.ok) {
+      c.header("Retry-After", String(limited.retryAfterSec));
+      return gErr(c, 429, "chaos run rate limit exceeded");
+    }
     let result;
     try {
       result = await runChaosExperiment(

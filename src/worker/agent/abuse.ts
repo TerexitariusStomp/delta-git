@@ -106,6 +106,15 @@ export const LIMITS = {
   matchEnter: { bucket: "match.enter", limit: 10, windowSec: 3600 },
   matchVote: { bucket: "match.vote", limit: 30, windowSec: 3600 },
   workspaceCreate: { bucket: "workspace.create", limit: 10, windowSec: 3600 },
+  // Expensive compute lanes — each spawns container work or external calls.
+  // With platform quotas unlimited, these are the brake on spend.
+  workspaceStart: { bucket: "workspace.start", limit: 12, windowSec: 3600 },
+  jobRun: { bucket: "job.run", limit: 30, windowSec: 3600 },
+  chaosRun: { bucket: "chaos.run", limit: 20, windowSec: 3600 },
+  securityScan: { bucket: "security.scan", limit: 30, windowSec: 3600 },
+  supplyChainBuild: { bucket: "supplychain.build", limit: 30, windowSec: 3600 },
+  databaseCreate: { bucket: "database.create", limit: 10, windowSec: 3600 },
+  externalProbe: { bucket: "external.probe", limit: 60, windowSec: 3600 },
   vouch: { bucket: "vouch", limit: 30, windowSec: 3600 },
   epochAllocate: { bucket: "epoch.allocate", limit: 60, windowSec: 3600 },
 } as const satisfies Record<string, RateLimitSpec>;

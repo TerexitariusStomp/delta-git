@@ -166,9 +166,15 @@ async function scanCertificates(env: Env, db: Db<D1Database>, now: number): Prom
  * counter from the quota meter and records a projected monthly cost. One
  * row per namespace per hour — the aggregator de-dupes by hour bucket so
  * a delayed cron doesn't double-count.
+ *
+ * Spend alerts: quotas are unlimited by policy, so the alert is the
+ * brake — when projected monthly cost crosses SPEND_ALERT_CENTS
+ * (default $50) every space member is notified, at most once per day.
  */
 async function snapshotMeteredCosts(env: Env, db: Db<D1Database>, now: number): Promise<void> {
   const hourBucket = Math.floor(now / 3_600_000) * 3_600_000;
+  const alertThreshold =
+    parseInt((env as { SPEND_ALERT_CENTS?: string }).SPEND_ALERT_CENTS ?? "", 10) || 5000;
   const namespaces = await listAllNamespaces(db);
   for (const ns of namespaces) {
     const latest = await listCostSnapshots(db, ns.id);
@@ -189,5 +195,26 @@ async function snapshotMeteredCosts(env: Env, db: Db<D1Database>, now: number): 
       periodEnd: hourBucket + 3_600_000,
       createdAt: now,
     });
+    if (amountCents >= alertThreshold) {
+      // Dedupe via KV day-bucket — one alert round per namespace per day.
+      const dayBucket = Math.floor(now / 86_400_000);
+      const alertKey = `gspend-alert:${ns.id}:${dayBucket}`;
+      if (await env.ROUTES.get(alertKey)) continue;
+      await env.ROUTES.put(alertKey, "1", { expirationTtl: 172_800 });
+      const members = await listMembershipsForNamespace(db, ns.id);
+      for (const member of members) {
+        await deliverNotification(env, db, {
+          id: newPrefixedId("ntf"),
+          userId: member.userId,
+          kind: "incident",
+          title: `Projected spend $${(amountCents / 100).toFixed(2)}/mo`,
+          body: `Metered R2 storage ${(bytes / GIB).toFixed(2)} GiB projects to ${amountCents}¢/month — over the $${(alertThreshold / 100).toFixed(0)} alert threshold.`,
+          link: null,
+          createdAt: now,
+          readAt: null,
+        }).catch(() => {});
+      }
+      log.info("scheduled:spend-alert", { namespaceId: ns.id, amountCents, bytes });
+    }
   }
 }
