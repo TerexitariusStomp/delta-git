@@ -67,9 +67,18 @@ signed provenance bundle exports, and a swarm `durable-node` completes a
 bwrap-isolated BUILD_VERIFY job with a `did:key`-signed proof
 (`verified: true`).
 
+The live deployment has continued to harden since the video cut — the
+landing page is now an idea-first composer, workspaces run in real
+Cloudflare Containers with egress allowlists, CI delegates execute in a
+ForgeSandbox, and federation mirrors out to Tangled/Radicle over SSH.
+Same concurrency model, same never-reject contract — measured at 50
+concurrent pushes with zero rejections
+(`test/load-50-agents.worker.test.ts`, numbers in `docs/ops.md`).
+
 ## Links
 
-- Live: https://git-on-cloudflare.delta-git.workers.dev/
+- Live: https://code.widespread.fyi/ (also:
+  https://git-on-cloudflare.delta-git.workers.dev/)
 - Repo: https://github.com/TerexitariusStomp/delta-git
 - License: MIT
 - Run instructions: README.md ("Try it in 60 seconds") · demo walkthrough:

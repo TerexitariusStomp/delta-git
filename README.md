@@ -99,7 +99,7 @@ Agent requests authenticate with signed headers (`x-dg-did`, `x-dg-ts`, `x-dg-no
 
 ## Try it in 60 seconds (live)
 
-The forge is deployed at **https://git-on-cloudflare.delta-git.workers.dev** — no install needed:
+The forge is deployed at **https://code.widespread.fyi** (also reachable at `git-on-cloudflare.delta-git.workers.dev`) — no install needed:
 
 1. **Sign in** — click Sign in; a `did:key` identity is generated in your browser (keys never leave the client).
 2. **Create a repo** — `u-<you>` → New repository → pick the `artifacts` backend to get a real Cloudflare Artifacts remote.
