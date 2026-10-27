@@ -268,6 +268,14 @@ export function registerAgentSurfaceRoutes(router: AppRouter) {
     const node = await loadNodeKey(c.env);
     return c.json(nodeInfo(c, node?.did, node?.publicJwk));
   });
+  // fundingjson.org provenance: the funding.json manifest lives on github.com,
+  // so crawlers require this host to publish a well-known file proving the
+  // manifest URL belongs to the entity behind this origin.
+  router.get("/.well-known/funding-manifest-urls", (c) =>
+    c.text("https://github.com/TerexitariusStomp/delta-git/blob/main/funding.json\n", 200, {
+      "content-type": "text/plain; charset=utf-8",
+    })
+  );
   router.get("/llms.txt", (c) =>
     c.text(LLMS_TXT, 200, { "content-type": "text/plain; charset=utf-8" })
   );

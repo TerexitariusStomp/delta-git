@@ -17,7 +17,8 @@
       "name": "delta-git",
       "description": "An atproto-native, client-first code forge running on Cloudflare Workers, Durable Objects, D1, KV, and R2. Git Smart HTTP v2, DID-based authentication, client-side key custody (no secrets hosted), hash-chained op-log provenance, agent-native APIs, and forge-verified contribution attestations. Live at code.widespread.fyi.",
       "webpageUrl": {
-        "url": "https://code.widespread.fyi"
+        "url": "https://code.widespread.fyi",
+        "wellKnown": "https://code.widespread.fyi/.well-known/funding-manifest-urls"
       },
       "repositoryUrl": {
         "url": "https://github.com/TerexitariusStomp/delta-git"
