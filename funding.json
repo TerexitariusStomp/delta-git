@@ -1,0 +1,73 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.1.0",
+  "entity": {
+    "type": "individual",
+    "role": "maintainer",
+    "name": "Terexitarius Stomp",
+    "email": "terexmaps+github@gmail.com",
+    "description": "Independent developer building atproto-native, client-first infrastructure on Cloudflare's edge. delta-git is maintained as a public good: a code forge whose identity, keys, and data live with users, not with a host.",
+    "webpageUrl": {
+      "url": "https://code.widespread.fyi"
+    }
+  },
+  "projects": [
+    {
+      "guid": "delta-git",
+      "name": "delta-git",
+      "description": "An atproto-native, client-first code forge running on Cloudflare Workers, Durable Objects, D1, KV, and R2. Git Smart HTTP v2, DID-based authentication, client-side key custody (no secrets hosted), hash-chained op-log provenance, agent-native APIs, and forge-verified contribution attestations. Live at code.widespread.fyi.",
+      "webpageUrl": {
+        "url": "https://code.widespread.fyi"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/TerexitariusStomp/delta-git"
+      },
+      "licenses": ["spdx:MIT"],
+      "tags": ["developer-tools", "decentralization", "git", "atproto", "cloudflare-workers"]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "github-sponsors",
+        "type": "payment-provider",
+        "address": "https://github.com/sponsors/TerexitariusStomp",
+        "description": "Recurring or one-time sponsorship via GitHub Sponsors."
+      },
+      {
+        "guid": "open-collective",
+        "type": "payment-provider",
+        "address": "https://opencollective.com/delta-git",
+        "description": "Donations and grant invoicing via Open Collective (fiscal host pending)."
+      },
+      {
+        "guid": "drips",
+        "type": "other",
+        "address": "https://www.drips.network",
+        "description": "Streaming support via Drips (Radicle ecosystem); delta-git is also canonical on Radicle."
+      }
+    ],
+    "plans": [
+      {
+        "guid": "maintainer-monthly",
+        "status": "active",
+        "name": "Sustaining maintenance",
+        "description": "Recurring support for maintenance, security response, and review bandwidth on delta-git.",
+        "amount": 0,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": ["github-sponsors", "open-collective", "drips"]
+      },
+      {
+        "guid": "forge-development",
+        "status": "active",
+        "name": "Forge development grant",
+        "description": "One-time or milestone funding toward roadmap items: never-reject push resolution, client-side encrypted private repos, adjudication/quorum, federation mirror-out, and self-host deployability.",
+        "amount": 0,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": ["github-sponsors", "open-collective"]
+      }
+    ]
+  }
+}

@@ -1,6 +1,7 @@
-# Funding surfaces — fill in the handles you control.
-# GitHub Sponsors: github: [TerexitariusStomp]
-# Open Collective: open_collective: <slug>
-# Crypto (custom): custom: ["https://…"]
-github: []
+# Funding surfaces for delta-git.
+# See funding.json (repo root) for the machine-readable manifest
+# submitted to dir.floss.fund.
+github: [TerexitariusStomp]
+# open_collective: delta-git   # pending fiscal-host approval
+# custom: ["https://www.drips.network/app/projects/..."]  # pending project claim
 custom: []

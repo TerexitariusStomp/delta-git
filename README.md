@@ -281,6 +281,17 @@ npm run test:auth       # Run Auth DO tests
 npm run test            # Run Node Vitest unit tests
 ```
 
+## Sustainability
+
+delta-git is maintained as a public good. Funding surfaces:
+
+- **GitHub Sponsors**: [github.com/sponsors/TerexitariusStomp](https://github.com/sponsors/TerexitariusStomp)
+- **funding.json**: machine-readable manifest at [`funding.json`](./funding.json), submitted to [dir.floss.fund](https://dir.floss.fund)
+- **Drips** (Radicle ecosystem): canonical repo lives on Radicle; streaming support via drips.network
+- **Grants**: see [`docs/funding/`](./docs/funding/) for the pitch kit used for grant applications (OTF, Sovereign Tech, Cloudflare programs)
+
+This repository is a mirror — canonical development continues on Tangled/Radicle (`rad://z2w6CWCT3rkPQs7xsqdAx292HMzU1`). GitHub exists for discoverability, sponsorship, and funding surfaces.
+
 ## License
 
 MIT
