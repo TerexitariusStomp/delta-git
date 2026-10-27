@@ -30,22 +30,28 @@
   "funding": {
     "channels": [
       {
+        "guid": "slop-cash",
+        "type": "other",
+        "address": "https://slop.cash/projects/delta-git",
+        "description": "Contributor reward pool and accepted-work points via Slop.cash. Live listing; funding optional."
+      },
+      {
         "guid": "github-sponsors",
         "type": "payment-provider",
         "address": "https://github.com/sponsors/TerexitariusStomp",
-        "description": "Recurring or one-time sponsorship via GitHub Sponsors."
+        "description": "Recurring or one-time sponsorship via GitHub Sponsors (pending activation)."
       },
       {
         "guid": "open-collective",
         "type": "payment-provider",
         "address": "https://opencollective.com/delta-git",
-        "description": "Donations and grant invoicing via Open Collective (fiscal host pending)."
+        "description": "Donations and grant invoicing via Open Collective (pending fiscal-host approval)."
       },
       {
         "guid": "drips",
         "type": "other",
         "address": "https://www.drips.network",
-        "description": "Streaming support via Drips (Radicle ecosystem); delta-git is also canonical on Radicle."
+        "description": "Streaming support via Drips, Radicle ecosystem (pending project claim); delta-git is also canonical on Radicle."
       }
     ],
     "plans": [
@@ -57,7 +63,7 @@
         "amount": 0,
         "currency": "USD",
         "frequency": "monthly",
-        "channels": ["github-sponsors", "open-collective", "drips"]
+        "channels": ["slop-cash", "github-sponsors", "open-collective", "drips"]
       },
       {
         "guid": "forge-development",
