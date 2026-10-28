@@ -3,10 +3,12 @@ import { SignInIcon, PersonIcon, SignOutIcon } from "@primer/octicons-react";
 import { IslandHost } from "@/client/server/IslandHost";
 import { ThemeToggleIsland } from "@/client/islands/theme-toggle";
 import type { Viewer } from "@/client/server/viewer";
+import type { Brand } from "@/shared/brand";
 
 type HeaderProps = {
   currentView?: string;
   viewer?: Viewer | null;
+  brand: Brand;
 };
 
 const navLinkClass = (isActive: boolean): string =>
@@ -48,7 +50,7 @@ function SignedInNav({ currentView, viewer }: { currentView?: string; viewer: Vi
   );
 }
 
-export function Header({ currentView, viewer }: HeaderProps) {
+export function Header({ currentView, viewer, brand }: HeaderProps) {
   return (
     <header
       className="sticky top-0 z-50 w-full border-b"
@@ -67,23 +69,17 @@ export function Header({ currentView, viewer }: HeaderProps) {
               className="transition-transform duration-200 group-hover:-rotate-6"
               aria-hidden="true"
             >
-              <img
-                src="/logo-widespread.png"
-                alt=""
-                width="64"
-                height="27"
-                className="block h-8 w-auto"
-              />
+              <img src={brand.logo} alt="" width="64" height="27" className="block h-8 w-auto" />
             </span>
             <span className="hidden sm:block">
               <strong
                 className="block text-sm font-semibold"
                 style={{ color: "var(--header-fgColor-logo)" }}
               >
-                Widespread
+                {brand.name}
               </strong>
               <small className="block text-xs" style={{ color: "var(--header-fgColor-default)" }}>
-                Code forge
+                {brand.tagline}
               </small>
             </span>
           </a>

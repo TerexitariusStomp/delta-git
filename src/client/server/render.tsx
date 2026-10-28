@@ -1,6 +1,7 @@
 import { renderToReadableStream } from "react-dom/server";
 
 import { AppLayout } from "@/client/components/AppLayout";
+import { brandFor } from "@/shared/brand";
 import { resolveDocumentAssets } from "./assets";
 import { Document } from "./document";
 import { getViewDefinition } from "./registry";
@@ -30,15 +31,17 @@ export async function renderUiView(
     return renderToReadableStream(page);
   }
 
+  const brand = brandFor(env.BRAND);
   const assets = await resolveDocumentAssets(env, definition.clientEntrypoints || []);
   const element = (
     <Document
-      title={(data.title as string | undefined) || definition.title}
+      title={(data.title as string | undefined) || definition.title || brand.name}
+      brand={brand}
       assets={assets}
       // No remaining SSR view renders code — blob/commit/overview moved to the SPA.
       needsHighlight={false}
     >
-      <AppLayout currentView={name} viewer={options.viewer ?? null}>
+      <AppLayout currentView={name} viewer={options.viewer ?? null} brand={brand}>
         {page}
       </AppLayout>
     </Document>

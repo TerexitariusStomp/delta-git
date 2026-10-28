@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 
 import { highlightThemeHref } from "@/client/highlight-theme";
+import type { Brand } from "@/shared/brand";
 import type { DocumentAssets } from "./assets";
 
 type DocumentProps = {
-  title?: string;
+  title: string;
+  brand: Brand;
   assets: DocumentAssets;
   needsHighlight?: boolean;
   children: ReactNode;
@@ -14,9 +16,13 @@ const initialHighlightThemeHref = highlightThemeHref.dark || highlightThemeHref.
 const themeBootstrap = `(function(){try{var saved=localStorage.getItem("theme");var theme=saved==="light"?"light":"dark";var root=document.documentElement;root.dataset.theme=theme;root.dataset.colorMode=theme;root.dataset.lightTheme="light";root.dataset.darkTheme="dark";root.classList.toggle("dark",theme==="dark");var hljs=document.getElementById("hljs-theme");var darkHref="${highlightThemeHref.dark}";var lightHref="${highlightThemeHref.light}";if(hljs&&(darkHref||lightHref)){var nextHref=theme==="dark"?darkHref:lightHref;if(nextHref){hljs.setAttribute("href",nextHref);}else{hljs.removeAttribute("href");}}}catch(_err){document.documentElement.dataset.theme="dark";document.documentElement.dataset.colorMode="dark";document.documentElement.dataset.lightTheme="light";document.documentElement.dataset.darkTheme="dark";document.documentElement.classList.add("dark");}})();`;
 const reactRefreshPreamble = `import RefreshRuntime from "/@react-refresh";RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;`;
 
-export function Document({ title, assets, needsHighlight = false, children }: DocumentProps) {
-  const pageTitle = title || "Widespread";
-
+export function Document({
+  title,
+  brand,
+  assets,
+  needsHighlight = false,
+  children,
+}: DocumentProps) {
   return (
     <html
       className="h-full"
@@ -29,8 +35,8 @@ export function Document({ title, assets, needsHighlight = false, children }: Do
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="color-scheme" content="light dark" />
-        <link rel="icon" type="image/png" href="/favicon.png" />
-        <title>{pageTitle}</title>
+        <link rel="icon" href={brand.favicon} />
+        <title>{title}</title>
 
         {needsHighlight && initialHighlightThemeHref ? (
           <link id="hljs-theme" rel="stylesheet" href={initialHighlightThemeHref} />
@@ -45,6 +51,7 @@ export function Document({ title, assets, needsHighlight = false, children }: Do
         {assets.styles.map((href) => (
           <link key={href} rel="stylesheet" href={href} />
         ))}
+        {brand.stylesheet ? <link rel="stylesheet" href={brand.stylesheet} /> : null}
       </head>
       <body className="min-h-screen">
         {children}

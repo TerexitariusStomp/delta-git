@@ -20,7 +20,7 @@ import {
 } from '@harnessio/ui/components'
 import { useRouterContext, useTheme, useTranslation } from '@harnessio/ui/context'
 import { TypesUser } from '@harnessio/ui/types'
-import { cn } from '@harnessio/ui/utils'
+import { cn, getBrand } from '@harnessio/ui/utils'
 
 interface SidebarProps {
   recentMenuItems: NavbarItemType[]
@@ -116,7 +116,7 @@ export const SidebarView = ({
         <Sidebar.Header>
           <SearchProvider>
             <Layout.Grid gapY="md">
-              <img src="/logo-widespread.png" alt="Widespread" className="size-6" />
+              <img src={getBrand().logo} alt={getBrand().name} className="size-6" />
               <SidebarSearch />
             </Layout.Grid>
           </SearchProvider>

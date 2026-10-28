@@ -11,5 +11,6 @@ export * from './schema'
 export * from './task'
 export * from './textarea-utils'
 export * from './query-loading'
+export * from './brand'
 
 export { formatDistanceToNow } from 'date-fns'

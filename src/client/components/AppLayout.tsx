@@ -3,14 +3,16 @@ import type { ReactNode } from "react";
 import { Header } from "@/client/components/header";
 import { Footer } from "@/client/components/footer";
 import type { Viewer } from "@/client/server/viewer";
+import type { Brand } from "@/shared/brand";
 
 type AppLayoutProps = {
   children: ReactNode;
   currentView?: string;
   viewer?: Viewer | null;
+  brand: Brand;
 };
 
-export function AppLayout({ children, currentView, viewer }: AppLayoutProps) {
+export function AppLayout({ children, currentView, viewer, brand }: AppLayoutProps) {
   return (
     <>
       <a
@@ -24,11 +26,11 @@ export function AppLayout({ children, currentView, viewer }: AppLayoutProps) {
         Skip to content
       </a>
       <div className="flex min-h-screen flex-col">
-        <Header currentView={currentView} viewer={viewer ?? null} />
+        <Header currentView={currentView} viewer={viewer ?? null} brand={brand} />
         <main id="main-content" className="w-full flex-1 min-w-0">
           {children}
         </main>
-        <Footer />
+        <Footer brand={brand} />
       </div>
     </>
   );

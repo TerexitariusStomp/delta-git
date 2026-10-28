@@ -1,5 +1,7 @@
 import { FC, useEffect, useState } from 'react'
 
+import { getBrand } from '@harnessio/ui/utils'
+
 import {
   authLog,
   getAuthLog,
@@ -90,10 +92,10 @@ export const SignIn: FC = () => {
       <header className="w-full border-b border-cn-2">
         <div className="flex w-full items-center gap-3 px-4 py-3 sm:px-6">
           <a href="/" className="flex items-center gap-2.5 no-underline hover:no-underline">
-            <img src="/logo-widespread.png" alt="" className="block h-8 w-auto" aria-hidden="true" />
+            <img src={getBrand().logo} alt="" className="block h-8 w-auto" aria-hidden="true" />
             <span className="hidden sm:block">
-              <strong className="block text-sm font-semibold text-cn-1">Widespread</strong>
-              <small className="block text-xs text-cn-2">Code forge</small>
+              <strong className="block text-sm font-semibold text-cn-1">{getBrand().name}</strong>
+              <small className="block text-xs text-cn-2">{getBrand().tagline}</small>
             </span>
           </a>
         </div>
@@ -160,8 +162,8 @@ export const SignIn: FC = () => {
       <footer className="shrink-0 border-t border-cn-2">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-4 text-xs text-cn-3 sm:px-6">
           <a href="/" className="flex items-center gap-1.5 no-underline hover:no-underline">
-            <img src="/logo-widespread.png" alt="" className="block h-5 w-auto" aria-hidden="true" />
-            <span>Widespread</span>
+            <img src={getBrand().logo} alt="" className="block h-5 w-auto" aria-hidden="true" />
+            <span>{getBrand().name}</span>
           </a>
           <a href="https://github.com/TerexitariusStomp/delta-git" className="no-underline hover:underline">
             Source

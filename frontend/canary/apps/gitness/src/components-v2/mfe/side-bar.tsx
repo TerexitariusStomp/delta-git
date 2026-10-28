@@ -2,6 +2,8 @@ import { FC, ReactNode, useCallback, useState } from 'react'
 
 import { noop } from 'lodash-es'
 
+import { getBrand } from '@harnessio/ui/utils'
+
 import {
   AppSidebarUser,
   LanguageCode,
@@ -53,7 +55,7 @@ const AppSidebar: FC<{ children: ReactNode }> = ({ children }) => {
           <Sidebar.Header>
             <SearchProvider>
               <Layout.Grid gapY="md">
-                <img src="/logo-widespread.png" alt="Widespread" className="h-7 w-auto" />
+                <img src={getBrand().logo} alt={getBrand().name} className="h-7 w-auto" />
                 <SidebarSearch />
               </Layout.Grid>
             </SearchProvider>

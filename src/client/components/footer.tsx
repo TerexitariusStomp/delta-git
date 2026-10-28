@@ -1,4 +1,6 @@
-export function Footer() {
+import type { Brand } from "@/shared/brand";
+
+export function Footer({ brand }: { brand: Brand }) {
   return (
     <footer className="shrink-0 border-t" style={{ borderColor: "var(--borderColor-muted)" }}>
       <div className="mx-auto flex max-w-[1280px] flex-col items-center gap-2 px-4 py-4 text-center sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:text-left">
@@ -8,14 +10,14 @@ export function Footer() {
           style={{ color: "var(--fgColor-muted)" }}
         >
           <img
-            src="/logo-widespread.png"
+            src={brand.logo}
             alt=""
             width="48"
             height="20"
             className="block h-5 w-auto"
             aria-hidden="true"
           />
-          <span>Widespread</span>
+          <span>{brand.name}</span>
         </a>
         <nav
           className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs"

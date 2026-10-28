@@ -3,6 +3,7 @@ import { Link, Outlet, useParams } from 'react-router-dom'
 
 import { NavbarItemType, Toaster, useSidebar } from '@harnessio/ui/components'
 import { useTranslation } from '@harnessio/ui/context'
+import { getBrand } from '@harnessio/ui/utils'
 import { MainContentLayout } from '@harnessio/views'
 
 import { getNavbarMenuData } from '../../data/navbar-menu-data'
@@ -80,9 +81,9 @@ export const AppShell: FC = () => {
       {anonymous ? (
         <div className="flex min-h-svh min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-between border-b border-cn-2 px-cn-md py-cn-sm">
-            <Link to="/" className="flex items-center gap-cn-xs" aria-label="Widespread home">
-              <img src="/logo-widespread.png" alt="" className="h-6 w-6 rounded-cn-1" />
-              <span className="text-cn-1 font-semibold">Widespread</span>
+            <Link to="/" className="flex items-center gap-cn-xs" aria-label={`${getBrand().name} home`}>
+              <img src={getBrand().logo} alt="" className="h-6 w-6 rounded-cn-1" />
+              <span className="text-cn-1 font-semibold">{getBrand().name}</span>
             </Link>
             <nav className="flex items-center gap-cn-md text-sm">
               <Link to="/explore" className="text-cn-brand">

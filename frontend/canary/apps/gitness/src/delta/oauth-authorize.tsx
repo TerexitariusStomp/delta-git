@@ -1,5 +1,7 @@
 import { FC, useEffect, useState } from 'react'
 
+import { getBrand } from '@harnessio/ui/utils'
+
 import { authLog } from './bsky-oauth'
 
 /**
@@ -107,10 +109,10 @@ export const OAuthAuthorize: FC = () => {
       <header className="w-full border-b border-cn-2">
         <div className="flex w-full items-center gap-3 px-4 py-3 sm:px-6">
           <a href="/" className="flex items-center gap-2.5 no-underline hover:no-underline">
-            <img src="/logo-widespread.png" alt="" className="block h-8 w-auto" aria-hidden="true" />
+            <img src={getBrand().logo} alt="" className="block h-8 w-auto" aria-hidden="true" />
             <span className="hidden sm:block">
-              <strong className="block text-sm font-semibold text-cn-1">Widespread</strong>
-              <small className="block text-xs text-cn-2">Code forge</small>
+              <strong className="block text-sm font-semibold text-cn-1">{getBrand().name}</strong>
+              <small className="block text-xs text-cn-2">{getBrand().tagline}</small>
             </span>
           </a>
         </div>

@@ -1,3 +1,4 @@
+import { brandFor, brandSpaHtml } from "@/shared/brand";
 import type { AppContext, AppRouter } from "./hono";
 
 // Gitness SPA serving + client-route fallback.
@@ -57,7 +58,7 @@ async function spaIndex(c: AppContext) {
   const indexUrl = new URL(SPA_INDEX, c.req.url);
   const res = await c.env.ASSETS.fetch(new Request(indexUrl.toString(), c.req.raw));
   if (!res.ok) return c.notFound();
-  const html = td.decode(await res.arrayBuffer());
+  const html = brandSpaHtml(td.decode(await res.arrayBuffer()), brandFor(c.env.BRAND));
   return new Response(html, {
     status: 200,
     headers: {

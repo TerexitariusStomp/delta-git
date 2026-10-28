@@ -1,0 +1,42 @@
+/*
+ * Vibetime brand layer — accent-token overrides applied AFTER the GitHub
+ * reskin (delta/github-theme.css). Injected into the SPA index by the
+ * worker when `BRAND=vibetime` (see src/worker/routes/spa.ts +
+ * common/brand.ts). Only the accent pair changes: brand/link accent moves
+ * from Widespread gold to Vibetime's violet; the primary action stays in
+ * the same family. Wire identifiers and layout are untouched by design
+ * (PRODUCT.md).
+ */
+
+/* ---------- Vibetime Dark ---------- */
+.dark,
+.dark-std-std {
+  --cn-text-brand: #a78bfa;
+
+  /* primary action — vibe violet */
+  --cn-set-brand-primary-text: #ffffff;
+  --cn-set-brand-primary-bg: #7c3aed;
+  --cn-set-brand-primary-bg-hover: #8b5cf6;
+  --cn-set-brand-primary-bg-selected: #8b5cf6;
+  --cn-set-brand-primary-ring: rgba(139, 92, 246, 0.35);
+  --cn-set-brand-secondary-text: #a78bfa;
+
+  --cn-set-success-primary-bg: #7c3aed;
+  --cn-set-success-primary-bg-hover: #8b5cf6;
+  --cn-set-success-primary-bg-selected: #8b5cf6;
+
+  --cn-border-success: #7c3aed;
+}
+
+/* ---------- Vibetime Light ---------- */
+.light,
+.light-std-std {
+  --cn-text-brand: #6d28d9;
+
+  --cn-set-brand-primary-text: #ffffff;
+  --cn-set-brand-primary-bg: #7c3aed;
+  --cn-set-brand-primary-bg-hover: #6d28d9;
+  --cn-set-brand-primary-bg-selected: #6d28d9;
+  --cn-set-brand-primary-ring: rgba(124, 58, 237, 0.3);
+  --cn-set-brand-secondary-text: #6d28d9;
+}

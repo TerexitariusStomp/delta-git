@@ -256,6 +256,9 @@
     // allowlist when the worker sits behind a fronting proxy
     // (code.widespread.fyi → code-router worker → this worker).
     "PUBLIC_ORIGIN": "https://code.widespread.fyi",
+    // Tenant branding (src/shared/brand.ts): name, logo and accent stylesheet.
+    // "widespread" | "vibetime"; unknown values fall back to widespread.
+    "BRAND": "widespread",
     // Proof-of-interest compute pool — localchimera coordinator base URL.
     // When set, PUBLIC repos route inference-shaped work (adjudication,
     // research, indexing) to the volunteer pool first and fall back to
