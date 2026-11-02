@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 import { exports as workerExports } from "cloudflare:workers";
 
-import { setupRepoForTests } from "./util/repoSeed";
+import { mintNamespacePullPat, setupRepoForTests } from "./util/repoSeed";
 
 import { env } from "cloudflare:workers";
 
@@ -81,4 +81,28 @@ it("mcp: initialize + tools/list + tools/call round-trip", async () => {
   );
   const missingMsg = await readSseResult(missing);
   expect(missingMsg.result.isError).toBe(true);
+});
+
+it("mcp: dgit_merge_run rejects a pull-level PAT (write gate needs push)", async () => {
+  const seeded = await setupRepoForTests(env, "mcppull", "pullrepo");
+  const pull = await mintNamespacePullPat(env, seeded.userId, seeded.namespaceId);
+  const pullAuthHeader = `Basic ${btoa(`${seeded.namespaceSlug}:${pull.plaintext}`)}`;
+
+  const call = await post(
+    rpc("tools/call", {
+      name: "dgit_merge_run",
+      arguments: {
+        owner: seeded.namespaceSlug,
+        repo: seeded.repoSlug,
+        intent_id: "no-such-intent",
+      },
+    }),
+    { authorization: pullAuthHeader }
+  );
+  expect(call.status).toBe(200);
+  const msg = await readSseResult(call);
+  // Read-only (pull-level) PATs must not reach mutating tools — the same
+  // push-level contract the git receive-pack and /api/*/dg write gates use.
+  expect(msg.result.isError).toBe(true);
+  expect(msg.result.content[0].text).toMatch(/insufficient scope/i);
 });

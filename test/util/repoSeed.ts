@@ -151,6 +151,37 @@ export type SetupRepoForTestsResult = SeededRepo & {
   patPlaintext: string;
 };
 
+// Mint a pull-level namespace PAT — the read-only counterpart of the push
+// PAT above. Lets auth tests assert that read-only credentials cannot
+// reach write-gated surfaces.
+export async function mintNamespacePullPat(
+  env: Env,
+  userId: string,
+  namespaceId: string
+): Promise<{ patId: string; plaintext: string }> {
+  const db = createDb(env.DB);
+  const generated = generatePatPlaintext();
+  const hash = await hashPatPlaintext(generated.plaintext);
+  const patId = newPrefixedId("pat");
+  const now = Date.now();
+  await insertPatWithGrants(db, {
+    pat: {
+      id: patId,
+      userId,
+      name: "test-system-pull",
+      prefix: generated.publicPrefix,
+      hash,
+      createdAt: now,
+      expiresAt: null,
+      revokedAt: null,
+      lastUsedAt: null,
+    },
+    namespaceGrants: [{ patId, namespaceId, level: "pull" }],
+    repoGrants: [],
+  });
+  return { patId, plaintext: generated.plaintext };
+}
+
 export async function setupRepoForTests(
   env: Env,
   namespaceSlug: string,
