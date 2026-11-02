@@ -66,7 +66,10 @@ async function resolveDoName(
   return {
     doName: route.doName,
     actor: auth?.kind === "pat" ? auth.verified.userId : "mcp-anon",
-    writeOk: auth?.kind === "pat",
+    // PAT lane mirrors the OAuth lane above and the REST write gate
+    // (`authenticateWrite` / `gateGitPush`): only push-level grants may run
+    // mutating tools; a pull-level PAT stays read-only.
+    writeOk: auth?.kind === "pat" && auth.verified.level === "push",
   };
 }
 
